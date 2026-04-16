@@ -1,0 +1,33 @@
+name: Daily Watchlist Price Alerts
+
+on:
+  schedule:
+    - cron: "0 22 * * 1-5"   # UTC 10PM Mon-Fri = SGT 6AM Tue-Sat
+                               # Runs after US market close (4PM ET = 4AM SGT)
+  workflow_dispatch:           # Allow manual trigger for testing
+
+jobs:
+  check-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: .github/scripts
+
+      - name: Run alert check
+        run: node checkAlerts.js
+        working-directory: .github/scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FMP_API_KEY:               ${{ secrets.FMP_API_KEY }}
+          EMAILJS_SERVICE_ID:        ${{ secrets.EMAILJS_SERVICE_ID }}
+          EMAILJS_TEMPLATE_ID:       ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          EMAILJS_PUBLIC_KEY:        ${{ secrets.EMAILJS_PUBLIC_KEY }}
+          ALERT_EMAIL:               ${{ secrets.ALERT_EMAIL }}
+          FIREBASE_PROJECT_ID:       ${{ secrets.FIREBASE_PROJECT_ID }}
