@@ -1,0 +1,11 @@
+{
+  "name": "portfolio-alerts",
+  "version": "1.0.0",
+  "description": "GitHub Actions daily watchlist alert checker",
+  "main": "checkAlerts.js",
+  "type": "module",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "node-fetch": "^3.0.0"
+  }
+}
