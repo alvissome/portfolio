@@ -42,36 +42,74 @@ async function getAllUsers() {
   return users;
 }
 
-// ─── 3. Fetch prices from FMP API ────────────────────────────────────────────
+// ─── 3. Fetch prices (FMP individual + Twelve Data fallback) ─────────────────
 
 /**
- * Fetches quote for a single symbol from Financial Modeling Prep.
- * Returns { symbol, price } or null on error.
+ * Convert Yahoo-style ticker to Twelve Data format.
  */
-async function fetchFMPPrice(symbol) {
-  const apiKey = process.env.FMP_API_KEY;
-  if (!apiKey) throw new Error('FMP_API_KEY not set');
+function toTwelveDataSymbol(ticker) {
+  if (ticker.endsWith('.SI')) return ticker.slice(0, -3) + ':SGX';
+  if (ticker.endsWith('.HK')) return ticker.slice(0, -3) + ':HKEX';
+  if (ticker.endsWith('.L'))  return ticker.slice(0, -2) + ':LSE';
+  return ticker;
+}
 
-  // FMP uses different format for some exchanges
-  // SGX: D05.SI → D05.SI (FMP supports this)
-  // HKEx: 0700.HK (FMP supports this)
-  const url = `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(symbol)}?apikey=${apiKey}`;
+/**
+ * Fetch price via Twelve Data (single symbol, handles all exchanges).
+ */
+async function fetchTwelveDataPrice(symbol) {
+  const apiKey = process.env.TWELVE_DATA_KEY;
+  if (!apiKey) return null;
+  const tdSym = toTwelveDataSymbol(symbol);
+  const url = `https://api.twelvedata.com/price?symbol=${encodeURIComponent(tdSym)}&apikey=${apiKey}`;
   try {
-    const res = await fetch(url, { timeout: 10000 });
-    if (!res.ok) {
-      console.warn(`⚠️  FMP HTTP ${res.status} for ${symbol}`);
-      return null;
-    }
+    const res = await fetch(url);
+    if (!res.ok) return null;
     const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      console.warn(`⚠️  FMP no data for ${symbol}`);
+    if (data?.status === 'error') {
+      console.warn(`⚠️  Twelve Data error for ${symbol}: ${data.message}`);
       return null;
     }
-    return { symbol, price: data[0].price };
+    const price = parseFloat(data?.price);
+    return isNaN(price) ? null : price;
   } catch (e) {
-    console.warn(`⚠️  FMP fetch error for ${symbol}: ${e.message}`);
+    console.warn(`⚠️  Twelve Data fetch error for ${symbol}: ${e.message}`);
     return null;
   }
+}
+
+/**
+ * Fetch price for a single symbol:
+ * - Tries FMP first (one symbol at a time — avoids 403 batch restriction)
+ * - Falls back to Twelve Data if FMP returns 403 or no data
+ */
+async function fetchPriceForSymbol(symbol) {
+  const fmpKey = process.env.FMP_API_KEY;
+
+  if (fmpKey) {
+    const url = `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(symbol)}?apikey=${fmpKey}`;
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].price !== undefined) {
+          return data[0].price;
+        }
+      } else if (res.status !== 403) {
+        console.warn(`⚠️  FMP HTTP ${res.status} for ${symbol}`);
+      }
+      // 403 or no data → fall through to Twelve Data
+    } catch (e) {
+      console.warn(`⚠️  FMP fetch error for ${symbol}: ${e.message}`);
+    }
+  }
+
+  // Twelve Data fallback
+  const tdPrice = await fetchTwelveDataPrice(symbol);
+  if (tdPrice !== null) return tdPrice;
+
+  console.warn(`⚠️  No price found for ${symbol} from any source`);
+  return null;
 }
 
 /**
@@ -80,10 +118,12 @@ async function fetchFMPPrice(symbol) {
  */
 async function fetchPrices(symbols) {
   const unique = [...new Set(symbols)].filter(Boolean);
-  const results = await Promise.all(unique.map(sym => fetchFMPPrice(sym)));
   const map = {};
-  for (const r of results) {
-    if (r && r.price !== undefined) map[r.symbol] = r.price;
+  // Sequential to respect rate limits (FMP free: 10 req/min, Twelve Data: 8 req/sec)
+  for (const symbol of unique) {
+    const price = await fetchPriceForSymbol(symbol);
+    if (price !== null) map[symbol] = price;
+    await new Promise(r => setTimeout(r, 200)); // 5 req/sec — safe for both APIs
   }
   return map;
 }
