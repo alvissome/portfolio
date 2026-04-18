@@ -2,8 +2,7 @@ name: Daily Watchlist Price Alerts
 
 on:
   schedule:
-    - cron: "0 22 * * 1-5"   # UTC 10PM Mon-Fri = SGT 6AM Tue-Sat
-                               # Runs after US market close (4PM ET = 4AM SGT)
+    - cron: "0 0 * * 1-5"    # UTC midnight Mon-Fri = SGT 8AM Mon-Fri
   workflow_dispatch:           # Allow manual trigger for testing
 
 jobs:
@@ -25,7 +24,6 @@ jobs:
         working-directory: .github/scripts
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FMP_API_KEY:               ${{ secrets.FMP_API_KEY }}
           TWELVE_DATA_KEY:           ${{ secrets.TWELVE_DATA_KEY }}
           EMAILJS_SERVICE_ID:        ${{ secrets.EMAILJS_SERVICE_ID }}
           EMAILJS_TEMPLATE_ID:       ${{ secrets.EMAILJS_TEMPLATE_ID }}
