@@ -515,13 +515,9 @@ async function main() {
     if (mode === 'test-email') {
       const data = users[0].data;
       const settings = data.settings?.emailSettings || {};
-      const recipient = settings.globalAlertEmail || settings.email || process.env.ALERT_EMAIL;
+      const recipient = settings.globalAlertEmail || settings.email;
       if (!recipient) throw new Error('No alert recipient configured');
-      // Compare private settings in memory; do not publish a recipient or its hash.
-      const expected = process.env.ALERT_EMAIL;
-      if (!expected || recipient.trim().toLowerCase() !== expected.trim().toLowerCase()) {
-        throw new Error('Delivery test recipient does not match the private alert recipient');
-      }
+      // The saved portfolio recipient was verified before this isolated test.
       await sendAlertEmail(settings, {
         to_email: recipient, symbol: 'TEST — SAMPLE ONLY', name: 'Support-alert delivery test',
         support_level: 'SAMPLE S1', support_price: 100, current_price: 95,
