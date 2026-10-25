@@ -1,13 +1,6 @@
-name: Daily Watchlist Price Alerts
+name: Daily Watchlist Price Alerts (manual legacy entry)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/scripts/**
-      - .github/workflows/daily-alerts.yml
-  schedule:
-    - cron: "0 0 * * 1-5" # 8am Singapore, Monday–Friday
   workflow_dispatch:
     inputs:
       mode:
