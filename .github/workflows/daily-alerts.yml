@@ -2,31 +2,47 @@ name: Daily Watchlist Price Alerts
 
 on:
   schedule:
-    - cron: "0 0 * * 1-5"    # UTC midnight Mon-Fri = SGT 8AM Mon-Fri
-  workflow_dispatch:           # Allow manual trigger for testing
+    - cron: "0 0 * * 1-5" # 8am Singapore, Monday–Friday
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Read-only validation, email delivery test, or normal support check'
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - test-email
+          - check
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portfolio-support-alerts
+  cancel-in-progress: false
 
 jobs:
   check-alerts:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-
       - name: Install dependencies
-        run: npm install
+        run: npm install --no-audit --no-fund
         working-directory: .github/scripts
-
-      - name: Run alert check
-        run: node checkAlerts.js
+      - name: Run support check
+        run: node checkAlerts.js "--${CHECK_MODE}"
         working-directory: .github/scripts
         env:
+          CHECK_MODE: ${{ inputs.mode || 'check' }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          TWELVE_DATA_KEY:           ${{ secrets.TWELVE_DATA_KEY }}
-          EMAILJS_SERVICE_ID:        ${{ secrets.EMAILJS_SERVICE_ID }}
-          EMAILJS_TEMPLATE_ID:       ${{ secrets.EMAILJS_TEMPLATE_ID }}
-          EMAILJS_PUBLIC_KEY:        ${{ secrets.EMAILJS_PUBLIC_KEY }}
-          ALERT_EMAIL:               ${{ secrets.ALERT_EMAIL }}
-          FIREBASE_PROJECT_ID:       ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
+          EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
+          EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
+          EMAILJS_PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
