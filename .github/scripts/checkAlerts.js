@@ -226,6 +226,22 @@ async function fetchPriceForSymbol(symbol, existingClose) {
 // ─── 4. EmailJS alert sending ──────────────────────────────────────────────
 
 async function sendAlertEmail(settings, templateParams) {
+  if (process.env.SUPPORT_ALERT_WEBHOOK) {
+    if (!process.env.SUPPORT_ALERT_WEBHOOK_KEY) throw new Error('Support email bridge authentication is missing');
+    const url = new URL(process.env.SUPPORT_ALERT_WEBHOOK);
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid support email bridge URL');
+    const response = await fetch(url, {
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(35000),
+      headers: {'Content-Type': 'application/json', 'x-make-apikey': process.env.SUPPORT_ALERT_WEBHOOK_KEY},
+      body: JSON.stringify({payload: JSON.stringify(templateParams)}),
+    });
+    if (!response.ok) throw new Error(`Support email bridge HTTP ${response.status}`);
+    let acknowledgement;
+    try { acknowledgement = await response.json(); } catch { throw new Error('Support email bridge did not confirm delivery'); }
+    if (acknowledgement?.delivered !== true) throw new Error('Support email bridge did not confirm delivery');
+    return;
+  }
+
   const serviceId  = process.env.EMAILJS_SERVICE_ID || settings.emailjsServiceId;
   const templateId = process.env.EMAILJS_TEMPLATE_ID || settings.emailjsTemplateId;
   const publicKey  = process.env.EMAILJS_PUBLIC_KEY || settings.emailjsPublicKey;
@@ -390,6 +406,7 @@ async function processUser({ uid, ref, data }) {
         support_level: row.alertLevel,
         support_price: supportValue,
         current_price: closePrice,
+        price_currency: priceRes.priceCurrency,
         action:        row.action || '—',
         plan_notes:    row.notes || '—',
         dashboard_url: 'https://alvissome.github.io/portfolio/',
@@ -520,7 +537,7 @@ async function main() {
       // The saved portfolio recipient was verified before this isolated test.
       await sendAlertEmail(settings, {
         to_email: recipient, symbol: 'TEST — SAMPLE ONLY', name: 'Support-alert delivery test',
-        support_level: 'SAMPLE S1', support_price: 100, current_price: 95,
+        support_level: 'SAMPLE S1', support_price: 100, current_price: 95, price_currency: 'USD',
         action: 'TEST EMAIL — illustrative prices only; not a live market alert',
         plan_notes: 'Delivery test only. No portfolio values or alert states were changed.',
         dashboard_url: 'https://alvissome.github.io/portfolio/', triggered_at: nowSGT(),
