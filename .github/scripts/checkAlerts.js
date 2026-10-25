@@ -16,12 +16,26 @@
  */
 
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore } from 'firebase-admin/firestore';
 import fetch from 'node-fetch';
 
 // ─── 1. Init Firebase Admin ────────────────────────────────────────────────
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+if (serviceAccount.project_id !== 'alvissome-portfolio' ||
+    (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PROJECT_ID !== 'alvissome-portfolio')) {
+  throw new Error('Unexpected Firebase project; personal portfolio checks stopped');
+}
+const mode = process.argv.includes('--dry-run') ? 'dry-run' :
+  process.argv.includes('--test-email') ? 'test-email' : 'check';
+let deliveryFailures = 0;
+// This repository is public: never log user IDs, watchlist symbols, prices or support levels.
+const log = console.log.bind(console);
+const warn = console.warn.bind(console);
+console.log = () => {};
+console.warn = () => {};
+console.error = () => {};
+
 initializeApp({
   credential: cert(serviceAccount),
   projectId: process.env.FIREBASE_PROJECT_ID,
@@ -101,7 +115,15 @@ async function fetchYahooPrice(symbol) {
       }
 
       const meta = result[0]?.meta;
-      const price = meta?.regularMarketPrice || meta?.previousClose || null;
+      const history = result[0];
+      if (history?.meta?.symbol !== symbol || history?.meta?.dataGranularity !== '1d') return null;
+      const now = Date.now() / 1000;
+      const session = meta?.currentTradingPeriod?.regular;
+      const rows = (history.timestamp || []).map((time, i) => ({time, price: history.indicators?.quote?.[0]?.close?.[i]}))
+        .filter(r => r.time <= now && r.time >= now - 5 * 86400 && Number.isFinite(r.price) && r.price > 0 &&
+          !(session && now < session.end && r.time >= session.start)).sort((a,b) => a.time - b.time);
+      const last = rows.at(-1);
+      const price = last?.price ?? null;
       const currency = meta?.currency ?? getCurrencyForTicker(symbol);
 
       if (price === null || price === undefined || isNaN(price) || price <= 0) {
@@ -204,9 +226,9 @@ async function fetchPriceForSymbol(symbol, existingClose) {
 // ─── 4. EmailJS alert sending ──────────────────────────────────────────────
 
 async function sendAlertEmail(settings, templateParams) {
-  const serviceId  = process.env.EMAILJS_SERVICE_ID;
-  const templateId = process.env.EMAILJS_TEMPLATE_ID;
-  const publicKey  = process.env.EMAILJS_PUBLIC_KEY;
+  const serviceId  = process.env.EMAILJS_SERVICE_ID || settings.emailjsServiceId;
+  const templateId = process.env.EMAILJS_TEMPLATE_ID || settings.emailjsTemplateId;
+  const publicKey  = process.env.EMAILJS_PUBLIC_KEY || settings.emailjsPublicKey;
 
   if (!serviceId || !templateId || !publicKey) {
     throw new Error('EmailJS credentials not configured');
@@ -217,6 +239,7 @@ async function sendAlertEmail(settings, templateParams) {
     template_id:     templateId,
     user_id:         publicKey,
     template_params: templateParams,
+    ...(process.env.EMAILJS_PRIVATE_KEY ? { accessToken: process.env.EMAILJS_PRIVATE_KEY } : {}),
   };
 
   const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -227,7 +250,7 @@ async function sendAlertEmail(settings, templateParams) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`EmailJS ${res.status}: ${text}`);
+    throw new Error(`EmailJS HTTP ${res.status}`);
   }
 }
 
@@ -384,7 +407,8 @@ async function processUser({ uid, ref, data }) {
         };
       }
     } catch (e) {
-      console.error(`  ❌ Alert failed: ${row.symbol} —`, e.message);
+      deliveryFailures++;
+      warn('Support email delivery failed:', e.message);
     }
   }
 
@@ -396,6 +420,7 @@ async function processUser({ uid, ref, data }) {
     'partial';
 
   const lastDailySync = {
+    lastMetaAlertSent: data.lastDailySync?.lastMetaAlertSent ?? 0,
     runAt:          nowSGT(),
     status:         syncStatus,
     succeededCount,
@@ -451,7 +476,8 @@ async function processUser({ uid, ref, data }) {
           lastDailySync: { ...lastDailySync, lastMetaAlertSent: now },
         }, { merge: true });
       } catch (e) {
-        console.error(`  ❌ Meta-alert failed:`, e.message);
+        deliveryFailures++;
+        warn('Failure email delivery failed:', e.message);
       }
     }
   }
@@ -460,9 +486,11 @@ async function processUser({ uid, ref, data }) {
 // ─── 6. Read all users ─────────────────────────────────────────────────────
 
 async function getAllUsers() {
-  const usersSnap = await db.collection('users').get();
+  // The dashboard writes users/{uid}/portfolio/data without necessarily creating
+  // users/{uid}. Querying users.get() silently misses those portfolios.
+  const userRefs = await db.collection('users').listDocuments();
   const users = [];
-  for (const userDoc of usersSnap.docs) {
+  for (const userDoc of userRefs) {
     const uid = userDoc.id;
     const portfolioRef = db.collection('users').doc(uid).collection('portfolio').doc('data');
     const portfolioSnap = await portfolioRef.get();
@@ -482,9 +510,43 @@ async function main() {
   let users;
   try {
     users = await getAllUsers();
-    console.log(`Found ${users.length} user(s)`);
+    log(`Found ${users.length} portfolio(s)`);
+    if (!users.length) throw new Error('No saved portfolios discovered; support checks did not run');
+    if (mode === 'test-email') {
+      const data = users[0].data;
+      const settings = data.settings?.emailSettings || {};
+      const recipient = settings.globalAlertEmail || settings.email || process.env.ALERT_EMAIL;
+      if (!recipient) throw new Error('No alert recipient configured');
+      await sendAlertEmail(settings, {
+        to_email: recipient, symbol: 'TEST — SAMPLE ONLY', name: 'Support-alert delivery test',
+        support_level: 'SAMPLE S1', support_price: 100, current_price: 95,
+        action: 'TEST EMAIL — illustrative prices only; not a live market alert',
+        plan_notes: 'Delivery test only. No portfolio values or alert states were changed.',
+        dashboard_url: 'https://alvissome.github.io/portfolio/', triggered_at: nowSGT(),
+      });
+      log('Support-alert test email accepted; no portfolio changes');
+      return;
+    }
+    if (mode === 'dry-run') {
+      let watched = 0, enabled = 0, fresh = 0, stale = 0;
+      for (const {data} of users) {
+        const rows = data.watchlist || [];
+        watched += rows.length;
+        enabled += rows.filter(r => r.notifEnabled === true && /^S[1-5]$/.test(r.alertLevel || '') &&
+          Number.isFinite(Number(r[r.alertLevel.toLowerCase()])) && Number(r[r.alertLevel.toLowerCase()]) > 0).length;
+        for (const symbol of [...new Set(rows.map(r => r.symbol).filter(Boolean))]) {
+          const result = await fetchPriceForSymbol(symbol, null);
+          result.priceStale ? stale++ : fresh++;
+          await sleep(300);
+        }
+      }
+      log(`Dry run: ${watched} watchlist rows; ${enabled} enabled support alerts; ${fresh} fresh prices; ${stale} failed prices`);
+      log('No email sent and no portfolio changes');
+      if (stale) throw new Error('Dry run had price-fetch failures');
+      return;
+    }
   } catch (e) {
-    console.error('❌ Failed to read Firestore users:', e.message);
+    warn('Portfolio check failed:', e.message);
     process.exit(1);
   }
 
@@ -493,14 +555,17 @@ async function main() {
     try {
       await processUser(user);
     } catch (e) {
-      console.error(`❌ Error processing user ${user.uid}:`, e.message);
+      deliveryFailures++;
+      warn('Portfolio processing failed:', e.message);
     }
   }
 
-  console.log('\n=== Done ===');
+  log('Support check completed');
+  if (deliveryFailures) throw new Error(`${deliveryFailures} support-check/delivery failure(s)`);
 }
 
 main().catch(e => {
-  console.error('❌ Fatal error:', e);
+  warn('Support check failed:', e.message);
   process.exit(1);
 });
+
