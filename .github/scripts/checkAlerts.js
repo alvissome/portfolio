@@ -18,7 +18,6 @@
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import fetch from 'node-fetch';
-import { createHash } from 'node:crypto';
 
 // ─── 1. Init Firebase Admin ────────────────────────────────────────────────
 
@@ -518,9 +517,10 @@ async function main() {
       const settings = data.settings?.emailSettings || {};
       const recipient = settings.globalAlertEmail || settings.email || process.env.ALERT_EMAIL;
       if (!recipient) throw new Error('No alert recipient configured');
-      const expected = process.env.SUPPORT_TEST_RECIPIENT_HASH;
-      if (!expected || createHash('sha256').update(recipient.trim().toLowerCase()).digest('hex') !== expected) {
-        throw new Error('Delivery test recipient does not match the verified personal recipient');
+      // Compare private settings in memory; do not publish a recipient or its hash.
+      const expected = process.env.ALERT_EMAIL;
+      if (!expected || recipient.trim().toLowerCase() !== expected.trim().toLowerCase()) {
+        throw new Error('Delivery test recipient does not match the private alert recipient');
       }
       await sendAlertEmail(settings, {
         to_email: recipient, symbol: 'TEST — SAMPLE ONLY', name: 'Support-alert delivery test',
