@@ -18,6 +18,7 @@
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import fetch from 'node-fetch';
+import { createHmac } from 'node:crypto';
 
 // ─── 1. Init Firebase Admin ────────────────────────────────────────────────
 
@@ -230,10 +231,12 @@ async function sendAlertEmail(settings, templateParams) {
     if (!process.env.SUPPORT_ALERT_WEBHOOK_KEY) throw new Error('Support email bridge authentication is missing');
     const url = new URL(process.env.SUPPORT_ALERT_WEBHOOK);
     if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid support email bridge URL');
+    const payload = JSON.stringify({...templateParams, request_timestamp: Date.now()});
+    const signature = createHmac('sha256', process.env.SUPPORT_ALERT_WEBHOOK_KEY).update(payload).digest('hex');
     const response = await fetch(url, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(35000),
-      headers: {'Content-Type': 'application/json', 'x-make-apikey': process.env.SUPPORT_ALERT_WEBHOOK_KEY},
-      body: JSON.stringify({payload: JSON.stringify(templateParams)}),
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({payload, signature}),
     });
     if (!response.ok) throw new Error(`Support email bridge HTTP ${response.status}`);
     let acknowledgement;
