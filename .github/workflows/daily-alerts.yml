@@ -1,6 +1,11 @@
 name: Daily Watchlist Price Alerts
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/scripts/**
+      - .github/workflows/daily-alerts.yml
   schedule:
     - cron: "0 0 * * 1-5" # 8am Singapore, Monday–Friday
   workflow_dispatch:
@@ -37,7 +42,7 @@ jobs:
         run: node checkAlerts.js "--${CHECK_MODE}"
         working-directory: .github/scripts
         env:
-          CHECK_MODE: ${{ inputs.mode || 'check' }}
+          CHECK_MODE: ${{ github.event_name == 'push' && 'dry-run' || inputs.mode || 'check' }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
