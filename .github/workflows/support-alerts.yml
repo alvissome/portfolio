@@ -51,18 +51,5 @@ jobs:
           EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
           EMAILJS_PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
-
-      - name: Verify saved-portfolio recipient delivery
-        if: github.event_name == 'push' && github.event.head_commit.message == 'Verify support email delivery once'
-        run: node checkAlerts.js --test-email
-        working-directory: .github/scripts
-        env:
-          CHECK_MODE: ${{ github.event_name == 'push' && 'dry-run' || inputs.mode || 'check' }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
-          EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
-          EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
-          EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
-          EMAILJS_PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
-          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          SUPPORT_ALERT_WEBHOOK: ${{ secrets.SUPPORT_ALERT_WEBHOOK }}
+          SUPPORT_ALERT_WEBHOOK_KEY: ${{ secrets.SUPPORT_ALERT_WEBHOOK_KEY }}
