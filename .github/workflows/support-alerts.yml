@@ -17,6 +17,7 @@ on:
         options:
           - dry-run
           - test-email
+          - test-failure-email
           - check
 
 permissions:
@@ -39,7 +40,12 @@ jobs:
         run: npm install --no-audit --no-fund
         working-directory: .github/scripts
       - name: Run support check
-        run: node checkAlerts.js "--${CHECK_MODE}"
+        run: |
+          if [ "$CHECK_MODE" = "test-failure-email" ]; then
+            node notifySupportFailure.js --test
+          else
+            node checkAlerts.js "--${CHECK_MODE}"
+          fi
         working-directory: .github/scripts
         env:
           CHECK_MODE: ${{ github.event_name == 'push' && 'dry-run' || inputs.mode || 'check' }}
@@ -51,5 +57,12 @@ jobs:
           EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
           EMAILJS_PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          SUPPORT_ALERT_WEBHOOK: ${{ secrets.SUPPORT_ALERT_WEBHOOK }}
+          SUPPORT_ALERT_WEBHOOK_KEY: ${{ secrets.SUPPORT_ALERT_WEBHOOK_KEY }}
+
+      - name: Notify if support check failed
+        if: failure() && (github.event_name == 'schedule' || inputs.mode == 'check')
+        run: node .github/scripts/notifySupportFailure.js
+        env:
           SUPPORT_ALERT_WEBHOOK: ${{ secrets.SUPPORT_ALERT_WEBHOOK }}
           SUPPORT_ALERT_WEBHOOK_KEY: ${{ secrets.SUPPORT_ALERT_WEBHOOK_KEY }}
