@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calculate,makeFlow,makeBankTransfer,confirmCashLocations,accountForLabel,importTrades,stableId,parseDelimited,sourceSignature,derivePositions} from '../assets/performance-core.js';
+import {calculate,confirmationSnapshot,todaySG,makeFlow,makeBankTransfer,confirmCashLocations,accountForLabel,importTrades,stableId,parseDelimited,sourceSignature,derivePositions} from '../assets/performance-core.js';
 const row=(invested,cash=0)=>({invested,cash,verified:true});
 const snapshot=(cash,srs=row(0),cpf=row(0))=>({accounts:{cash,srs,cpf}});
 const coverage=Object.fromEntries(['cash','srs','cpf'].map(a=>[a,{total:{start:'2020-01-01',end:'2030-01-01'},invested:{start:'2020-01-01',end:'2030-01-01'}}]));
@@ -105,4 +105,35 @@ test('malformed files and invalid dates are rejected',()=>{
 test('daily source signature changes when holdings or cash change',()=>{
   const a={holdings:[{ticker:'X',shares:1,currency:'SGD',accountType:'Cash'}],cashPositions:{brokers:10}};
   assert.notEqual(sourceSignature(a,'cash'),sourceSignature({...a,cashPositions:{brokers:20}},'cash'));
+});
+
+const confirmationFixture=()=>{
+  const state={holdings:[{ticker:'ABC.SI',shares:10,currency:'SGD',accountType:'Cash'}],cash:{brokers:20,growth:0,dividend:0,srs:0,cpfIs:0},priceCache:{'ABC.SI':{close:12}},fxRates:{SGD:1}};
+  const trades={a:{account:'cash',exchange:'SGX',symbol:'ABC',currency:'SGD',action:1,units:10}};
+  const positions=derivePositions(trades).cash;
+  const signature=sourceSignature({holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}},'cash');
+  const h={trades,flows:{},settings:{capture:{cash:{cash:20,holdings:positions,positionSignature:JSON.stringify(positions),sourceSignature:signature,reconciledOn:'2026-01-01',needsReconciliation:false}}},coverage:{cash:{total:{start:'2026-01-01',end:'2026-01-01'}}}};
+  return {state,h};
+};
+test('no-change confirmation saves today at new prices and enables cloud capture atomically',()=>{
+  const {state,h}=confirmationFixture();const date=todaySG();const p=confirmationSnapshot(h,state,{account:'cash',date,cash:20,unchanged:true});
+  assert.equal(p.snapshots[date].accounts.cash.invested,120);assert.equal(p.snapshots[date].accounts.cash.cash,20);
+  assert.equal(p.settings.dailyEnabled,true);assert.equal(p.settings.capture.cash.needsReconciliation,false);
+  assert.equal(p.coverage.cash.total.end,date);assert.equal(p.flows,undefined);assert.equal(h.settings.dailyEnabled,undefined);
+});
+test('reconciliation saves updated cash and coverage together without inventing contributions',()=>{
+  const {state,h}=confirmationFixture();state.cash.brokers=30;h.settings.capture.cash.needsReconciliation=true;
+  const date=todaySG(),p=confirmationSnapshot(h,state,{account:'cash',date,cash:30,coverage:{start:'2026-01-01',basis:'total'}});
+  assert.equal(p.snapshots[date].accounts.cash.cash,30);assert.equal(p.settings.capture.cash.cash,30);assert.equal(p.coverage.cash.total.end,date);assert.equal(p.flows,undefined);
+});
+test('automatic confirmations reject historical dates and unverified setup',()=>{
+  const {state,h}=confirmationFixture();assert.throws(()=>confirmationSnapshot(h,state,{account:'cash',date:'2025-01-01',cash:20}));
+  assert.throws(()=>confirmationSnapshot({...h,settings:{}},state,{account:'cash',date:todaySG(),cash:20}));
+});
+test('no-change confirmation cannot bypass changed holdings, recorded activity or stale prices',()=>{
+  const {state,h}=confirmationFixture(),args={account:'cash',date:todaySG(),cash:20,unchanged:true};
+  state.cash.brokers=30;assert.throws(()=>confirmationSnapshot(h,state,args));state.cash.brokers=20;
+  h.flows.a={account:'cash',date:todaySG()};assert.throws(()=>confirmationSnapshot(h,state,args));delete h.flows.a;
+  state.priceCache['ABC.SI'].priceStale=true;assert.throws(()=>confirmationSnapshot(h,state,args));state.priceCache['ABC.SI'].priceStale=false;
+  h.trades.a.units=11;assert.throws(()=>confirmationSnapshot(h,state,args));
 });
