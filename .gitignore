@@ -1,0 +1,10 @@
+# Personal financial exports and local review files must stay out of public Git.
+*.csv
+*.tsv
+portfolio-backup-*.json
+portfolio-performance-*.json
+node_modules/
+preview.html
+review.html
+.review-base/
+performance-changes.patch
