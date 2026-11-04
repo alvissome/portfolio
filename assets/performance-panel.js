@@ -1,4 +1,4 @@
-import {ACCOUNTS,todaySG,dateKey,number,calculate,makeFlow,parseDelimited,importTrades,stableId,sourceSignature,derivePositions} from './performance-core.js';
+import {ACCOUNTS,todaySG,dateKey,number,calculate,makeFlow,makeBankTransfer,confirmCashLocations,parseDelimited,importTrades,stableId,sourceSignature,derivePositions} from './performance-core.js';
 
 const names={cash:'Cash investment',srs:'SRS',cpf:'CPF investment'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -84,10 +84,12 @@ export function mount(root,uid,initialState,storage) {
       ${chart(result.points||[],metric,privacy)}
       <p class="pf-caption">${esc(result.message)} ${result.start?'Actual coverage: '+result.start+' to '+result.end+'.':''}</p>
       ${metric==='value'?'<p class="pf-caption">Blue: portfolio value · Gold: opening value + net flows during this period (not lifetime contributions).</p>':''}
-      <div class="pf-actions"><button data-action="valuation">Record valuation</button><button data-action="earmark">Set aside money</button><button data-action="flow">Record cash movement</button><button data-action="coverage">Confirm reconciliation period</button><button data-action="import-valuations">Import valuation CSV</button><button data-action="import-trades">Import StocksCafe trades</button><button data-action="restore">Import history backup</button><button data-action="stop-daily">Pause daily capture</button></div>
+      <p class="pf-caption">Bank cash set aside: ${show(state.cash.growth)} · Broker cash: ${show(state.cash.brokers)}. These are current balances, not your original funding budget.</p>
+      <p class="pf-caption">${ACCOUNTS.map(a=>{const c=history.settings.checks?.[a];if(!c)return esc(names[a])+': not checked';const raw={holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}};return esc(names[a])+': checked '+esc(c.date)+(c.sourceSignature!==sourceSignature(raw,a)?' (balances or holdings changed since)':'');}).join(' · ')}</p>
+      <div class="pf-actions"><button data-action="valuation">Record valuation</button><button data-action="earmark">Set aside money</button><button data-action="bank-transfer">Record bank → IBKR transfer</button><button data-action="unchanged">Checked and unchanged</button><button data-action="flow">Record cash movement</button><button data-action="coverage">Confirm reconciliation period</button><button data-action="import-valuations">Import valuation CSV</button><button data-action="import-trades">Import StocksCafe trades</button><button data-action="restore">Import history backup</button><button data-action="stop-daily">Pause daily capture</button></div>
       <p class="pf-caption">Dividends returned to CPF OA count as income and a transfer out. Historical dividend totals are never treated as available cash. The invested-only view requires dated buys, sales and paid dividends as well as valuations.</p>
       <details><summary>History and corrections</summary><p class="pf-caption">${Object.keys(history.snapshots).length} valuation dates · ${Object.values(history.flows).filter(f=>!f.voided).length} cash movements · ${Object.keys(history.trades).length} imported trades. Trade imports are staged for reconciliation; they do not invent historical valuations or cash flows.</p>
-      <div class="pf-scroll"><table><thead><tr><th>Date</th><th>Account</th><th>Movement</th><th>Amount</th><th></th></tr></thead><tbody>${Object.values(history.flows).filter(f=>!f.voided).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,100).map(f=>`<tr><td>${esc(f.date)}</td><td>${esc(names[f.account])}</td><td>${esc(f.kind)}</td><td>${show(Math.abs(f.total||f.invested))}</td><td><button data-void="${esc(f.id)}">Void entry</button></td></tr>`).join('')}</tbody></table></div></details>
+      <div class="pf-scroll"><table><thead><tr><th>Date</th><th>Account</th><th>Movement</th><th>Amount</th><th></th></tr></thead><tbody>${Object.values(history.flows).filter(f=>!f.voided).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,100).map(f=>`<tr><td>${esc(f.date)}</td><td>${esc(names[f.account])}</td><td>${esc(f.kind==='bank_to_broker'?'Bank → IBKR (internal)':f.kind)}</td><td>${show(f.amount??Math.abs(f.total||f.invested))}</td><td><button data-void="${esc(f.id)}">Void entry</button></td></tr>`).join('')}</tbody></table></div></details>
       <div class="pf-dialog-host"></div>`;
     root.querySelectorAll('[data-filter]').forEach(el=>el.onchange=()=>{const k=el.dataset.filter;if(k==='scope')scope=el.value;else if(k==='basis')basis=el.value;else if(k==='metric')metric=el.value;else if(k==='period')period=el.value;else if(k==='start')customStart=el.value;else customEnd=el.value;error='';render();});
     root.querySelectorAll('[data-action]').forEach(el=>el.onclick=()=>run(()=>action(el.dataset.action)));
@@ -101,6 +103,21 @@ export function mount(root,uid,initialState,storage) {
   }
   async function action(which){
     if(which==='stop-daily'){await save({settings:{dailyEnabled:false}});render();return;}
+    if(which==='unchanged'){
+      dialog('Monthly check: unchanged',`<label>Account<select name="account">${ACCOUNTS.map(a=>`<option value="${a}">${names[a]}</option>`).join('')}</select></label><label>Checked through<input name="date" type="date" value="${todaySG()}" required></label><label><input type="checkbox" required> I checked the source account: holdings and actual cash are unchanged. There are no unrecorded deposits, withdrawals, dividends, interest, fees, FX conversions or corporate actions.</label><p>This saves a check date without another TSV upload. It does not create an earlier valuation, confirm historical returns or restart daily capture. For changed balances, update/import them and record a verified valuation instead.</p>`,async fd=>{
+        const date=dateKey(fd.get('date')),a=fd.get('account');if(date>todaySG()||!ACCOUNTS.includes(a))throw Error('Invalid account or check date.');
+        const raw={holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}};
+        await save({settings:{checks:{[a]:{date,sourceSignature:sourceSignature(raw,a),recordedAt:new Date().toISOString()}}}});
+      });return;
+    }
+    if(which==='bank-transfer'){
+      dialog('Record bank → IBKR transfer',`<p>First reduce bank cash set aside in the dashboard settings and import the updated StocksCafe TSV (or reconcile broker cash). Then record this transfer. Nothing is added to contributions or deducted from investment performance.</p><label>Transfer date<input name="date" type="date" value="${todaySG()}" required></label><label>Amount transferred (SGD)<input name="amount" type="number" min="0.01" step="0.01" required></label><label>Bank cash before transfer (SGD)<input name="bankBefore" type="number" min="0" step="0.01" required></label><label>Broker cash before transfer (SGD)<input name="brokerBefore" type="number" step="0.01" required></label><label>Note<input name="note" maxlength="500"></label><p>Use matching SGD cash movements before any later currency conversion or trading. Record fees separately as expenses. If other activity has already changed the balances, reconcile the dated statements first. In StocksCafe this is a broker deposit; do not record it again as new money in this dashboard.</p><label><input type="checkbox" required> The updated bank and broker balances include this transfer exactly once.</label><p>This saves a transfer record only. It does not change balances or send money.</p>`,async fd=>{
+        const flow=makeBankTransfer({id:crypto.randomUUID(),...Object.fromEntries(fd)});
+        confirmCashLocations(flow,state.cash.growth,state.cash.brokers);
+        if(Object.values(history.flows).some(f=>!f.voided&&f.kind===flow.kind&&f.date===flow.date&&f.amount===flow.amount&&f.bankBefore===flow.bankBefore&&f.brokerBefore===flow.brokerBefore))throw Error('This transfer is already recorded.');
+        const patch={flows:{[flow.id]:flow}};const c=history.settings.capture?.cash;if(c)patch.settings={capture:{cash:{...c,needsReconciliation:true}}};await save(patch);
+      });return;
+    }
     if(which==='coverage'){
       dialog('Confirm the reconciled period',`<label>Account<select name="account">${ACCOUNTS.map(a=>`<option value="${a}">${names[a]}</option>`).join('')}</select></label><label>View<select name="basis"><option value="total">Holdings + available cash</option><option value="invested">Invested holdings only</option></select></label><label>From<input name="start" type="date" required></label><label>Through<input name="end" type="date" value="${todaySG()}" required></label><label><input type="checkbox" required> Every movement across this view’s boundary is recorded, and valuations are complete and reconciled.</label><p>For holdings + cash: reconcile contributions, withdrawals and transfers to CPF OA. For invested holdings: also record purchases, sales and paid dividends. An unchanged portfolio with no movements can also be confirmed.</p>`,async fd=>{const start=dateKey(fd.get('start')),end=dateKey(fd.get('end')),a=fd.get('account'),b=fd.get('basis');if(start>end||end>todaySG())throw Error('Invalid reconciliation period.');await save({coverage:{[a]:{...history.coverage[a],[b]:{start,end}}}});});return;
     }
@@ -117,12 +134,14 @@ export function mount(root,uid,initialState,storage) {
         for(const a of ACCOUNTS)if(fd.has(a+'-verified')){const invested=number(fd.get(a+'-invested')),cash=number(fd.get(a+'-cash'));if(invested<0)throw Error('Holdings value cannot be negative.');accounts[a]={invested,cash,verified:true,source:'manual reconciliation'};count++;}
         if(!count)throw Error('Verify at least one account.');
         const patch={snapshots:{[date]:{accounts,recordedAt:new Date().toISOString()}}};
+        const rawCheck={holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}};
+        patch.settings={checks:{}};for(const a of Object.keys(accounts))patch.settings.checks[a]={date,sourceSignature:sourceSignature(rawCheck,a),recordedAt:new Date().toISOString()};
         if(fd.has('daily')){
           if(date!==todaySG())throw Error('Daily capture must start with today’s reconciliation.');
           if(!positions)throw Error('Import and reconcile a complete trade export to establish account-specific holdings before daily capture.');
           const raw={holdings:state.holdings,cashPositions:{brokers:state.cash.brokers,growth:state.cash.growth,dividend:state.cash.dividend,srs:state.cash.srs,cpf:state.cash.cpfIs}};
           const capture={...history.settings.capture};for(const a of ACCOUNTS)if(fd.has(a+'-verified'))capture[a]={cash:accounts[a].cash,holdings:positions[a],positionSignature:JSON.stringify(positions[a]),sourceSignature:sourceSignature(raw,a),reconciledOn:date,needsReconciliation:false};
-          patch.settings={dailyEnabled:true,capture};
+          patch.settings={...patch.settings,dailyEnabled:true,capture};
         }
         await save(patch);
       });return;
@@ -154,7 +173,8 @@ export function mount(root,uid,initialState,storage) {
   function validateBackup(h){
     const patch={snapshots:{},flows:{},trades:{},coverage:{},settings:{dailyEnabled:false}};
     for(const [date,s]of Object.entries(h.snapshots||{})){dateKey(date);if(date>todaySG())throw Error('Future valuation in backup.');const accounts={};for(const a of ACCOUNTS)if(s.accounts?.[a]){const r=s.accounts[a],invested=number(r.invested),cash=number(r.cash);if(invested<0)throw Error('Invalid valuation.');accounts[a]={invested,cash,verified:r.verified===true,source:'history backup'};}patch.snapshots[date]={accounts};}
-    for(const [id,f]of Object.entries(h.flows||{})){if(!/^[a-f0-9-]{16,100}$/.test(id)||!ACCOUNTS.includes(f.account))throw Error('Invalid flow.');dateKey(f.date);if(f.date>todaySG())throw Error('Future movement in backup.');patch.flows[id]={id,date:f.date,account:f.account,kind:String(f.kind),total:number(f.total),invested:number(f.invested),dateApproximate:f.dateApproximate===true,location:f.location==='bank'?'bank':'account',voided:!!f.voided,note:String(f.note||'').slice(0,500)};}
+    for(const [id,f]of Object.entries(h.flows||{})){if(!/^[a-f0-9-]{16,100}$/.test(id)||!ACCOUNTS.includes(f.account))throw Error('Invalid flow.');dateKey(f.date);if(f.date>todaySG())throw Error('Future movement in backup.');patch.flows[id]=f.kind==='bank_to_broker'?{...makeBankTransfer({...f,id}),voided:!!f.voided}:{id,date:f.date,account:f.account,kind:String(f.kind),total:number(f.total),invested:number(f.invested),dateApproximate:f.dateApproximate===true,location:f.location==='bank'?'bank':'account',voided:!!f.voided,note:String(f.note||'').slice(0,500)};}
+    for(const a of ACCOUNTS){const c=h.settings?.checks?.[a];if(c){dateKey(c.date);if(c.date>todaySG()||typeof c.sourceSignature!=='string')throw Error('Invalid check date.');patch.settings.checks||={};patch.settings.checks[a]={date:c.date,sourceSignature:c.sourceSignature};}}
     // Trades remain source evidence; never execute or infer cash transactions.
     for(const [id,t]of Object.entries(h.trades||{})){if(!/^[a-f0-9]{64}$/.test(id)||!ACCOUNTS.includes(t.account))throw Error('Invalid trade evidence.');dateKey(t.date);patch.trades[id]=t;}
     for(const a of ACCOUNTS)for(const b of ['total','invested'])if(h.coverage?.[a]?.[b]){const c=h.coverage[a][b];dateKey(c.start);dateKey(c.end);if(c.start>c.end||c.end>todaySG())throw Error('Invalid reconciliation coverage.');patch.coverage[a]||={};patch.coverage[a][b]={start:c.start,end:c.end};}

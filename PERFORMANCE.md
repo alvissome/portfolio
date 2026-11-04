@@ -57,3 +57,38 @@ Rollback: revert the change to index.html and the bundle and remove the new pane
 ## Remaining history inputs
 
 The trade export alone cannot establish daily portfolio valuations, historical cash funding or actual dividend transfers. Need StocksCafe cash-transaction history and dated dividends; OCBC statements for retirement verification; dated changes in bank cash earmarked for investments. Historical chart coverage can differ by account. Start verified tracking now while reconstructing earlier months separately.
+
+## Monthly process and cash locations
+
+Keep StocksCafe as the transaction and dividend/tax record. Reconcile actual cash per currency against IBKR; review OCBC SRS/CPF statements as available. Investigate discrepancies rather than assigning every correction to a new deposit. Do not enter the same retained dividend again as a contribution. The StocksCafe current-portfolio TSV refreshes current dashboard holdings and cash; it is not the historical transaction export used by the performance panel.
+
+No trades does not guarantee unchanged cash: dividends, interest, fees, tax adjustments, FX and corporate actions still matter. If holdings and actual cash have not changed, use Checked and unchanged instead of re-uploading an identical TSV. If only cash changes, update the actual cash through existing settings or import an updated TSV; record a verified valuation. Price refreshes are separate from transaction uploads. Check dates are displayed per account and flagged when source balances or holdings later change. A check is not a blanket historical return confirmation and does not reactivate daily captures.
+
+Record valuation also saves the account check date. Reconciliation coverage for returns remains an explicit separate confirmation. Invested-only total returns require dated dividends as source evidence; the user should not recalculate tax manually. Whole-portfolio returns with retained dividends require verified cash values and external flows, not duplicate dividend contributions.
+
+The Set aside money action records newly allocated capital. Remaining bank cash is the existing growth cash balance, not lifetime funding. To move SGD 20,000 from a bank allocation into IBKR, first reduce the bank balance by SGD 20,000 in dashboard settings; record a deposit into the broker portfolio in StocksCafe; import/reconcile the increased broker cash; then use Record bank → IBKR transfer with the date, amount and before balances. The form requires both current balances to match the resulting after balances, rejects identical duplicate records and excess bank transfers, and saves an internal audit record with zero flows for both performance boundaries. It never adds to original funding or changes legacy balances itself. Use matching SGD movements before later trading/FX; reconcile fees separately. Daily cash capture pauses until a fresh verified valuation. Voiding the audit record never reverses real money or dashboard balances.
+
+## Personal Boost.space report retrieval: prepared setup, not activated
+
+Use the owned Boost.space subscription, not a new service or the Dive VPS/n8n. The personal workspace/system and personal storage destination must be identified before creating anything. Do not inspect or change business scenarios or reuse their connections. This draft contains instructions only: no Boost scenario, credentials, external storage, messages or schedule have been created.
+
+Current Boost documentation distinguishes its newer ACT automations from the classic Integrator. Confirm which is included in the owner's account before building; classic module names below describe the HTTP sequence, not a guaranteed importable blueprint. ACT can implement the same sequence as a code action with encrypted named secrets. A secure token setup and real test are required before activation.
+
+Proposed monthly retrieval, default 9th at 09:00 Asia/Singapore (confirm before activation), covering the previous calendar month:
+
+1. Store the personal IBKR Flex reporting token in the platform's secret store and configure the existing CSV-compatible query ID. Do not put a token in chat, source, output files, notifications or execution logs. For classic Integrator, enable Data is confidential before testing. ACT should receive secrets through its secure secret-entry flow. A Flex reporting token is not an order-placement credential, but exposes private reporting data; use only the required account/query and renew on expiry.
+2. HTTP GET to the fixed `https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest` endpoint, with query fields `t` (secret), `q` (query ID), `v=3`, `fd` and `td` (previous-month YYYYMMDD). The configured Flex query must retain the exact CSV format required by StocksCafe. Parse XML and require Status=Success plus ReferenceCode. Never follow a returned arbitrary URL.
+3. After a short delay, HTTP GET to the fixed `/AccountManagement/FlexWebService/GetStatement` endpoint with `t`, `q` (ReferenceCode, not the original query ID), and `v=3`. Retry only report-not-ready responses with bounded delays, for example at most six attempts spaced ten seconds apart. Stop and report a redacted error on expired tokens, configuration errors or exhausted retries. Do not regenerate the same report in a tight loop.
+4. Check that the result is the expected CSV header/layout, not XML error text or a login page. Preserve bytes, encoding and column order for the StocksCafe importer. Save only to confirmed personal private storage using a deterministic period/query/account filename. Track downloaded and user-imported status separately; downloading does not mean the report was imported. Preserve hashes/revisions for corrected reports and prevent accidental duplicate imports. Never discard a no-trade month solely because there are no trade rows: cash activity can still exist.
+5. User uploads the CSV to StocksCafe, checks cash balances per currency, exports the selected current-portfolio TSV and imports it into the dashboard when balances/holdings changed. Statements remain the reconciliation reference. No unsupported StocksCafe login/cookie replay, browser-upload workaround or auto dividend re-entry is part of this setup.
+
+Official references checked 2026-11-04:
+- Boost classic HTTP modules: https://legacy-api.boost.space/tools/http
+- Boost classic confidential data: https://legacy-api.boost.space/scenarios/scenario-settings
+- Boost current ACT and secure secrets: https://docs.boost.space/act/connect/for-agents
+- IBKR request generation: https://www.interactivebrokers.com/docs/web-api/flex-web-service/using-flex-web-service/generate-the-report
+- IBKR report retrieval: https://www.interactivebrokers.com/docs/web-api/flex-web-service/using-flex-web-service/retrieve-the-report
+- StocksCafe importer: https://stocks.cafe/portfolio/transactions/tobulkupload_ibkr
+- StocksCafe owner on unsupported API access: https://forum.stocks.cafe/t/accessing-stock-data-using-apis/123104
+
+The unverified link is an authenticated supported transaction-upload API for StocksCafe. HTTP file-upload capability in Boost alone does not establish that StocksCafe offers one. Keep this step manual unless StocksCafe confirms supported integration. No production automation can be claimed until tested inside the confirmed personal workspace with a personal token and destination.

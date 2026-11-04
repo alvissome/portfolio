@@ -1,10 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calculate,makeFlow,accountForLabel,importTrades,stableId,parseDelimited,sourceSignature,derivePositions} from '../assets/performance-core.js';
+import {calculate,makeFlow,makeBankTransfer,confirmCashLocations,accountForLabel,importTrades,stableId,parseDelimited,sourceSignature,derivePositions} from '../assets/performance-core.js';
 const row=(invested,cash=0)=>({invested,cash,verified:true});
 const snapshot=(cash,srs=row(0),cpf=row(0))=>({accounts:{cash,srs,cpf}});
 const coverage=Object.fromEntries(['cash','srs','cpf'].map(a=>[a,{total:{start:'2020-01-01',end:'2030-01-01'},invested:{start:'2020-01-01',end:'2030-01-01'}}]));
 const history=(snapshots,flows={})=>({snapshots,flows,coverage});
+test('bank to broker transfer preserves both cash boundaries and original funding',()=>{
+  const f=makeBankTransfer({id:'a',date:'2026-01-02',amount:20000,bankBefore:75000,brokerBefore:10000});
+  assert.equal(f.bankAfter,55000);assert.equal(f.brokerAfter,30000);
+  assert.equal(f.bankBefore+f.brokerBefore,f.bankAfter+f.brokerAfter);
+  const h=history({'2026-01-01':snapshot(row(100000,85000)),'2026-01-02':snapshot(row(100000,85000))},{a:f});
+  for(const basis of ['total','invested']){const r=calculate(h,'cash',basis,'2026-01-01','2026-01-02');assert.equal(r.gain,0);assert.equal(r.netFlow,0);assert.equal(r.returnPct,0);}
+});
+test('bank transfers reject insufficient funds and require both updated balances',()=>{
+  const args={date:'2026-01-02',amount:20,bankBefore:75,brokerBefore:10};
+  const f=makeBankTransfer(args);assert.doesNotThrow(()=>confirmCashLocations(f,55,30));
+  assert.throws(()=>confirmCashLocations(f,75,30));assert.throws(()=>confirmCashLocations(f,55,10));
+  for(const amount of [0,-1,76,0.001,NaN])assert.throws(()=>makeBankTransfer({...args,amount}));
+});
 test('deposit is not mistaken for investment gain',()=>{
   const h=history({'2026-01-01':snapshot(row(100)), '2026-01-02':snapshot(row(110,20))},{a:makeFlow({id:'a',date:'2026-01-02',account:'cash',kind:'contribution',amount:20})});
   const r=calculate(h,'cash','total','2026-01-01','2026-01-02');assert.equal(r.gain,10);assert.ok(Math.abs(r.returnPct-10)<1e-10);

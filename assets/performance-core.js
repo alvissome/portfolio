@@ -89,6 +89,19 @@ export function makeFlow({id, date, account, kind, amount, note='',dateApproxima
   const [total,invested] = types[kind];
   return {id,date,account,kind,total,invested,dateApproximate:dateApproximate===true||dateApproximate==='on',location:kind==='earmark'?'bank':'account',note:String(note).slice(0,500)};
 }
+// A transfer between cash locations crosses neither performance boundary.
+// Source balances must already have been reconciled; this records the audit trail.
+export function makeBankTransfer({id,date,amount,bankBefore,brokerBefore,note=''}) {
+  dateKey(date);
+  if(date>todaySG())throw Error('Future transfers cannot be recorded.');
+  const a=number(amount),bank=number(bankBefore),broker=number(brokerBefore);
+  if(a<0.01||bank<0||a>bank||[a,bank,broker].some(n=>Math.abs(n*100-Math.round(n*100))>1e-6))throw Error('Use cents: transfer must be positive and cannot exceed the bank cash set aside.');
+  const cents=n=>Math.round(n*100)/100;
+  return {id,date,account:'cash',kind:'bank_to_broker',amount:cents(a),total:0,invested:0,location:'bank_to_broker',bankBefore:cents(bank),bankAfter:cents(bank-a),brokerBefore:cents(broker),brokerAfter:cents(broker+a),note:String(note).slice(0,500)};
+}
+export function confirmCashLocations(transfer,bank,broker) {
+  if(Math.abs(number(bank)-transfer.bankAfter)>.005||Math.abs(number(broker)-transfer.brokerAfter)>.005)throw Error('Update the bank cash and import/reconcile the broker cash first. Both balances must match the transfer review.');
+}
 export function calculate(history, scope, basis, start, end) {
   dateKey(start); dateKey(end);
   if (start > end) throw Error('Start date must precede end date.');
