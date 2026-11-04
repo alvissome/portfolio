@@ -112,7 +112,7 @@ export function makeFlow({id, date, account, kind, amount, note='',dateApproxima
   const types = {
     earmark:[a,0], contribution:[a,0], withdrawal:[-a,0], buy:[0,a], sale:[0,-a],
     dividend:[0,-a], dividend_to_oa:[-a,-a], sale_to_oa:[-a,-a],
-    transfer_in:[a,0], transfer_out:[-a,0],
+    cash_to_oa:[-a,0], transfer_in:[a,0], transfer_out:[-a,0],
   };
   if (!types[kind]) throw Error('Unknown cash movement.');
   if(kind==='earmark'&&account!=='cash')throw Error('Bank money set aside for investing belongs to Cash investment.');
