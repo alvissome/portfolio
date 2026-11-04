@@ -44,7 +44,7 @@ for(const user of await db.collection('users').listDocuments()){
         invested+=h.shares*q.price/rate;oldest=oldest===null?q.time:Math.min(oldest,q.time);
       }
       if(!Number.isFinite(invested))throw Error('Invalid valuation.');
-      accounts[account]={invested,cash:config.cash,verified:true,source:'daily closing prices',cashReconciledOn:config.reconciledOn,oldestQuoteAt:oldest?new Date(oldest*1000).toISOString():null};
+      accounts[account]={invested,cash:config.cash,cashVerified:true,verified:true,source:'daily closing prices',cashReconciledOn:config.reconciledOn,oldestQuoteAt:oldest?new Date(oldest*1000).toISOString():null};
     }catch{failures++;}
   }
   if(!Object.keys(accounts).length)continue;

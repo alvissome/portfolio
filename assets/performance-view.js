@@ -1,4 +1,4 @@
-import {number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=monthly-20261104';
+import {number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=history-20261104';
 
 export function cashParts(state,account) {
   if(account==='cash')return [
@@ -15,7 +15,8 @@ export function readCashParts(fd,account,prefix) {
 export function snapshotProgress(history,scope,basis,start,end,state=null) {
   const accounts=selectedAccounts(scope),all=Object.keys(history.snapshots||{}).filter(date=>date>=start&&date<=end).sort();
   const dates=all.filter(date=>date>=start&&date<=end&&snapshotValue(history.snapshots[date],scope,basis)!==null);
-  const latest=all.at(-1),missing=latest?accounts.filter(a=>history.snapshots[latest]?.accounts?.[a]?.verified!==true):accounts;
+  const latest=all.at(-1),missing=latest?accounts.filter(a=>snapshotValue(history.snapshots[latest],a,basis)===null):accounts;
   const paused=accounts.filter(a=>{const c=history.settings?.capture?.[a];return c&&(c.needsReconciliation||(state&&c.sourceSignature!==sourceSignature({holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}},a)));});
-  return {dates,latest,missing,paused,dailyEnabled:history.settings?.dailyEnabled===true,configured:accounts.every(a=>!!history.settings?.capture?.[a]),transactions:Object.keys(history.trades||{}).length};
+  const unknownCash=all.filter(date=>accounts.some(a=>history.snapshots[date]?.accounts?.[a]?.cashVerified===false));
+  return {dates,latest,missing,unknownCash,paused,dailyEnabled:history.settings?.dailyEnabled===true,configured:accounts.every(a=>!!history.settings?.capture?.[a]),transactions:Object.keys(history.trades||{}).length};
 }

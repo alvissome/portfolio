@@ -63,7 +63,7 @@ export function confirmationSnapshot(history,state,{account,date,cash,unchanged=
     if(!(p?.close>0)||p.priceStale||!(fx>0))throw Error('Sync prices and FX before confirming; a current snapshot cannot be calculated.');
     invested+=number(h.shares)*p.close*fx;
   }
-  const patch={snapshots:{[date]:{accounts:{[account]:{invested,cash,verified:true,source:unchanged?'unchanged confirmation':'reconciliation confirmation'}},recordedAt:new Date().toISOString()}},settings:{dailyEnabled:true,checks:{[account]:{date,sourceSignature:signature}},capture:{[account]:{...prior,cash,holdings:positions,positionSignature:JSON.stringify(positions),sourceSignature:signature,reconciledOn:date,needsReconciliation:false}}}};
+  const patch={snapshots:{[date]:{accounts:{[account]:{invested,cash,cashVerified:true,verified:true,source:unchanged?'unchanged confirmation':'reconciliation confirmation'}},recordedAt:new Date().toISOString()}},settings:{dailyEnabled:true,checks:{[account]:{date,sourceSignature:signature}},capture:{[account]:{...prior,cash,holdings:positions,positionSignature:JSON.stringify(positions),sourceSignature:signature,reconciledOn:date,needsReconciliation:false}}}};
   if(coverage){
     const start=dateKey(coverage.start),basis=coverage.basis;
     if(start>date||!['total','invested'].includes(basis))throw Error('Invalid reconciliation period.');
@@ -106,7 +106,8 @@ export function snapshotValue(snapshot, scope, basis) {
     const row = snapshot.accounts?.[account];
     if (!row || row.verified !== true) return null;
     const invested = number(row.invested);
-    const cash = number(row.cash);
+    if (basis==='total' && (row.cashVerified===false || row.cash==null)) return null;
+    const cash = basis==='total' ? number(row.cash) : 0;
     if (invested < 0 || !Number.isFinite(invested+cash)) throw Error('Invalid valuation.');
     value += invested + (basis==='total' ? cash : 0);
   }
@@ -226,4 +227,27 @@ export function importTrades(text) {
 export async function stableId(text) {
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
   return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// Blank cash means unknown, never zero. Holdings-only evidence cannot certify
+// total values or movement coverage, and must not erase previously checked cash.
+export function importValuations(text,existing={}) {
+  const rows=parseDelimited(text),header=rows.shift()?.map(x=>x.trim().toLowerCase());
+  if(header?.join(',')!=='date,account,invested_sgd,cash_sgd')throw Error('CSV columns must be: date,account,invested_sgd,cash_sgd. Accounts: cash,srs,cpf.');
+  const snapshots={},seen=new Set();let holdingsOnly=0;
+  for(const cells of rows){
+    if(cells.length!==4)throw Error('Each row needs exactly four columns.');
+    const [date,account,rawInvested,rawCash]=cells.map(x=>x.trim());dateKey(date);
+    if(date>todaySG()||!ACCOUNTS.includes(account))throw Error('Invalid date or account.');
+    const invested=number(rawInvested);if(invested<0)throw Error('Holdings cannot be negative.');
+    if(seen.has(date+account))throw Error('Duplicate account and date in this import.');seen.add(date+account);
+    const prior=existing[date]?.accounts?.[account];
+    if(rawCash===''&&prior?.verified===true&&prior.cashVerified!==false&&prior.cash!=null)throw Error('This date already has checked cash. Supply cash explicitly or omit the existing account/date.');
+    const cashVerified=rawCash!=='';const cash=cashVerified?number(rawCash):null;
+    if(!cashVerified)holdingsOnly++;
+    snapshots[date]||={accounts:{},recordedAt:new Date().toISOString()};
+    snapshots[date].accounts[account]={invested,cash,cashVerified,verified:true,source:'dated valuation CSV'};
+  }
+  if(!rows.length)throw Error('The valuation file has no records.');
+  return {snapshots,count:rows.length,holdingsOnly};
 }

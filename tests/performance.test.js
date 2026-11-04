@@ -137,3 +137,18 @@ test('no-change confirmation cannot bypass changed holdings, recorded activity o
   state.priceCache['ABC.SI'].priceStale=true;assert.throws(()=>confirmationSnapshot(h,state,args));state.priceCache['ABC.SI'].priceStale=false;
   h.trades.a.units=11;assert.throws(()=>confirmationSnapshot(h,state,args));
 });
+
+test('dated holdings-only imports never invent cash or enable total values',async()=>{
+  const {importValuations,snapshotValue}=await import('../assets/performance-core.js');
+  const parsed=importValuations('date,account,invested_sgd,cash_sgd\n2025-12-31,cash,100,\n2026-01-31,cash,110,0');
+  assert.equal(parsed.holdingsOnly,1);
+  const old=parsed.snapshots['2025-12-31'];
+  assert.equal(old.accounts.cash.cash,null);
+  assert.equal(snapshotValue(old,'cash','total'),null);
+  assert.equal(snapshotValue(old,'cash','invested'),100);
+  assert.equal(snapshotValue(parsed.snapshots['2026-01-31'],'cash','total'),110);
+  const result=calculate({snapshots:parsed.snapshots,flows:{},coverage:{}},'cash','invested','2025-12-31','2026-01-31');
+  assert.equal(result.points.length,2);assert.equal(result.returnPct,null);assert.equal(result.gain,null);
+  assert.throws(()=>importValuations('date,account,invested_sgd,cash_sgd\n2026-01-31,cash,110,',parsed.snapshots),/checked cash/);
+  for(const line of ['2026-01-31,cash,,','2026-01-31,cash,-1,','2026-01-31,unknown,1,','2026-02-30,cash,1,'])assert.throws(()=>importValuations('date,account,invested_sgd,cash_sgd\n'+line));
+});
