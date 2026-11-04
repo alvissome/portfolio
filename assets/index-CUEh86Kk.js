@@ -1,4 +1,4 @@
-import {createPerformanceComponent} from './performance-panel.js?v=monthly-20261104';
+import {createPerformanceComponent} from './performance-panel.js?v=cashscope-20261105';
 import {readPortfolioTSV} from './stockscafe-cash.js';
 import {holdingKey,planAccountImports,editAccountHolding,combinedHolding} from './account-portfolio.js?v=monthly-20261104';
 import {reviewAccountBatch,createCashSettings} from './account-import-dialog.js?v=monthly-20261104';

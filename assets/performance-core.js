@@ -56,6 +56,7 @@ export function confirmationSnapshot(history,state,{account,date,cash,unchanged=
   if(JSON.stringify(positions)!==prior?.positionSignature&&(unchanged||state.accountImportVersion!==1))throw Error('Holdings changed. Review the account setup before restarting daily snapshots.');
   const signature=sourceSignature({holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}},account);
   cash=number(cash);
+  const bankCash=account==='cash'?number(state.cash.growth)+number(state.cash.dividend):0,brokerCash=cash-bankCash;
   if(unchanged&&(prior.needsReconciliation||signature!==prior.sourceSignature||cash!==prior.cash||Object.values(history.flows||{}).some(f=>!f.voided&&f.account===account&&f.date>prior.reconciledOn)))throw Error('Recorded holdings, balances or movements changed. Use Confirm reconciliation instead of No changes.');
   let invested=0;
   for(const h of positions){
@@ -63,16 +64,17 @@ export function confirmationSnapshot(history,state,{account,date,cash,unchanged=
     if(!(p?.close>0)||p.priceStale||!(fx>0))throw Error('Sync prices and FX before confirming; a current snapshot cannot be calculated.');
     invested+=number(h.shares)*p.close*fx;
   }
-  const patch={snapshots:{[date]:{accounts:{[account]:{invested,cash,verified:true,source:unchanged?'unchanged confirmation':'reconciliation confirmation'}},recordedAt:new Date().toISOString()}},settings:{dailyEnabled:true,checks:{[account]:{date,sourceSignature:signature}},capture:{[account]:{...prior,cash,holdings:positions,positionSignature:JSON.stringify(positions),sourceSignature:signature,reconciledOn:date,needsReconciliation:false}}}};
+  const patch={snapshots:{[date]:{accounts:{[account]:{invested,cash,brokerCash,bankCash,cashVerified:true,verified:true,source:unchanged?'unchanged confirmation':'reconciliation confirmation'}},recordedAt:new Date().toISOString()}},settings:{dailyEnabled:true,checks:{[account]:{date,sourceSignature:signature}},capture:{[account]:{...prior,cash,brokerCash,bankCash,holdings:positions,positionSignature:JSON.stringify(positions),sourceSignature:signature,reconciledOn:date,needsReconciliation:false}}}};
   if(coverage){
     const start=dateKey(coverage.start),basis=coverage.basis;
-    if(start>date||!['total','invested'].includes(basis))throw Error('Invalid reconciliation period.');
+    if(start>date||!['total','broker','invested'].includes(basis))throw Error('Invalid reconciliation period.');
     patch.coverage={[account]:{[basis]:{start,end:date}}};
   }else if(unchanged){
     // An explicit no-activity confirmation can extend existing total coverage.
     // Invested-only dividends/flows still need their own coverage confirmation.
-    const previous=history.coverage?.[account]?.total;
-    if(previous&&previous.end>=prior.reconciledOn&&previous.start<=prior.reconciledOn)patch.coverage={[account]:{total:{start:previous.start,end:date}}};
+    for(const basis of ['total','broker']){const previous=history.coverage?.[account]?.[basis];
+      if(previous&&previous.end>=prior.reconciledOn&&previous.start<=prior.reconciledOn){patch.coverage||={};patch.coverage[account]||={};patch.coverage[account][basis]={start:previous.start,end:date};}
+    }
   }
   return patch;
 }
@@ -100,20 +102,31 @@ export function derivePositions(trades) {
   return result;
 }
 export function snapshotValue(snapshot, scope, basis) {
-  if (!['total','invested'].includes(basis)) throw Error('Unknown view.');
+  if (!['total','broker','invested'].includes(basis)) throw Error('Unknown view.');
   let value = 0;
   for (const account of selectedAccounts(scope)) {
     const row = snapshot.accounts?.[account];
     if (!row || row.verified !== true) return null;
     const invested = number(row.invested);
-    const cash = number(row.cash);
+    let cash=0;
+    if(basis==='broker'){
+      if(account==='cash') {if(row.brokerCash==null)return null;cash=number(row.brokerCash);}
+      else {if(row.cashVerified===false||row.cash==null)return null;cash=number(row.cash);}
+    } else if(basis==='total'){
+      if(row.cashVerified===false||row.cash==null)return null;cash=number(row.cash);
+    }
     if (invested < 0 || !Number.isFinite(invested+cash)) throw Error('Invalid valuation.');
-    value += invested + (basis==='total' ? cash : 0);
+    value += invested + cash;
   }
   return value;
 }
 export function flowValue(flow, scope, basis) {
   if (!selectedAccounts(scope).includes(flow.account)) return 0;
+  if(basis==='broker'){
+    if(flow.account==='cash'&&flow.kind==='bank_to_broker')return number(flow.amount);
+    if(flow.account==='cash'&&(flow.kind==='earmark'||flow.location==='bank'))return 0;
+    return number(flow.total??0);
+  }
   return number(flow[basis] ?? 0);
 }
 // Flow amounts are signed amounts crossing each boundary, in SGD, at end of day.
@@ -151,6 +164,7 @@ export function confirmCashLocations(transfer,bank,broker) {
 export function calculate(history, scope, basis, start, end) {
   dateKey(start); dateKey(end);
   if (start > end) throw Error('Start date must precede end date.');
+  if(basis==='total'&&selectedAccounts(scope).includes('cash')&&start<'2026-01-01')return {points:[],message:'Performance not available: bank money set aside has no history before 2026. Select Holdings + broker cash for earlier history.'};
   const dates = Object.keys(history.snapshots || {}).filter(d=>d>=start && d<=end).sort();
   const rows = dates.map(date=>({date,value:snapshotValue(history.snapshots[date],scope,basis)}));
   const usable = rows.filter(r=>r.value!==null);
@@ -161,7 +175,7 @@ export function calculate(history, scope, basis, start, end) {
   const gain = last.value-first.value-sum;
   if (usable.length<2 || first.date===last.date) return {points:usable,start:first.date,end:last.date,opening:first.value,closing:last.value,gain:null,netFlow:0,returnPct:null,message:'Tracking has started. A second valuation is needed to measure performance.'};
   const reconciled=selectedAccounts(scope).every(a=>{
-    const c=history.coverage?.[a]?.[basis];
+    const c=history.coverage?.[a]?.[basis]||(basis==='broker'&&a!=='cash'?history.coverage?.[a]?.total:null);
     return c && c.start<=first.date && c.end>=last.date;
   });
   if(!reconciled)return {points:usable.map(p=>({...p,returnPct:null})),start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:null,gain:null,returnPct:null,message:'Value history is available. Reconcile all cash movements for this period before calculating returns.'};
@@ -226,4 +240,34 @@ export function importTrades(text) {
 export async function stableId(text) {
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
   return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// Blank cash means unknown, never zero. Holdings-only evidence cannot certify
+// total values or movement coverage, and must not erase previously checked cash.
+export function importValuations(text,existing={}) {
+  const rows=parseDelimited(text),header=rows.shift()?.map(x=>x.trim().toLowerCase());
+  const split=header?.join(',')==='date,account,invested_sgd,broker_cash_sgd,bank_cash_sgd';
+  if(!split&&header?.join(',')!=='date,account,invested_sgd,cash_sgd')throw Error('CSV columns must be: date,account,invested_sgd,cash_sgd. Accounts: cash,srs,cpf.');
+  const snapshots={},seen=new Set();let holdingsOnly=0;
+  for(const cells of rows){
+    if(cells.length!==(split?5:4))throw Error('Each row needs exactly four columns.');
+    const [date,account,rawInvested,rawCash]=cells.map(x=>x.trim());dateKey(date);
+    if(date>todaySG()||!ACCOUNTS.includes(account))throw Error('Invalid date or account.');
+    const invested=number(rawInvested);if(invested<0)throw Error('Holdings cannot be negative.');
+    if(seen.has(date+account))throw Error('Duplicate account and date in this import.');seen.add(date+account);
+    const prior=existing[date]?.accounts?.[account];
+    if(rawCash===''&&prior?.verified===true&&prior.cashVerified!==false&&prior.cash!=null)throw Error('This date already has checked cash. Supply cash explicitly or omit the existing account/date.');
+    const brokerCash=split&&rawCash!==''?number(rawCash):null;
+    const bankCell=split?cells[4].trim():'';
+    if(split&&account!=='cash'&&bankCell!==''&&number(bankCell)!==0)throw Error('SRS/CPF cash cannot include bank money set aside.');
+    if(split&&account==='cash'&&date<'2026-01-01'&&bankCell!=='')throw Error('Bank history before 2026 is unavailable; leave bank cash blank.');
+    const bankCash=split?(account==='cash'?(bankCell===''?null:number(bankCell)):0):null;
+    const cashVerified=split?brokerCash!==null&&bankCash!==null:rawCash!=='';
+    const cash=cashVerified?(split?brokerCash+bankCash:number(rawCash)):null;
+    if(!cashVerified)holdingsOnly++;
+    snapshots[date]||={accounts:{},recordedAt:new Date().toISOString()};
+    snapshots[date].accounts[account]={invested,cash,brokerCash,bankCash,cashVerified,verified:true,source:'dated valuation CSV'};
+  }
+  if(!rows.length)throw Error('The valuation file has no records.');
+  return {snapshots,count:rows.length,holdingsOnly};
 }
