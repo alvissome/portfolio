@@ -1,0 +1,21 @@
+import {number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=monthly-20261104';
+
+export function cashParts(state,account) {
+  if(account==='cash')return [
+    {key:'broker',label:'Cash in broker (SGD)',value:number(state.cash.brokers)},
+    {key:'bank',label:'Money set aside in bank (SGD)',value:number(state.cash.growth)+number(state.cash.dividend)}
+  ];
+  if(!['srs','cpf'].includes(account))throw Error('Choose an account.');
+  return [{key:'cash',label:account==='srs'?'Actual SRS cash (SGD)':'Actual CPF investment cash (SGD; excludes OA)',value:number(account==='srs'?state.cash.srs:state.cash.cpfIs)}];
+}
+export function readCashParts(fd,account,prefix) {
+  const keys=account==='cash'?['broker','bank']:['cash'];
+  return keys.reduce((sum,key)=>sum+number(fd.get(prefix+'-'+key)),0);
+}
+export function snapshotProgress(history,scope,basis,start,end,state=null) {
+  const accounts=selectedAccounts(scope),all=Object.keys(history.snapshots||{}).filter(date=>date>=start&&date<=end).sort();
+  const dates=all.filter(date=>date>=start&&date<=end&&snapshotValue(history.snapshots[date],scope,basis)!==null);
+  const latest=all.at(-1),missing=latest?accounts.filter(a=>history.snapshots[latest]?.accounts?.[a]?.verified!==true):accounts;
+  const paused=accounts.filter(a=>{const c=history.settings?.capture?.[a];return c&&(c.needsReconciliation||(state&&c.sourceSignature!==sourceSignature({holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}},a)));});
+  return {dates,latest,missing,paused,dailyEnabled:history.settings?.dailyEnabled===true,configured:accounts.every(a=>!!history.settings?.capture?.[a]),transactions:Object.keys(history.trades||{}).length};
+}

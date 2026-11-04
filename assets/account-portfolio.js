@@ -1,7 +1,7 @@
 import {readPortfolioTSV,exportedCash} from './stockscafe-cash.js';
 
 export const ACCOUNT_TYPES={cash:'Cash',srs:'Retirement - SRS',cpf:'Retirement - CPF'};
-export const ACCOUNT_NAMES={cash:'Cash investments',srs:'SRS',cpf:'CPF investment'};
+export const ACCOUNT_NAMES={cash:'Investment',srs:'SRS',cpf:'CPF investment'};
 export const holdingKey=h=>encodeURIComponent(h.accountType||'Unclassified')+'~'+encodeURIComponent(h.ticker);
 const finite=(value,label)=>{
   if(value==null||String(value).trim()===''||!Number.isFinite(Number(String(value).replace(/,/g,''))))throw Error('Missing or invalid '+label+'.');
@@ -45,6 +45,7 @@ export function planAccountImports(state,files,now=new Date().toISOString()) {
     if(Math.abs(p.cash*100-Math.round(p.cash*100))>1e-6)throw Error('Use cents for account cash.');
     parsed.push({...p,account:file.account,name:String(file.name||'TSV export'),cashSource:exportedCash(readPortfolioTSV(file.text))===null?'confirmed during import':'StocksCafe CASH row'});
   }
+  parsed.sort((a,b)=>['cash','srs','cpf'].indexOf(a.account)-['cash','srs','cpf'].indexOf(b.account));
   const initial=state.accountImportVersion!==1;
   if(initial&&(accounts.size!==3||!['cash','srs','cpf'].every(a=>accounts.has(a))))throw Error('The first account-separated import needs all three files: Cash, SRS and CPF. This safely replaces old combined positions.');
   if(initial&&state.holdings.some(h=>h.accountType&&!Object.values(ACCOUNT_TYPES).includes(h.accountType)))throw Error('An existing holding uses another account type. Resolve its Cash/SRS/CPF classification before the first batch import.');
