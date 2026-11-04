@@ -1,4 +1,4 @@
-import {planAccountImports,ACCOUNT_NAMES} from './account-portfolio.js';
+import {planAccountImports,ACCOUNT_NAMES} from './account-portfolio.js?v=monthly-20261104';
 import {readPortfolioTSV,exportedCash} from './stockscafe-cash.js';
 
 export async function reviewAccountBatch(files,state,downloadBackup) {
@@ -10,8 +10,8 @@ export async function reviewAccountBatch(files,state,downloadBackup) {
     dialog.innerHTML=`<form><h2>Import account portfolios</h2><p>Select the account for each file. Each export must contain the complete current holdings for that account, with SGD reporting currency. Choose your Investment portfolios together for Cash, CPF-SRS for SRS, and CPF-IS for CPF.</p><div data-files></div><p>Only the selected accounts will be replaced. Bank money set aside stays separate. BDiv is derived from StocksCafe’s SGD P&amp;L, cost and value figures; it is not added to cash.</p><div data-summary aria-live="polite"></div><p class="sc-cash-error" role="alert"></p><div data-backup><p>The first import replaces old combined holdings with account-specific positions. Save a current backup before continuing.</p><button type="button" data-download>Download current portfolio backup</button><label><input type="checkbox" name="backup" required> I saved the current backup.</label></div><label><input name="confirmed" type="checkbox" required> I checked the account mapping, complete holdings, actual cash and SGD reporting currency for every file.</label><p>Importing saves current holdings and balances only. Confirm reconciliation afterward to save today’s performance snapshot. Earlier history is not rewritten.</p><div class="sc-cash-actions"><button type="button" data-cancel>Cancel</button><button type="submit">Import batch</button></div></form>`;
     const form=dialog.querySelector('form'),list=dialog.querySelector('[data-files]'),summary=dialog.querySelector('[data-summary]'),error=dialog.querySelector('[role=alert]'),submit=form.querySelector('[type=submit]');
     info.forEach((file,i)=>{
-      const field=document.createElement('fieldset');
-      field.innerHTML=`<legend></legend><label>Destination account<select name="account-${i}" required><option value="">Choose account…</option><option value="cash">Cash investments</option><option value="srs">SRS</option><option value="cpf">CPF investment</option></select></label>${file.missingCash?`<label>No CASH row in this file: actual cash (SGD)<input name="cash-${i}" type="number" step="0.01" required placeholder="Enter actual balance, including 0"></label>`:''}`;
+      const field=document.createElement('fieldset');field.dataset.fileIndex=String(i);
+      field.innerHTML=`<legend></legend><label>Destination account<select name="account-${i}" required><option value="">Choose account…</option><option value="cash">Investment</option><option value="srs">SRS</option><option value="cpf">CPF investment</option></select></label>${file.missingCash?`<label>No CASH row in this file: actual cash (SGD)<input name="cash-${i}" type="number" step="0.01" required placeholder="Enter actual balance, including 0"></label>`:''}`;
       field.querySelector('legend').textContent=file.name;list.append(field);
     });
     const initial=state.accountImportVersion!==1,backup=dialog.querySelector('[data-backup]');
@@ -24,6 +24,7 @@ export async function reviewAccountBatch(files,state,downloadBackup) {
       error.textContent='';summary.replaceChildren();submit.disabled=true;
       try{
         const plan=planAccountImports(state,selected());
+        Array.from(list.children).sort((a,b)=>['cash','srs','cpf'].indexOf(form.elements['account-'+a.dataset.fileIndex].value)-['cash','srs','cpf'].indexOf(form.elements['account-'+b.dataset.fileIndex].value)).forEach(field=>list.append(field));
         const table=document.createElement('table');table.className='sc-import-summary';
         table.innerHTML='<caption>Balances after import</caption><thead><tr><th>Account</th><th>Positions</th><th>Cash</th><th>BDiv</th></tr></thead><tbody></tbody>';
         for(const row of plan.summary){const tr=document.createElement('tr');for(const value of [ACCOUNT_NAMES[row.account],row.positions,fmt(row.cash),fmt(row.dividends)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}table.querySelector('tbody').append(tr);}

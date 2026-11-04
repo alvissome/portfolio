@@ -51,9 +51,9 @@ export function confirmationSnapshot(history,state,{account,date,cash,unchanged=
   if(!ACCOUNTS.includes(account))throw Error('Choose an account.');
   if(dateKey(date)!==todaySG())throw Error('Automatic snapshots use today’s prices. Earlier dates require dated source values; do not backdate today’s portfolio.');
   const prior=history.settings?.capture?.[account];
-  if(!prior)throw Error('Complete the initial account setup first, confirming the Cash/SRS/CPF split and actual cash.');
+  if(!prior&&(unchanged||state.accountImportVersion!==1))throw Error('Confirm reconciliation after importing the account TSVs, or complete the initial account setup for legacy holdings.');
   const positions=capturePositions(history,state)[account];
-  if(JSON.stringify(positions)!==prior.positionSignature)throw Error('Holdings changed. Review the account setup before restarting daily snapshots.');
+  if(JSON.stringify(positions)!==prior?.positionSignature&&(unchanged||state.accountImportVersion!==1))throw Error('Holdings changed. Review the account setup before restarting daily snapshots.');
   const signature=sourceSignature({holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}},account);
   cash=number(cash);
   if(unchanged&&(prior.needsReconciliation||signature!==prior.sourceSignature||cash!==prior.cash||Object.values(history.flows||{}).some(f=>!f.voided&&f.account===account&&f.date>prior.reconciledOn)))throw Error('Recorded holdings, balances or movements changed. Use Confirm reconciliation instead of No changes.');
