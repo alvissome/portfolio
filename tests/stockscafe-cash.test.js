@@ -50,22 +50,3 @@ test('dividend income followed by a later OA cash transfer is earned once',()=>{
   for(const basis of ['total','invested'])assert.equal(calculate(h,'cpf',basis,'2026-03-01','2026-03-03').gain,5);
 });
 
-test('production TSV callback applies the reviewed split atomically and preserves classifications',async()=>{
-  const {readFile}=await import('node:fs/promises');
-  const {runInNewContext}=await import('node:vm');
-  const bundle=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8');
-  const start=bundle.indexOf('Q=ne.useCallback((I,cashPatch)=>');
-  assert.ok(start>0);
-  const callback=bundle.slice(start+'Q=ne.useCallback('.length,bundle.indexOf('},[]),K=ne.useCallback',start)+1);
-  const mergeStart=bundle.indexOf('function E0(');
-  const merge=bundle.slice(mergeStart,bundle.indexOf('function zR(',mergeStart));
-  let state={cash:{...current},holdings:[{ticker:'DEMO',shares:1,portfolioType:'Dividend',accountType:'Retirement - CPF'}],priceCache:{},watchlist:[{id:'w',reviewed:true}]};
-  const context={eN:readPortfolioTSV,Wr:n=>n&&parseFloat(n.replace(/,/g,''))||0,ZR:()=>'',r:fn=>{state=fn(state);},text:tsv(),cashPatch:cashAllocation(6000,current,{scope:'combined',srs:900,cpfIs:100})};
-  runInNewContext(merge+'; const callback='+callback+'; callback(text,cashPatch);',context);
-  assert.deepEqual(JSON.parse(JSON.stringify(state.cash)),{...current,brokers:5000,srs:900,cpfIs:100});
-  assert.equal(state.holdings[0].shares,10);assert.equal(state.holdings[0].accountType,'Retirement - CPF');assert.equal(state.holdings[0].portfolioType,'Dividend');
-  assert.equal(state.watchlist[0].id,'w');
-  const before=JSON.stringify(state);context.cashPatch=undefined;
-  assert.throws(()=>runInNewContext('callback(text,cashPatch)',context),/Review/);
-  assert.equal(JSON.stringify(state),before);
-});

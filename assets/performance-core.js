@@ -30,6 +30,21 @@ export function sourceSignature(data,account) {
   const cash=account==='cash'?[c.brokers||0,c.growth||0,c.dividend||0]:[account==='srs'?c.srs||0:c.cpf||0];
   return JSON.stringify({holdings,cash});
 }
+// Current account TSVs are a verified inventory source once the batch migration
+// is complete. Historical transactions remain evidence for earlier returns.
+export function capturePositions(history,data) {
+  if((data.accountImportVersion??data.settings?.accountImportVersion)!==1)return derivePositions(history.trades||{});
+  const result={cash:[],srs:[],cpf:[]},seen=new Set();
+  const types={Cash:'cash','Retirement - SRS':'srs','Retirement - CPF':'cpf'};
+  for(const h of Object.values(data.holdings||{})){
+    if(h.exited)continue;
+    const account=types[h.accountType],key=account+'|'+h.ticker;
+    if(!account||h.importAccount!==account||seen.has(key)||!h.ticker||!h.currency||!(number(h.shares)>0))throw Error('Reconcile account-specific holdings before capture.');
+    seen.add(key);result[account].push({ticker:h.ticker,shares:number(h.shares),currency:h.currency});
+  }
+  for(const a of ACCOUNTS)result[a].sort((x,y)=>x.ticker.localeCompare(y.ticker));
+  return result;
+}
 // One private write saves the confirmation, today's value and capture configuration.
 // Never turn today's quotes into an invented historical valuation.
 export function confirmationSnapshot(history,state,{account,date,cash,unchanged=false,coverage=null}) {
@@ -37,7 +52,7 @@ export function confirmationSnapshot(history,state,{account,date,cash,unchanged=
   if(dateKey(date)!==todaySG())throw Error('Automatic snapshots use today’s prices. Earlier dates require dated source values; do not backdate today’s portfolio.');
   const prior=history.settings?.capture?.[account];
   if(!prior)throw Error('Complete the initial account setup first, confirming the Cash/SRS/CPF split and actual cash.');
-  const positions=derivePositions(history.trades||{})[account];
+  const positions=capturePositions(history,state)[account];
   if(JSON.stringify(positions)!==prior.positionSignature)throw Error('Holdings changed. Review the account setup before restarting daily snapshots.');
   const signature=sourceSignature({holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}},account);
   cash=number(cash);
