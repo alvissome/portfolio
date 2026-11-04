@@ -8,11 +8,13 @@ Adds a performance panel to the existing signed-in dashboard: Cash, Retirement, 
 
 Only Investment portfolios map to Cash. CPF-IS maps to CPF and CPF-SRS to SRS. Trading, options, bonds and test portfolios are excluded. Bank cash earmarked for investing is additional to broker cash. Moving that bank cash to a broker is internal, not a new contribution.
 
+The legacy dashboard stores positions by ticker and can combine holdings of the same stock across different accounts. Performance capture therefore uses its own account-specific inventory derived from a complete trade export, with explicit statement reconciliation before activation. It does not silently migrate or rewrite the legacy allocations. Negative inventories and unsupported active exchanges block automatic capture. Updated trade inventories require fresh confirmation.
+
 SRS dividends retained in SRS count as income and actual cash. CPF dividends transferred to OA count as income followed by a withdrawal from the tracked portfolio. OA balances and subsequent OA interest remain outside the tracker. Do not classify all historical CPF income as current cash. Do not infer transfer dates from dividend dates without evidence.
 
 New valuations require confirmation of actual cash per account. CPF defaults to zero for review, not an asserted balance. Earlier valuations must be sourced from statements; no backfilled prices are invented. Missing accounts prevent combined return calculations on that date. Imported holdings, cumulative dividends and cost basis alone cannot reconstruct historical total returns.
 
-The downloaded transaction export was validated locally. It contains investment and retirement history, but missing base-currency conversions remain unresolved evidence. Private exports, balances, symbols, account identifiers and records must never be committed to this public repository.
+The downloaded transaction export was validated locally. It contains investment and retirement history. Native SGD trades use their SGD net transaction amount when the export's base-amount field is empty; this needs no FX assumption. Non-SGD trades without a reported SGD equivalent remain unresolved evidence. Private exports, balances, symbols, account identifiers and records must never be committed to this public repository.
 
 ## Calculation
 

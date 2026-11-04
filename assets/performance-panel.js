@@ -1,12 +1,12 @@
-import {ACCOUNTS,todaySG,dateKey,number,calculate,makeFlow,parseDelimited,importTrades,stableId,sourceSignature} from './performance-core.js';
+import {ACCOUNTS,todaySG,dateKey,number,calculate,makeFlow,parseDelimited,importTrades,stableId,sourceSignature,derivePositions} from './performance-core.js';
 
 const names={cash:'Cash investment',srs:'SRS',cpf:'CPF investment'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>n==null?'—':new Intl.NumberFormat('en-SG',{style:'currency',currency:'SGD'}).format(n);
 const empty=()=>({snapshots:{},flows:{},trades:{},settings:{},coverage:{}});
-function amount(state,account) {
+function amount(state,account,positions=null) {
   let sum=0;
-  for(const h of state.holdings.filter(h=>!h.exited && h.accountType===({cash:'Cash',srs:'Retirement - SRS',cpf:'Retirement - CPF'}[account]))){
+  for(const h of positions||state.holdings.filter(h=>!h.exited && h.accountType===({cash:'Cash',srs:'Retirement - SRS',cpf:'Retirement - CPF'}[account]))){
     const p=state.priceCache[h.ticker];
     if(!p || !(p.close>0) || p.priceStale)throw Error('A holding price is missing or stale. Sync prices before saving a valuation.');
     const fx=h.currency==='SGD'?1:state.fxRates?.[h.currency];
@@ -109,7 +109,8 @@ export function mount(root,uid,initialState,storage) {
       const a=document.createElement('a');a.href=url;a.download='portfolio-performance-'+todaySG()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return;
     }
     if(which==='valuation'){
-      const rows=ACCOUNTS.map(account=>{let value='';try{value=amount(state,account).toFixed(2);}catch{}const cash=account==='cash'?state.cash.brokers+state.cash.growth+state.cash.dividend:account==='srs'?state.cash.srs:0;return `<fieldset><legend>${names[account]}</legend><label>Holdings value (SGD)<input name="${account}-invested" type="number" step="0.01" min="0" value="${value}"></label><label>Actual cash (SGD)<input name="${account}-cash" type="number" step="0.01" value="${cash.toFixed(2)}"></label><label><input name="${account}-verified" type="checkbox"> I reconciled this account; cash excludes historical dividends already paid out.</label></fieldset>`;}).join('');
+      let positions=null;try{if(Object.keys(history.trades).length)positions=derivePositions(history.trades);}catch{}
+      const rows=ACCOUNTS.map(account=>{let value='';try{value=amount(state,account,positions?.[account]).toFixed(2);}catch{}const cash=account==='cash'?state.cash.brokers+state.cash.growth+state.cash.dividend:account==='srs'?state.cash.srs:0;return `<fieldset><legend>${names[account]}</legend>${positions?'<p>Trade-derived holdings to check: '+esc(positions[account].map(p=>p.ticker+' × '+p.shares).join(', ')||'none')+'</p>':'<p>Account split is not yet verified. Import a complete trade export before enabling daily capture.</p>'}<label>Holdings value (SGD)<input name="${account}-invested" type="number" step="0.01" min="0" value="${value}"></label><label>Actual cash (SGD)<input name="${account}-cash" type="number" step="0.01" value="${cash.toFixed(2)}"></label><label><input name="${account}-verified" type="checkbox"> I reconciled the account-specific holdings and cash against statements; cash excludes historical dividends already paid out.</label></fieldset>`;}).join('');
       dialog('Record a verified valuation',`<label>Valuation date<input name="date" type="date" value="${todaySG()}" required></label><p>Values are prefilled from the dashboard where available. For earlier dates, replace them with values from that date’s statements. CPF cash defaults to zero: enter actual investment-account cash, excluding dividends already returned to OA.</p>${rows}<label><input name="daily" type="checkbox"> Capture daily valuations in the cloud for these accounts using these confirmed cash balances. Reconfirm after holdings or cash change.</label>`,async fd=>{
         const date=dateKey(fd.get('date'));if(date>todaySG())throw Error('Future valuations cannot be recorded.');
         const accounts={};let count=0;
@@ -118,8 +119,9 @@ export function mount(root,uid,initialState,storage) {
         const patch={snapshots:{[date]:{accounts,recordedAt:new Date().toISOString()}}};
         if(fd.has('daily')){
           if(date!==todaySG())throw Error('Daily capture must start with today’s reconciliation.');
+          if(!positions)throw Error('Import and reconcile a complete trade export to establish account-specific holdings before daily capture.');
           const raw={holdings:state.holdings,cashPositions:{brokers:state.cash.brokers,growth:state.cash.growth,dividend:state.cash.dividend,srs:state.cash.srs,cpf:state.cash.cpfIs}};
-          const capture={...history.settings.capture};for(const a of ACCOUNTS)if(fd.has(a+'-verified'))capture[a]={cash:accounts[a].cash,sourceSignature:sourceSignature(raw,a),reconciledOn:date};
+          const capture={...history.settings.capture};for(const a of ACCOUNTS)if(fd.has(a+'-verified'))capture[a]={cash:accounts[a].cash,holdings:positions[a],positionSignature:JSON.stringify(positions[a]),sourceSignature:sourceSignature(raw,a),reconciledOn:date};
           patch.settings={dailyEnabled:true,capture};
         }
         await save(patch);

@@ -1,7 +1,7 @@
 // Personal portfolio only. No email/webhook delivery and no public data output.
 import {initializeApp,cert} from 'firebase-admin/app';
 import {getFirestore} from 'firebase-admin/firestore';
-import {ACCOUNTS,todaySG,sourceSignature} from '../../assets/performance-core.js';
+import {ACCOUNTS,todaySG,sourceSignature,derivePositions} from '../../assets/performance-core.js';
 
 const serviceAccount=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT||'{}');
 if(serviceAccount.project_id!=='alvissome-portfolio'||(process.env.FIREBASE_PROJECT_ID&&process.env.FIREBASE_PROJECT_ID!=='alvissome-portfolio'))throw Error('Unexpected project; snapshot stopped.');
@@ -24,15 +24,16 @@ for(const user of await db.collection('users').listDocuments()){
   const [dataSnap,historySnap]=await Promise.all([dataRef.get(),historyRef.get()]);
   if(!dataSnap.exists||!historySnap.exists)continue;
   const data=dataSnap.data(),history=historySnap.data();if(!history.settings?.dailyEnabled)continue;
+  let positions;try{positions=derivePositions(history.trades||{});}catch{skipped++;continue;}
   const accounts={};
   for(const account of ACCOUNTS){
     const config=history.settings.capture?.[account];if(!config)continue;
+    if(!Array.isArray(config.holdings)||JSON.stringify(positions[account])!==config.positionSignature){skipped++;continue;}
     if(config.sourceSignature!==sourceSignature(data,account)||!Number.isFinite(config.cash)){skipped++;continue;}
     // A newly recorded movement means cash needs reconciliation before resuming.
     if(Object.values(history.flows||{}).some(f=>!f.voided&&f.account===account&&f.date>config.reconciledOn)){skipped++;continue;}
     try{
-      const type={cash:'Cash',srs:'Retirement - SRS',cpf:'Retirement - CPF'}[account];
-      const holdings=Object.values(data.holdings||{}).filter(h=>!h.exited&&h.accountType===type);
+      const holdings=config.holdings;
       let invested=0,oldest=null;const needsFx=holdings.some(h=>h.currency!=='SGD');
       let rates={SGD:1};
       if(needsFx){const fx=await json('https://open.er-api.com/v6/latest/SGD');const age=Date.now()/1000-fx.time_last_update_unix;if(fx.result!=='success'||age<0||age>3*86400)throw Error('FX validation failed.');rates=fx.rates;}
@@ -52,7 +53,8 @@ for(const user of await db.collection('users').listDocuments()){
     const latest=latestHistory.data()||{},valid={};
     for(const [a,v]of Object.entries(accounts)){
       const config=latest.settings?.capture?.[a];
-      if(latest.settings?.dailyEnabled && JSON.stringify(config)===JSON.stringify(history.settings.capture[a])&&sourceSignature(latestData.data()||{},a)===config.sourceSignature&&!Object.values(latest.flows||{}).some(f=>!f.voided&&f.account===a&&f.date>config.reconciledOn)){
+      const positionUnchanged=JSON.stringify(derivePositions(latest.trades||{})[a])===config?.positionSignature;
+      if(latest.settings?.dailyEnabled && positionUnchanged && JSON.stringify(config)===JSON.stringify(history.settings.capture[a])&&sourceSignature(latestData.data()||{},a)===config.sourceSignature&&!Object.values(latest.flows||{}).some(f=>!f.voided&&f.account===a&&f.date>config.reconciledOn)){
         // Never overwrite a manually verified valuation for the same day.
         const prior=latest.snapshots?.[date]?.accounts?.[a];
         if(!prior||prior.source==='daily closing prices')valid[a]=v;

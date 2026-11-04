@@ -30,6 +30,29 @@ export function sourceSignature(data,account) {
   const cash=account==='cash'?[c.brokers||0,c.growth||0,c.dividend||0]:[account==='srs'?c.srs||0:c.cpf||0];
   return JSON.stringify({holdings,cash});
 }
+// Account-specific inventory: the same ticker may exist in multiple accounts.
+// This is staged evidence until the owner reconciles it against statements.
+export function derivePositions(trades) {
+  const grouped=new Map(),result={cash:[],srs:[],cpf:[]};
+  for(const t of Object.values(trades||{})){
+    if(!ACCOUNTS.includes(t.account))throw Error('Invalid trade account.');
+    if(t.action===0)continue;
+    const key=[t.account,t.exchange,t.symbol].join('|');
+    const p=grouped.get(key)||{account:t.account,exchange:t.exchange,symbol:t.symbol,shares:0,currency:t.currency,currencies:new Set()};
+    p.currencies.add(t.currency);
+    p.shares+=number(t.action)*number(t.units);grouped.set(key,p);
+  }
+  const suffix={USX:'',SGX:'.SI',HKEX:'.HK',LSE:'.L'};
+  for(const p of grouped.values()){
+    if(Math.abs(p.shares)<1e-7)continue;
+    if(p.currencies.size>1)throw Error('An active holding has inconsistent currencies; reconcile the source export.');
+    if(p.shares<0)throw Error('Trade history leaves a negative position; use a complete reconciled export.');
+    if(!Object.hasOwn(suffix,p.exchange))throw Error('An active holding needs an exchange mapping.');
+    result[p.account].push({ticker:p.symbol+suffix[p.exchange],shares:Math.round(p.shares*1e8)/1e8,currency:p.currency});
+  }
+  for(const a of ACCOUNTS)result[a].sort((x,y)=>x.ticker.localeCompare(y.ticker));
+  return result;
+}
 export function snapshotValue(snapshot, scope, basis) {
   if (!['total','invested'].includes(basis)) throw Error('Unknown view.');
   let value = 0;
@@ -130,10 +153,12 @@ export function importTrades(text) {
     dateKey(cells[5].trim());
     const baseCurrency=cells[11].trim().toUpperCase();
     if(baseCurrency && baseCurrency!=='SGD')throw Error('Export with SGD base currency before importing.');
-    const baseAmount=baseCurrency==='SGD'&&cells[12].trim()!==''?Math.abs(number(cells[12])):null;
+    const nativeCurrency=cells[6].trim().toUpperCase();
+    const baseAmount=baseCurrency==='SGD'&&cells[12].trim()!==''?Math.abs(number(cells[12])):nativeCurrency==='SGD'?Math.abs(number(cells[8])):null;
     if(baseAmount===null)missingBase++;
     const trade={account,date:cells[5].trim(),action,exchange:cells[1].trim(),symbol:cells[2].trim(),units:number(cells[3]),price:number(cells[4]),currency:cells[6].trim(),beforeFees:number(cells[7]),afterFees:number(cells[8]),label:cells[9].trim(),note:cells[10],baseAmount};
-    const key=JSON.stringify(trade),occurrence=counts.get(key)||0;counts.set(key,occurrence+1);
+    const {baseAmount:ignoredBase,...identity}=trade;
+    const key=JSON.stringify(identity),occurrence=counts.get(key)||0;counts.set(key,occurrence+1);
     trades.push({...trade,sourceKey:key+'#'+occurrence});
   }
   return {trades,excluded:[...excluded],missingBase};

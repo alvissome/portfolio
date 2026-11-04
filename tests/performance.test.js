@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calculate,makeFlow,accountForLabel,importTrades,stableId,parseDelimited,sourceSignature} from '../assets/performance-core.js';
+import {calculate,makeFlow,accountForLabel,importTrades,stableId,parseDelimited,sourceSignature,derivePositions} from '../assets/performance-core.js';
 const row=(invested,cash=0)=>({invested,cash,verified:true});
 const snapshot=(cash,srs=row(0),cpf=row(0))=>({accounts:{cash,srs,cpf}});
 const coverage=Object.fromEntries(['cash','srs','cpf'].map(a=>[a,{total:{start:'2020-01-01',end:'2030-01-01'},invested:{start:'2020-01-01',end:'2030-01-01'}}]));
@@ -53,7 +53,23 @@ test('CSV preserves quoted commas, multiline notes and identical fills',async()=
   assert.equal(await stableId(r.trades[0].sourceKey),await stableId(importTrades(line).trades[0].sourceKey));
 });
 test('missing historical FX is preserved for reconciliation',()=>{
-  const r=importTrades('1,SGX,ABC,10,1,2020-01-01,SGD,10,10,Investment SG,,,');assert.equal(r.missingBase,1);assert.equal(r.trades[0].baseAmount,null);
+  const r=importTrades('1,USX,ABC,10,1,2020-01-01,USD,10,10,Investment Main,,,');assert.equal(r.missingBase,1);assert.equal(r.trades[0].baseAmount,null);
+});
+test('native SGD amounts need no historical FX conversion',()=>{
+  const r=importTrades('1,SGX,ABC,10,1,2020-01-01,SGD,10,11,Investment SG,,,');assert.equal(r.missingBase,0);assert.equal(r.trades[0].baseAmount,11);
+});
+test('account inventory keeps the same stock separate across cash and retirement',()=>{
+  const t={exchange:'SGX',symbol:'ABC',currency:'SGD',action:1};
+  const p=derivePositions({a:{...t,account:'cash',units:100},b:{...t,account:'srs',units:50}});
+  assert.equal(p.cash[0].shares,100);assert.equal(p.srs[0].shares,50);assert.equal(p.cash[0].ticker,'ABC.SI');
+});
+test('incomplete trade history cannot create a daily-capture inventory',()=>{
+  assert.throws(()=>derivePositions({a:{account:'cash',exchange:'SGX',symbol:'ABC',currency:'SGD',action:-1,units:10}}));
+});
+test('closed positions with different transaction currencies do not block active inventory',()=>{
+  const t={account:'srs',exchange:'SGX',symbol:'ABC',units:10};
+  const p=derivePositions({a:{...t,currency:'SGD',action:1},b:{...t,currency:'USD',action:-1}});
+  assert.equal(p.srs.length,0);
 });
 test('malformed files and invalid dates are rejected',()=>{
   assert.throws(()=>parseDelimited('"unclosed'));assert.throws(()=>importTrades('Symbol,Shares\nABC,10'));
