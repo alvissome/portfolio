@@ -1,0 +1,33 @@
+name: Personal Portfolio Performance Snapshots
+on:
+  schedule:
+    - cron: '30 0 * * *' # 08:30 Singapore; users opt in after cash reconciliation
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Validate without saving, or capture opted-in accounts'
+        type: choice
+        default: dry-run
+        options: [dry-run, capture]
+permissions:
+  contents: read
+concurrency:
+  group: personal-portfolio-performance
+  cancel-in-progress: false
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+        working-directory: .github/scripts
+      - name: Capture private portfolio valuations
+        run: node .github/scripts/capturePerformance.js "--$CAPTURE_MODE"
+        env:
+          CAPTURE_MODE: ${{ github.event_name == 'schedule' && 'capture' || inputs.mode || 'dry-run' }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
