@@ -9,6 +9,19 @@ test('deposit is not mistaken for investment gain',()=>{
   const h=history({'2026-01-01':snapshot(row(100)), '2026-01-02':snapshot(row(110,20))},{a:makeFlow({id:'a',date:'2026-01-02',account:'cash',kind:'contribution',amount:20})});
   const r=calculate(h,'cash','total','2026-01-01','2026-01-02');assert.equal(r.gain,10);assert.ok(Math.abs(r.returnPct-10)<1e-10);
 });
+test('money earmarked in a bank is a contribution only to the full cash portfolio',()=>{
+  const f=makeFlow({id:'a',date:'2026-01-02',account:'cash',kind:'earmark',amount:20});
+  assert.equal(f.total,20);assert.equal(f.invested,0);assert.equal(f.location,'bank');
+  assert.throws(()=>makeFlow({id:'b',date:'2026-01-02',account:'srs',kind:'earmark',amount:20}));
+});
+test('earmarked money already in the opening value is not counted twice',()=>{
+  const h=history({'2026-02-01':snapshot(row(100,20)),'2026-02-02':snapshot(row(100,20))},{a:makeFlow({id:'a',date:'2026-01-02',account:'cash',kind:'earmark',amount:20})});
+  const r=calculate(h,'cash','total','2026-02-01','2026-02-02');assert.equal(r.netFlow,0);assert.equal(r.gain,0);assert.equal(r.returnPct,0);
+});
+test('an approximate funding date is labelled as an estimated return',()=>{
+  const h=history({'2026-01-01':snapshot(row(100)),'2026-01-02':snapshot(row(100,20))},{a:makeFlow({id:'a',date:'2026-01-02',account:'cash',kind:'earmark',amount:20,dateApproximate:true})});
+  assert.equal(calculate(h,'cash','total','2026-01-01','2026-01-02').method,'Modified Dietz estimate');
+});
 test('holdings return excludes idle cash while full portfolio includes it',()=>{
   const h=history({'2026-01-01':snapshot(row(100,100)),'2026-01-31':snapshot(row(110,100))});
   assert.ok(Math.abs(calculate(h,'cash','invested','2026-01-01','2026-01-31').returnPct-10)<1e-10);

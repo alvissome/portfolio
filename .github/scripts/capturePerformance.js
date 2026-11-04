@@ -28,6 +28,7 @@ for(const user of await db.collection('users').listDocuments()){
   const accounts={};
   for(const account of ACCOUNTS){
     const config=history.settings.capture?.[account];if(!config)continue;
+    if(config.needsReconciliation){skipped++;continue;}
     if(!Array.isArray(config.holdings)||JSON.stringify(positions[account])!==config.positionSignature){skipped++;continue;}
     if(config.sourceSignature!==sourceSignature(data,account)||!Number.isFinite(config.cash)){skipped++;continue;}
     // A newly recorded movement means cash needs reconciliation before resuming.

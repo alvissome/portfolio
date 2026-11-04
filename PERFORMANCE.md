@@ -8,6 +8,8 @@ Adds a performance panel to the existing signed-in dashboard: Cash, Retirement, 
 
 Only Investment portfolios map to Cash. CPF-IS maps to CPF and CPF-SRS to SRS. Trading, options, bonds and test portfolios are excluded. Bank cash earmarked for investing is additional to broker cash. Moving that bank cash to a broker is internal, not a new contribution.
 
+The Set aside money action records the date, additional SGD amount, bank location, optional note and whether a historical date is approximate. Earmarking enters the whole Cash portfolio, but not invested holdings. It records funding history without incrementing an already-entered cash balance. Funds earmarked before the opening valuation are already included there and are not counted again. Approximate funding dates produce explicitly estimated returns. New movements pause daily capture until the cash balance is reconciled again.
+
 The legacy dashboard stores positions by ticker and can combine holdings of the same stock across different accounts. Performance capture therefore uses its own account-specific inventory derived from a complete trade export, with explicit statement reconciliation before activation. It does not silently migrate or rewrite the legacy allocations. Negative inventories and unsupported active exchanges block automatic capture. Updated trade inventories require fresh confirmation.
 
 SRS dividends retained in SRS count as income and actual cash. CPF dividends transferred to OA count as income followed by a withdrawal from the tracked portfolio. OA balances and subsequent OA interest remain outside the tracker. Do not classify all historical CPF income as current cash. Do not infer transfer dates from dividend dates without evidence.
@@ -27,6 +29,8 @@ Invested-only flows include purchases (including fees) as positive flows, sales 
 ## Storage and backups
 
 Existing Firebase project: alvissome-portfolio, personal. History is isolated at users/{uid}/portfolio/performance. Existing holdings, settings and watchlist documents are unchanged. Browser writes merge individual record maps so disjoint dates and IDs survive concurrent writes. Same-date/same-account replacements are intentional corrections; export a backup first. History has its own Export history / Import history backup controls; the legacy dashboard backup does not contain performance history. Restore merges data and reconciliation coverage but does not silently reactivate scheduling.
+
+Before a live rollout, take a fresh Export Backup from the current dashboard after the owner has finished the monthly reconciliation, and retain a separate performance Export history once history exists. Confirm both exports are valid and usable before changing production. Adding the panel does not require restoring either export: use restoration only for recovery, because routinely restoring an older backup could overwrite newer changes. No production backup or restoration has yet been performed as part of this draft.
 
 Validate Firestore rules before rollout: signed-in owners alone must read/write their own performance document; unauthenticated and cross-user requests must be denied. Existing rules are not in this repository and have not been inspected. No rules or credentials were changed. The browser uses the existing Firebase SDK and authentication, without adding another SDK or dependency.
 

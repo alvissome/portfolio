@@ -73,20 +73,21 @@ export function flowValue(flow, scope, basis) {
 // Flow amounts are signed amounts crossing each boundary, in SGD, at end of day.
 // Dividends distributed out of holdings are negative invested flows. They remain
 // income, not new contributions. A payment to CPF OA also exits the total boundary.
-export function makeFlow({id, date, account, kind, amount, note=''}) {
+export function makeFlow({id, date, account, kind, amount, note='',dateApproximate=false}) {
   dateKey(date);
   if (!ACCOUNTS.includes(account)) throw Error('Choose an account.');
   const a = number(amount);
   if (a <= 0) throw Error('Amount must be greater than zero.');
   const types = {
-    contribution:[a,0], withdrawal:[-a,0], buy:[0,a], sale:[0,-a],
+    earmark:[a,0], contribution:[a,0], withdrawal:[-a,0], buy:[0,a], sale:[0,-a],
     dividend:[0,-a], dividend_to_oa:[-a,-a], sale_to_oa:[-a,-a],
     transfer_in:[a,0], transfer_out:[-a,0],
   };
   if (!types[kind]) throw Error('Unknown cash movement.');
+  if(kind==='earmark'&&account!=='cash')throw Error('Bank money set aside for investing belongs to Cash investment.');
   if (kind.endsWith('_to_oa') && account!=='cpf') throw Error('Transfers to CPF OA must use CPF.');
   const [total,invested] = types[kind];
-  return {id,date,account,kind,total,invested,note:String(note).slice(0,500)};
+  return {id,date,account,kind,total,invested,dateApproximate:dateApproximate===true||dateApproximate==='on',location:kind==='earmark'?'bank':'account',note:String(note).slice(0,500)};
 }
 export function calculate(history, scope, basis, start, end) {
   dateKey(start); dateKey(end);
@@ -106,7 +107,7 @@ export function calculate(history, scope, basis, start, end) {
   });
   if(!reconciled)return {points:usable.map(p=>({...p,returnPct:null})),start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:null,gain:null,returnPct:null,message:'Value history is available. Reconcile all cash movements for this period before calculating returns.'};
   const complete = rows.every(r=>r.value!==null);
-  const hasFlowValuations = complete && flows.every(f=>usable.some(r=>r.date===f.date));
+  const hasFlowValuations = complete && flows.every(f=>!f.dateApproximate&&usable.some(r=>r.date===f.date));
   let method = hasFlowValuations ? 'Time-weighted return' : 'Modified Dietz estimate';
   let product=1, runningFlow=0;
   const points=[{...first,returnPct:first.value>0?0:null,capital:first.value}];
@@ -123,7 +124,7 @@ export function calculate(history, scope, basis, start, end) {
     if (ret!==null && (!Number.isFinite(ret) || ret < -1)) ret=null;
     points.push({...current,returnPct:ret===null?null:ret*100,capital:first.value+runningFlow});
   }
-  return {points,start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:sum,gain,returnPct:points.at(-1).returnPct,method,message:hasFlowValuations?'End-of-day cash-flow convention.':'Estimated return: a valuation is missing on a cash-flow date or an account is unverified.'};
+  return {points,start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:sum,gain,returnPct:points.at(-1).returnPct,method,message:hasFlowValuations?'End-of-day cash-flow convention.':'Estimated return: a cash-flow date is approximate, a valuation is missing on a flow date, or an account is unverified.'};
 }
 export function parseDelimited(text) {
   const delimiter=text.split(/\r?\n/,1)[0].includes('\t')?'\t':',';
