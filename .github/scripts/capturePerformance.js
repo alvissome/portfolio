@@ -1,7 +1,7 @@
 // Personal portfolio only. No email/webhook delivery and no public data output.
 import {initializeApp,cert} from 'firebase-admin/app';
 import {getFirestore} from 'firebase-admin/firestore';
-import {ACCOUNTS,todaySG,sourceSignature,derivePositions} from '../../assets/performance-core.js';
+import {ACCOUNTS,todaySG,sourceSignature,capturePositions} from '../../assets/performance-core.js';
 
 const serviceAccount=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT||'{}');
 if(serviceAccount.project_id!=='alvissome-portfolio'||(process.env.FIREBASE_PROJECT_ID&&process.env.FIREBASE_PROJECT_ID!=='alvissome-portfolio'))throw Error('Unexpected project; snapshot stopped.');
@@ -24,7 +24,7 @@ for(const user of await db.collection('users').listDocuments()){
   const [dataSnap,historySnap]=await Promise.all([dataRef.get(),historyRef.get()]);
   if(!dataSnap.exists||!historySnap.exists)continue;
   const data=dataSnap.data(),history=historySnap.data();if(!history.settings?.dailyEnabled)continue;
-  let positions;try{positions=derivePositions(history.trades||{});}catch{skipped++;continue;}
+  let positions;try{positions=capturePositions(history,data);}catch{skipped++;continue;}
   const accounts={};
   for(const account of ACCOUNTS){
     const config=history.settings.capture?.[account];if(!config)continue;
@@ -54,7 +54,7 @@ for(const user of await db.collection('users').listDocuments()){
     const latest=latestHistory.data()||{},valid={};
     for(const [a,v]of Object.entries(accounts)){
       const config=latest.settings?.capture?.[a];
-      const positionUnchanged=JSON.stringify(derivePositions(latest.trades||{})[a])===config?.positionSignature;
+      const positionUnchanged=JSON.stringify(capturePositions(latest,latestData.data()||{})[a])===config?.positionSignature;
       if(latest.settings?.dailyEnabled && positionUnchanged && JSON.stringify(config)===JSON.stringify(history.settings.capture[a])&&sourceSignature(latestData.data()||{},a)===config.sourceSignature&&!Object.values(latest.flows||{}).some(f=>!f.voided&&f.account===a&&f.date>config.reconciledOn)){
         // Never overwrite a manually verified valuation for the same day.
         const prior=latest.snapshots?.[date]?.accounts?.[a];
