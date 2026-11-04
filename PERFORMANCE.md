@@ -163,3 +163,22 @@ Dated valuation CSVs keep the four existing columns. A blank `cash_sgd` is unkno
 The panel directs users to Invested holdings only when history exists with unresolved cash. Sparse dated source values are not represented as daily history. Private source reports, balances and trade exports must remain outside the public repository. Historical StocksCafe cash may include tracking migrations, missing dividends or unmatched sale proceeds, so source report cash and TWR must not be automatically certified. Statements and actual CPF OA transfers remain necessary for cash-inclusive returns.
 
 Validation: 55 tests pass, including unknown versus zero cash, holdings/total eligibility, unchanged return-reconciliation requirements, malformed input and protection of already checked historical cash. Live source retrieval does not by itself import private history into the dashboard. The owner must review the resulting private valuation file in the importer; this code change contains no financial records.
+
+## Owner clarification: historical cash scope (5 November 2026)
+
+The owner confirms that actual cash held in brokers is reconciled and belongs in broker-inclusive performance. Do not block that history merely because bank money set aside lacks historical records. Before 1 January 2026, exclude bank/set-aside money from the broker portfolio boundary and show performance for the bank-inclusive filter as unavailable. Unknown bank history is not zero bank cash and must not be carried backward from today's balance.
+
+Implementation must distinguish broker-inclusive history from bank-inclusive history. It must not join the two boundaries into one return series: introducing the bank balance in 2026 requires its dated opening/contribution treatment. The existing total snapshot field combines broker and bank cash, so historical broker-only amounts must not silently be imported as comparable totals. The previous holdings-only CSV remains valid as holdings-only evidence pending this scope extension. This clarification does not certify missing StocksCafe source entries or convert tracking-migration entries into real flows. It does not authorize publishing or merging the prepared code branch.
+
+
+## Separate broker and bank performance boundaries
+
+The default measure is Holdings + broker cash. The bank-inclusive measure explicitly covers 2026 onward and shows Performance not available when its selected Investment/Combined period begins before 2026. Retirement views retain actual SRS/CPF account cash and do not acquire a bank bucket. The invested-only view is unchanged.
+
+Current confirmations save brokerCash and bankCash alongside the existing total cash. Daily capture carries these fields forward only when they exist in the reconciled capture configuration. Existing total-only snapshots remain valid for their original view; no historical broker/bank split is guessed. Reconfirm current accounts to begin split daily records.
+
+Location-specific historical CSV header: date,account,invested_sgd,broker_cash_sgd,bank_cash_sgd. Unknown amounts stay blank. Before 2026, Investment bank cash must be blank. Checked broker cash remains usable independently. The original four-column CSV retains its total-cash meaning and clears any stale location split on a replaced record. Backups preserve cash locations and independent broker reconciliation coverage. No import marks return coverage automatically.
+
+Bank-to-broker transfers are positive funding at the broker boundary and zero at the bank-inclusive boundary. New bank earmarks are zero at the broker boundary. Retained dividends are income already in broker cash, not extra contributions. Broker and bank-inclusive movement coverage are independent so approval of one cannot certify the other. No-change confirmations extend existing coverage for both boundaries after their normal guards.
+
+Validation: 59 tests pass, including pre-2026 broker eligibility, unavailable bank-inclusive performance, bank transfers without artificial gain, earmarks excluded from broker flows, legacy snapshot handling, retirement cash, and split CSV validation. Private historical data is not modified or published by this change. Historical monthly source generation and inconsistent cash source entries remain unresolved; this change does not claim a completed backfill.

@@ -152,3 +152,34 @@ test('dated holdings-only imports never invent cash or enable total values',asyn
   assert.throws(()=>importValuations('date,account,invested_sgd,cash_sgd\n2026-01-31,cash,110,',parsed.snapshots),/checked cash/);
   for(const line of ['2026-01-31,cash,,','2026-01-31,cash,-1,','2026-01-31,unknown,1,','2026-02-30,cash,1,'])assert.throws(()=>importValuations('date,account,invested_sgd,cash_sgd\n'+line));
 });
+
+test('broker history works before 2026 while bank-inclusive performance is unavailable',async()=>{
+ const {importValuations}=await import('../assets/performance-core.js');
+ const h={...importValuations('date,account,invested_sgd,broker_cash_sgd,bank_cash_sgd\n2025-01-01,cash,100,20,\n2025-12-31,cash,110,20,'),flows:{},coverage:{cash:{broker:{start:'2025-01-01',end:'2025-12-31'}}}};
+ const r=calculate(h,'cash','broker','2025-01-01','2025-12-31');assert.equal(r.gain,10);assert.equal(r.opening,120);
+ const total=calculate(h,'cash','total','2025-01-01','2025-12-31');assert.equal(total.points.length,0);assert.match(total.message,/Performance not available/);
+ assert.equal(calculate(h,'cash','invested','2025-01-01','2025-12-31').returnPct,null);
+});
+test('bank-to-broker funding is not a gain in either portfolio boundary',()=>{
+ const h=history({'2026-01-01':snapshot({...row(100,100),brokerCash:20,bankCash:80}),'2026-01-02':snapshot({...row(100,100),brokerCash:50,bankCash:50})},{f:makeBankTransfer({date:'2026-01-02',amount:30,bankBefore:80,brokerBefore:20})});
+ h.coverage.cash.broker={start:'2026-01-01',end:'2026-01-02'};
+ assert.equal(calculate(h,'cash','broker','2026-01-01','2026-01-02').netFlow,30);
+ assert.equal(calculate(h,'cash','broker','2026-01-01','2026-01-02').gain,0);
+ assert.equal(calculate(h,'cash','total','2026-01-01','2026-01-02').gain,0);
+});
+test('earmarking bank money leaves broker value and flows unchanged',()=>{
+ const h=history({'2026-01-01':snapshot({...row(100,20),brokerCash:20,bankCash:0}),'2026-01-02':snapshot({...row(100,70),brokerCash:20,bankCash:50})},{f:makeFlow({date:'2026-01-02',account:'cash',kind:'earmark',amount:50})});
+ h.coverage.cash.broker={start:'2026-01-01',end:'2026-01-02'};
+ const r=calculate(h,'cash','broker','2026-01-01','2026-01-02');assert.equal(r.netFlow,0);assert.equal(r.gain,0);
+});
+test('legacy totals never imply a broker split; retirement has no bank bucket',async()=>{
+ const {snapshotValue,importValuations}=await import('../assets/performance-core.js');
+ assert.equal(snapshotValue(snapshot(row(100,90)),'cash','broker'),null);
+ assert.equal(snapshotValue(snapshot(row(0),row(100,20)),'srs','broker'),120);
+ const header='date,account,invested_sgd,broker_cash_sgd,bank_cash_sgd\n';
+ assert.throws(()=>importValuations(header+'2025-12-31,cash,100,20,0'),/before 2026/);
+ assert.throws(()=>importValuations(header+'2026-01-01,srs,100,20,50'),/SRS\/CPF/);
+ const parsed=importValuations(header+'2026-01-01,cash,100,20,50');
+ assert.equal(snapshotValue(parsed.snapshots['2026-01-01'],'cash','total'),170);
+ assert.equal(snapshotValue(parsed.snapshots['2026-01-01'],'cash','broker'),120);
+});

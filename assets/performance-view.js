@@ -1,4 +1,4 @@
-import {number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=history-20261104';
+import {number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=cashscope-20261105';
 
 export function cashParts(state,account) {
   if(account==='cash')return [
