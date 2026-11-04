@@ -30,6 +30,37 @@ export function sourceSignature(data,account) {
   const cash=account==='cash'?[c.brokers||0,c.growth||0,c.dividend||0]:[account==='srs'?c.srs||0:c.cpf||0];
   return JSON.stringify({holdings,cash});
 }
+// One private write saves the confirmation, today's value and capture configuration.
+// Never turn today's quotes into an invented historical valuation.
+export function confirmationSnapshot(history,state,{account,date,cash,unchanged=false,coverage=null}) {
+  if(!ACCOUNTS.includes(account))throw Error('Choose an account.');
+  if(dateKey(date)!==todaySG())throw Error('Automatic snapshots use today’s prices. Earlier dates require dated source values; do not backdate today’s portfolio.');
+  const prior=history.settings?.capture?.[account];
+  if(!prior)throw Error('Complete the initial account setup first, confirming the Cash/SRS/CPF split and actual cash.');
+  const positions=derivePositions(history.trades||{})[account];
+  if(JSON.stringify(positions)!==prior.positionSignature)throw Error('Holdings changed. Review the account setup before restarting daily snapshots.');
+  const signature=sourceSignature({holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}},account);
+  cash=number(cash);
+  if(unchanged&&(prior.needsReconciliation||signature!==prior.sourceSignature||cash!==prior.cash||Object.values(history.flows||{}).some(f=>!f.voided&&f.account===account&&f.date>prior.reconciledOn)))throw Error('Recorded holdings, balances or movements changed. Use Confirm reconciliation instead of No changes.');
+  let invested=0;
+  for(const h of positions){
+    const p=state.priceCache?.[h.ticker],fx=h.currency==='SGD'?1:state.fxRates?.[h.currency];
+    if(!(p?.close>0)||p.priceStale||!(fx>0))throw Error('Sync prices and FX before confirming; a current snapshot cannot be calculated.');
+    invested+=number(h.shares)*p.close*fx;
+  }
+  const patch={snapshots:{[date]:{accounts:{[account]:{invested,cash,verified:true,source:unchanged?'unchanged confirmation':'reconciliation confirmation'}},recordedAt:new Date().toISOString()}},settings:{dailyEnabled:true,checks:{[account]:{date,sourceSignature:signature}},capture:{[account]:{...prior,cash,holdings:positions,positionSignature:JSON.stringify(positions),sourceSignature:signature,reconciledOn:date,needsReconciliation:false}}}};
+  if(coverage){
+    const start=dateKey(coverage.start),basis=coverage.basis;
+    if(start>date||!['total','invested'].includes(basis))throw Error('Invalid reconciliation period.');
+    patch.coverage={[account]:{[basis]:{start,end:date}}};
+  }else if(unchanged){
+    // An explicit no-activity confirmation can extend existing total coverage.
+    // Invested-only dividends/flows still need their own coverage confirmation.
+    const previous=history.coverage?.[account]?.total;
+    if(previous&&previous.end>=prior.reconciledOn&&previous.start<=prior.reconciledOn)patch.coverage={[account]:{total:{start:previous.start,end:date}}};
+  }
+  return patch;
+}
 // Account-specific inventory: the same ticker may exist in multiple accounts.
 // This is staged evidence until the owner reconciles it against statements.
 export function derivePositions(trades) {
