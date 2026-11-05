@@ -1,7 +1,7 @@
 import {readCashLedger,ledgerReviewWindow,reconcileLedgerEntries,ledgerPatch} from './stockscafe-ledger.js?v=ledger-checkpoint-20261105';
-import {ACCOUNTS,todaySG,dateKey,number,calculate,makeFlow,makeBankTransfer,confirmCashLocations,sourceSignature,capturePositions,confirmationSnapshot} from './performance-core.js?v=ytd-20261105';
+import {ACCOUNTS,todaySG,dateKey,number,calculate,makeFlow,makeBankTransfer,confirmCashLocations,sourceSignature,capturePositions,confirmationSnapshot} from './performance-core.js?v=xirr-twr-cache-fix-20261105';
 
-import {cashParts,readCashParts,snapshotProgress,performanceRange,confirmedPerformanceRange} from './performance-view.js?v=period-coverage-20261105';
+import {cashParts,readCashParts,snapshotProgress,performanceRange,confirmedPerformanceRange} from './performance-view.js?v=xirr-twr-cache-fix-20261105';
 
 const names={cash:'Investment',srs:'SRS',cpf:'CPF investment'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -99,6 +99,12 @@ export function mount(root,uid,initialState,storage) {
         }
       }
     }catch(e){result={points:[],message:e.message};}
+    const holdingsCoverage=scope==='cash'&&basis==='invested'&&period==='reconciled'
+      ?history.coverage?.cash?.invested?.start:null;
+    const brokerCoverage=history.coverage?.cash?.broker?.start;
+    const holdingsHistoryNote=holdingsCoverage
+      ?'Holdings-only returns are confirmed from '+holdingsCoverage+'. Earlier saved holdings valuations cannot verify returns without dated trades and dividends.'+(brokerCoverage?' Holdings + broker cash has confirmed history from '+brokerCoverage+'.':'')
+      :null;
     const returnMessage=basis==='invested'&&result.points.length>1&&result.netFlow==null
       ? 'Holdings values are available. Reconcile dated purchases, sales and dividends for this period to calculate investment gain and return.'
       : result.message;
@@ -115,8 +121,9 @@ export function mount(root,uid,initialState,storage) {
       ${period==='custom'?`<form data-custom-dates><label>From<input name="start" type="date" min="1900-01-01" max="${todaySG()}" value="${esc(customStart||start)}" required></label><label>To<input name="end" type="date" min="1900-01-01" max="${todaySG()}" value="${esc(customEnd)}" required></label><button type="submit">Apply dates</button></form>`:''}</div>
       ${error?'<p class="pf-error" role="alert">'+esc(error)+'</p>':''}
       ${notice?'<p class="pf-caption" role="status">'+esc(notice)+'</p>':''}
-      <div class="pf-stats pf-stats-primary"><div><span>Money-weighted return (XIRR, annualized)</span><strong>${result.xirrPct==null?'—':result.xirrPct.toFixed(2)+'%'}</strong></div><div><span>${esc(result.twrMethod||'Time-weighted return (TWR)')}</span><strong>${result.twrPct==null?'—':result.twrPct.toFixed(2)+'%'}</strong></div><div><span>Investment gain / loss (SGD)</span><strong>${show(result.gain)}</strong></div></div><div class="pf-stats pf-stats-secondary"><div><span>Opening value</span><strong>${show(result.opening)}</strong></div><div><span>Net external flows</span><strong>${show(result.netFlow)}</strong></div></div>
+      <div class="pf-stats-scroll"><div class="pf-stats pf-stats-five"><div><span title="Money-weighted return (XIRR, annualized)">XIRR (annualized)</span><strong>${result.xirrPct==null?'—':result.xirrPct.toFixed(2)+'%'}</strong></div><div><span title="${esc(result.twrMethod||'Time-weighted return (TWR)')}">TWR (cumulative)</span><strong>${result.twrPct==null?'—':result.twrPct.toFixed(2)+'%'}</strong></div><div><span title="Investment gain / loss in SGD">Gain / loss (SGD)</span><strong>${show(result.gain)}</strong></div><div><span>Opening value</span><strong>${show(result.opening)}</strong></div><div><span title="Net external flows">Net flows</span><strong>${show(result.netFlow)}</strong></div></div></div>
       ${chart(result.points||[],metric,privacy)}
+      ${holdingsHistoryNote?`<p class="pf-caption">${esc(holdingsHistoryNote)}</p>`:''}
       ${result.provisionalThrough?`<p class="pf-caption" role="status">Provisional YTD. Assumes zero unrecorded cash movements after ${esc(result.provisionalThrough)}.</p>`:''}
       ${preset&&result.start&&result.points.length>1?`<p class="pf-caption">${partial||(period==='YTD'&&result.start>start)?'Partial '+esc(period)+'. ':''}Valuations used: ${esc(result.start)} to ${esc(result.end)}.</p>`:''}
       ${result.returnPct==null&&returnMessage?`<p class="pf-caption" role="status">${esc(returnMessage)}</p>`:''}
