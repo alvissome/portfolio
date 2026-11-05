@@ -27,7 +27,7 @@ export function sourceSignature(data,account) {
   const type={cash:'Cash',srs:'Retirement - SRS',cpf:'Retirement - CPF'}[account];
   const holdings=Object.values(data.holdings||{}).filter(h=>!h.exited&&h.accountType===type).map(h=>[h.ticker,Number(h.shares),h.currency]).sort((a,b)=>a[0].localeCompare(b[0]));
   const c=data.cashPositions||{};
-  const cash=account==='cash'?[c.brokers||0,c.growth||0,c.dividend||0]:[account==='srs'?c.srs||0:c.cpf||0];
+  const cash=account==='cash'?[c.brokers||0]:[account==='srs'?c.srs||0:c.cpf||0];
   return JSON.stringify({holdings,cash});
 }
 // Current account TSVs are a verified inventory source once the batch migration
@@ -57,7 +57,7 @@ export function confirmationSnapshot(history,state,{account,date,cash,unchanged=
   const signature=sourceSignature({holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}},account);
   cash=number(cash);
   const bankCash=account==='cash'?number(state.cash.growth)+number(state.cash.dividend):0,brokerCash=cash-bankCash;
-  if(unchanged&&(prior.needsReconciliation||signature!==prior.sourceSignature||cash!==prior.cash||Object.values(history.flows||{}).some(f=>!f.voided&&f.account===account&&f.date>prior.reconciledOn)))throw Error('Recorded holdings, balances or movements changed. Use Confirm reconciliation instead of No changes.');
+  if(unchanged&&(prior.needsReconciliation||signature!==prior.sourceSignature||(account==='cash'?brokerCash!==(prior.brokerCash??prior.cash):cash!==prior.cash)||Object.values(history.flows||{}).some(f=>!f.voided&&f.account===account&&f.date>prior.reconciledOn)))throw Error('Recorded holdings, balances or movements changed. Use Confirm reconciliation instead of No changes.');
   let invested=0;
   for(const h of positions){
     const p=state.priceCache?.[h.ticker],fx=h.currency==='SGD'?1:state.fxRates?.[h.currency];

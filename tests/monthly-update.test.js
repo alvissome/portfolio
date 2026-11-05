@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cashParts,readCashParts,snapshotProgress} from '../assets/performance-view.js';
 import {cashFields,chart} from '../assets/performance-panel.js';
-import {confirmationSnapshot,todaySG,calculate} from '../assets/performance-core.js';
+import {confirmationSnapshot,todaySG,calculate,sourceSignature} from '../assets/performance-core.js';
 import {planAccountImports} from '../assets/account-portfolio.js';
 
 const state=()=>({accountImportVersion:1,holdings:[{ticker:'DEMO.SI',accountType:'Cash',importAccount:'cash',shares:10,currency:'SGD'}],cash:{brokers:100,growth:200,dividend:50,srs:20,cpfIs:30},priceCache:{'DEMO.SI':{close:12}},fxRates:{SGD:1}});
@@ -11,6 +11,18 @@ test('cash review separates broker balance from all bank money set aside',()=>{
  const fd=new FormData();fd.set('review-broker','100');fd.set('review-bank','250');assert.equal(readCashParts(fd,'cash','review'),350);
  const markup=cashFields(s,'cash','review',true);assert.match(markup,/Cash in broker/);assert.match(markup,/Money set aside in bank/);assert.match(markup,/review-broker/);assert.match(markup,/review-bank/);assert.equal((markup.match(/readonly/g)||[]).length,2);
  assert.equal(cashParts(s,'srs')[0].value,20);assert.equal(cashParts(s,'cpf')[0].value,30);
+});
+test('allocation-only bank changes do not pause broker capture or change its return',()=>{
+ const s=state(),first=confirmationSnapshot({settings:{}},s,{account:'cash',date:todaySG(),cash:350});
+ const changed={...s,cash:{...s.cash,growth:5000,dividend:900}};
+ const signature=x=>sourceSignature({holdings:x.holdings,cashPositions:x.cash},'cash');
+ assert.equal(signature(s),signature(changed));
+ const next=confirmationSnapshot(first,changed,{account:'cash',date:todaySG(),cash:6000,unchanged:true});
+ assert.equal(next.snapshots[todaySG()].accounts.cash.brokerCash,100);
+ const h={snapshots:{'2026-01-01':{accounts:{cash:first.snapshots[todaySG()].accounts.cash}},'2026-01-02':{accounts:{cash:next.snapshots[todaySG()].accounts.cash}}},flows:{},coverage:{cash:{broker:{start:'2026-01-01',end:'2026-01-02'}}}};
+ const result=calculate(h,'cash','broker','2026-01-01','2026-01-02');assert.equal(result.gain,0);assert.equal(result.returnPct,0);
+ const markup=cashFields(changed,'cash','review',true,true);assert.doesNotMatch(markup,/Money set aside in bank/);assert.match(markup,/Broker cash/);
+ assert.equal(changed.cash.growth,5000);assert.equal(changed.cash.dividend,900);
 });
 test('first reconciliation bootstraps current account tracking without a separate setup',()=>{
  const s=state(),before=structuredClone(s),p=confirmationSnapshot({settings:{}},s,{account:'cash',date:todaySG(),cash:350,coverage:{start:todaySG(),basis:'total'}});

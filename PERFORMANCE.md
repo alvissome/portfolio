@@ -182,3 +182,23 @@ Location-specific historical CSV header: date,account,invested_sgd,broker_cash_s
 Bank-to-broker transfers are positive funding at the broker boundary and zero at the bank-inclusive boundary. New bank earmarks are zero at the broker boundary. Retained dividends are income already in broker cash, not extra contributions. Broker and bank-inclusive movement coverage are independent so approval of one cannot certify the other. No-change confirmations extend existing coverage for both boundaries after their normal guards.
 
 Validation: 59 tests pass, including pre-2026 broker eligibility, unavailable bank-inclusive performance, bank transfers without artificial gain, earmarks excluded from broker flows, legacy snapshot handling, retirement cash, and split CSV validation. Private historical data is not modified or published by this change. Historical monthly source generation and inconsistent cash source entries remain unresolved; this change does not claim a completed backfill.
+
+
+## Chart inspection and date-entry corrections
+
+The performance chart has a persistent visible date/value readout, a larger hit area, pointer/tap selection and keyboard focus with arrow/Home/End navigation. Private mode hides monetary values in the readout, labels and native titles.
+
+Custom dates apply together with Apply dates. Editing a date no longer redraws the panel on every native date change, and background portfolio updates preserve focused date fields. Native validity constraints reject incomplete, out-of-range and reversed dates before applying.
+
+The default Confirmed period uses the intersection of movement coverage for the selected accounts and cash boundary. Newer daily valuations outside that coverage remain available under All or another chosen period, without suppressing the returns for a completed historical period. No coverage is extended or inferred by this UI change.
+
+Validation: 63 unit tests pass, including partial-year edits during background updates, accessible chart interaction, private labels, and coverage intersections. Browser preview validation is unavailable in this session because the browser policy rejects local-file preview navigation. No private financial data is included in this change, and no live deployment is performed without owner approval.
+
+
+## Broker cash only for performance
+
+The owner selected holdings plus actual broker/account cash for returns. Bank cash set aside remains in allocation planning and Settings. The performance measure and reconciliation controls no longer offer bank-inclusive returns, and setting aside bank money does not create a broker performance flow. Actual bank-to-broker transfers are broker funding, recorded once.
+
+Allocation-only bank changes are excluded from the broker source signature and do not prevent a no-change confirmation when actual broker cash and holdings are unchanged. Existing bank fields and legacy total-history records remain compatible with backups; no history is deleted or silently reinterpreted. Existing capture configurations need one current account reconciliation to refresh the broker signature after this release.
+
+The combined release includes visible chart point readouts, keyboard/touch selection, Apply dates and Confirmed period. Validation: 64 tests, including allocation-only bank changes leaving broker capture and calculated returns unchanged. The owner explicitly approved pushing, merging and publishing this combined release on 5 November 2026. Private source records and financial clarifications are kept outside the public repository.
