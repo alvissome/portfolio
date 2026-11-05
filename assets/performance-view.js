@@ -1,13 +1,16 @@
 import {flowValue,number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=ytd-20261105';
 
+export function confirmedPerformanceRange(history,scope,basis){
+  const coverage=selectedAccounts(scope).map(a=>history.coverage?.[a]?.[basis]||(basis==='broker'&&a!=='cash'?history.coverage?.[a]?.total:null));
+  if(!coverage.every(Boolean))return null;
+  const from=coverage.map(c=>c.start).sort().at(-1),through=coverage.map(c=>c.end).sort()[0];
+  return from<=through?[from,through]:null;
+}
+
 export function performanceRange(history,{scope,basis,period,customStart='',customEnd,today}){
   let end=period==='custom'?customEnd:today,start=Object.keys(history.snapshots||{}).sort()[0]||end;
   if(period==='reconciled'){
-    const coverage=selectedAccounts(scope).map(a=>history.coverage?.[a]?.[basis]||(basis==='broker'&&a!=='cash'?history.coverage?.[a]?.total:null));
-    if(coverage.every(Boolean)){
-      const from=coverage.map(c=>c.start).sort().at(-1),through=coverage.map(c=>c.end).sort()[0];
-      if(from<=through){start=from;end=through;}
-    }
+    return confirmedPerformanceRange(history,scope,basis)||[start,end];
   }else if(period==='YTD'){
     const year=Number(end.slice(0,4));
     start=String(year-1).padStart(4,'0')+'-12-31';

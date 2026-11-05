@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chart,bindChart,mount} from '../assets/performance-panel.js';
 import {performanceRange} from '../assets/performance-view.js';
-import {calculate,makeFlow} from '../assets/performance-core.js';
+import {calculate,makeFlow,todaySG} from '../assets/performance-core.js';
 
 test('confirmed period intersects account coverage instead of using newer unchecked snapshots',()=>{
   const history={snapshots:{'2015-12-31':{},'2026-11-05':{}},coverage:{cash:{broker:{start:'2025-12-31',end:'2026-11-03'}},srs:{total:{start:'2025-12-31',end:'2026-09-30'}},cpf:{broker:{start:'2026-01-01',end:'2026-10-31'}}}};
@@ -77,11 +77,39 @@ test('date edits survive partial years and background state updates until Apply 
   globalThis.document={activeElement:null};
   try{
     const c=mount(root,'sample',state,{load:async()=>({snapshots:{},flows:{},trades:{},coverage:{},settings:{}})});
-    await Promise.resolve();filters[3].value='custom';filters[3].onchange();
+    await Promise.resolve();
+    assert.doesNotMatch(html,/Historical trade evidence/);
+    c.update({...state,accountImportVersion:1});
+    assert.doesNotMatch(html,/Historical trade evidence/);
+    assert.match(html,/Recorded dashboard cash movements/);
+    filters[3].value='custom';filters[3].onchange();
     assert.doesNotMatch(html,/option value="total"|Holdings \+ broker \+ bank/);
     const editing=form,renderCount=renders;globalThis.document.activeElement=editing.elements.start;
     for(const year of ['0002','0020','0202','2025']){editing.elements.start.value=year+'-12-31';c.update({...state});assert.equal(renders,renderCount);assert.equal(form,editing);}
     editing.onsubmit({preventDefault(){}});assert.equal(renders,renderCount+1);assert.match(html,/name="start"[^>]*value="2025-12-31"/);
     c.destroy();
   }finally{globalThis.document=previousDocument;}
+});
+
+test('preset returns use the overlap with confirmed coverage and label the actual dates',async()=>{
+  const today=todaySG(),date=offset=>new Date(Date.parse(today)-offset*864e5).toISOString().slice(0,10);
+  const [older,start,mid,end]=[340,300,120,30].map(date);
+  const snapshot=invested=>({accounts:{cash:{invested,verified:true}}});
+  const history={
+    snapshots:{[older]:snapshot(80),[start]:snapshot(100),[mid]:snapshot(110),[end]:snapshot(121),[today]:snapshot(150)},
+    flows:{},coverage:{cash:{invested:{start,end}}},settings:{}
+  };
+  const filters=['scope','basis','metric','period'].map(filter=>({dataset:{filter},value:''}));
+  const root={innerHTML:'',replaceChildren(){},querySelector(){return null;},querySelectorAll:s=>s==='[data-filter]'?filters:[]};
+  const state={holdings:[],cash:{},privacyMode:false,accountImportVersion:1};
+  const mounted=mount(root,'sample',state,{load:async()=>history});
+  await Promise.resolve();
+  filters[1].value='invested';filters[1].onchange();
+  filters[3].value='6M';filters[3].onchange();
+  assert.ok(root.innerHTML.includes('Partial 6M. Valuations used: '+mid+' to '+end));
+  assert.match(root.innerHTML,/>10\.00%<\/strong>/);
+  filters[3].value='1Y';filters[3].onchange();
+  assert.ok(root.innerHTML.includes('Partial 1Y. Valuations used: '+start+' to '+end));
+  assert.match(root.innerHTML,/>21\.00%<\/strong>/);
+  mounted.destroy();
 });
