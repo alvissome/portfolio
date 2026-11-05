@@ -2,3 +2,11 @@
 .pf-menu{display:grid;gap:12px;margin:18px 0}.pf-menu button{text-align:left;padding:14px}.pf-menu strong,.pf-menu span{display:block}.pf-menu span{font-size:12px;color:#607586;margin-top:5px;line-height:1.5}.pf-panel details>h3{font-weight:600;font-size:14px;margin-top:18px}.pf-dialog details{margin:12px 0}.pf-dialog details>summary{line-height:1.6}
 .pf-controls [data-custom-dates]{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}.pf-chart{margin:16px 0}.pf-chart figcaption{min-height:42px;padding:10px 12px;background:#edf5f8;border-radius:7px;font-size:13px;line-height:1.6;font-variant-numeric:tabular-nums}.pf-chart [data-chart-point]{cursor:pointer}.pf-chart .pf-point-active,.pf-chart [data-chart-point]:focus-visible{stroke:#167d9a;stroke-width:2;fill:#167d9a22;outline:none}
 .pf-panel [data-performance-section="advanced"]>details{margin-block:8px;margin-inline-start:16px}
+
+/* Keep all five performance measures on one row; scroll horizontally on narrow screens. */
+.pf-stats-scroll{width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+.pf-panel .pf-stats-five{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));min-width:720px;gap:8px;margin:14px 0}
+.pf-panel .pf-stats-five>div{min-width:0;padding:12px 10px}
+.pf-panel .pf-stats-five span{font-size:11px;line-height:1.35;min-height:30px;margin-bottom:4px}
+.pf-panel .pf-stats-five strong{font-size:clamp(13px,1.3vw,18px);font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(max-width:700px){.pf-panel .pf-stats-five{grid-template-columns:repeat(5,minmax(0,1fr));min-width:720px}}
