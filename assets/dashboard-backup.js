@@ -41,7 +41,7 @@ function validateHistory(history) {
 }
 
 // Keep recovery data, but never place third-party credentials in portable backups.
-const isSensitiveField = key => /(?:apiKey|secret|token|password|credential|privateKey|publicKey|authorization|accessKey)/i.test(key);
+const isSensitiveField = key => /(?:apiKey|dataKey|secret|token|password|credential|privateKey|publicKey|authorization|accessKey)/i.test(key);
 export function withoutCredentials(value) {
   if(Array.isArray(value))return value.map(withoutCredentials);
   if(value===null||typeof value!=='object')return value;
