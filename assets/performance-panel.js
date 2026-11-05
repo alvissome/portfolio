@@ -28,12 +28,12 @@ export function chart(points,metric,privateMode) {
   const pad=(hi-lo)*.1;lo-=pad;hi+=pad;
   const start=Date.parse(data[0].date),end=Date.parse(data.at(-1).date);
   const x=p=>(end===start?W/2:L+(Date.parse(p.date)-start)/(end-start)*(W-L-R)),y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
-  const line=(key,color)=>'<polyline fill="none" stroke="'+color+'" stroke-width="3" points="'+data.filter(p=>p[key]!=null).map(p=>x(p).toFixed(1)+','+y(p[key]).toFixed(1)).join(' ')+'"/>';
-  let svg='<figure class="pf-chart"><figcaption data-chart-readout aria-live="polite">Hover, tap or focus a point to see its date and value.</figcaption><svg viewBox="0 0 '+W+' '+H+'" role="group" aria-label="'+(metric==='value'?'Portfolio value and opening value plus net flows':'Portfolio return percentage')+'">';
+  const line=(key,color,width=3)=>'<polyline fill="none" stroke="'+color+'" stroke-width="'+width+'" points="'+data.filter(p=>p[key]!=null).map(p=>x(p).toFixed(1)+','+y(p[key]).toFixed(1)).join(' ')+'"/>';
+  let svg='<figure class="pf-chart"><figcaption data-chart-readout aria-live="polite">Hover, tap or focus a point to see its date and value.</figcaption><svg viewBox="0 0 '+W+' '+H+'" role="group" aria-label="'+(metric==='value'?'Portfolio value and opening value plus net flows':'Portfolio time-weighted return percentage')+'">';
   for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4,Y=y(v);svg+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y+'" y2="'+Y+'" stroke="#e5eaf0"/><text x="'+(L-10)+'" y="'+(Y+4)+'" text-anchor="end">'+esc(privateMode&&metric==='value'?'•••':metric==='value'?Math.round(v).toLocaleString('en-SG'):v.toFixed(1)+'%')+'</text>';}
-  svg+=line(metric,'#167d9a');if(metric==='value')svg+=line('capital','#ab8b50');
+  svg+=line(metric,'#167d9a');if(metric==='value')svg+=line('capital','#ab8b50',1.35);
   for(const p of data){
-    const label=p.date+' · '+(metric==='value'?'Portfolio value: '+(privateMode?'Hidden':money(p.value)):'Return: '+p.returnPct.toFixed(2)+'%')+(metric==='value'&&Number.isFinite(p.capital)?' · Opening value + net flows: '+(privateMode?'Hidden':money(p.capital)):'');
+    const label=p.date+' · '+(metric==='value'?'Portfolio value: '+(privateMode?'Hidden':money(p.value)) : 'TWR: '+p.twrPct.toFixed(2)+'%')+(metric==='value'&&Number.isFinite(p.capital)?' · Opening value + net flows: '+(privateMode?'Hidden':money(p.capital)):'');
     svg+='<circle data-chart-point data-label="'+esc(label)+'" cx="'+x(p)+'" cy="'+y(p[metric])+'" r="12" fill="transparent" tabindex="0" role="button" aria-label="'+esc(label)+'"><title>'+esc(label)+'</title></circle><circle cx="'+x(p)+'" cy="'+y(p[metric])+'" r="3" fill="#167d9a" pointer-events="none"/>';
   }
   return svg+'<text x="'+L+'" y="'+(H-8)+'">'+data[0].date+'</text><text x="'+(W-R)+'" y="'+(H-8)+'" text-anchor="end">'+data.at(-1).date+'</text></svg></figure>';
@@ -107,15 +107,15 @@ export function mount(root,uid,initialState,storage) {
     const privacy=state.privacyMode;
     const show=n=>privacy?'S$•••':money(n);
     const options=(values,selected)=>values.map(([v,label])=>'<option value="'+v+'" '+(v===selected?'selected':'')+'>'+label+'</option>').join('');
-    root.innerHTML=`<div class="pf-title"><div><h2>Portfolio performance</h2><p>Investment growth, with contributions kept separate.</p></div></div>
+    root.innerHTML=`<div class="pf-title"><div><h2>Portfolio performance</h2><p>Investment performance after accounting for contributions and withdrawals.</p></div></div>
       <div class="pf-controls"><label>Portfolio<select data-filter="scope">${options([['cash','Investment'],['retirement','Retirement'],['srs','SRS'],['cpf','CPF investment'],['combined','Combined']],scope)}</select></label>
       <label>Measure<select data-filter="basis">${options([['broker','Holdings + broker cash'],['invested','Invested holdings only']],basis)}</select></label>
-      <label>Chart<select data-filter="metric">${options([['value','Value (SGD)'],['returnPct','Return (%)']],metric)}</select></label>
+      <label>Chart<select data-filter="metric">${options([['value','Value (SGD)'],['twrPct','TWR (%)']],metric)}</select></label>
       <label>Period<select data-filter="period">${options(['reconciled','1M','3M','6M','YTD','1Y','All','custom'].map(x=>[x,x==='custom'?'Custom':x==='reconciled'?'Confirmed period':x]),period)}</select></label>
       ${period==='custom'?`<form data-custom-dates><label>From<input name="start" type="date" min="1900-01-01" max="${todaySG()}" value="${esc(customStart||start)}" required></label><label>To<input name="end" type="date" min="1900-01-01" max="${todaySG()}" value="${esc(customEnd)}" required></label><button type="submit">Apply dates</button></form>`:''}</div>
       ${error?'<p class="pf-error" role="alert">'+esc(error)+'</p>':''}
       ${notice?'<p class="pf-caption" role="status">'+esc(notice)+'</p>':''}
-      <div class="pf-stats"><div><span>Opening value</span><strong>${show(result.opening)}</strong></div><div><span>Net flows</span><strong>${show(result.netFlow)}</strong></div><div><span>Investment gain / loss</span><strong>${show(result.gain)}</strong></div><div><span>${esc(result.method||'Return')}</span><strong>${result.returnPct==null?'—':result.returnPct.toFixed(2)+'%'}</strong></div></div>
+      <div class="pf-stats pf-stats-primary"><div><span>Money-weighted return (XIRR, annualized)</span><strong>${result.xirrPct==null?'—':result.xirrPct.toFixed(2)+'%'}</strong></div><div><span>${esc(result.twrMethod||'Time-weighted return (TWR)')}</span><strong>${result.twrPct==null?'—':result.twrPct.toFixed(2)+'%'}</strong></div><div><span>Investment gain / loss (SGD)</span><strong>${show(result.gain)}</strong></div></div><div class="pf-stats pf-stats-secondary"><div><span>Opening value</span><strong>${show(result.opening)}</strong></div><div><span>Net external flows</span><strong>${show(result.netFlow)}</strong></div></div>
       ${chart(result.points||[],metric,privacy)}
       ${result.provisionalThrough?`<p class="pf-caption" role="status">Provisional YTD. Assumes zero unrecorded cash movements after ${esc(result.provisionalThrough)}.</p>`:''}
       ${preset&&result.start&&result.points.length>1?`<p class="pf-caption">${partial||(period==='YTD'&&result.start>start)?'Partial '+esc(period)+'. ':''}Valuations used: ${esc(result.start)} to ${esc(result.end)}.</p>`:''}
@@ -125,7 +125,7 @@ export function mount(root,uid,initialState,storage) {
       <p class="pf-caption">${progress.dates.length} saved snapshot date${progress.dates.length===1?'':'s'} for this view${progress.dates.length?': '+esc(progress.dates[0])+(progress.dates.length>1?' to '+esc(progress.dates.at(-1)):''):''}. ${progress.dates.length===1?(metric==='value'?'Your saved value is shown as one point. ':'Percentage returns need a later snapshot date. ')+'Confirming twice on the same date updates the same saved value; a later date supplies the trend. ':''}${progress.paused.length?'Capture needs reconciliation for: '+progress.paused.map(a=>esc(names[a])).join(', ')+'.':progress.dailyEnabled&&progress.configured?'Daily capture is scheduled for 08:30 Singapore time.':'Confirm reconciliation for each account in this view to configure daily capture.'} ${progress.missing.length?'Latest saved date lacks verified values for: '+progress.missing.map(a=>esc(names[a])).join(', ')+'. Combined views need all selected accounts on the same date.':''}</p>
       <p class="pf-caption">${result.returnPct!=null?esc(result.message)+' ':''}${result.start?'Valuations used: '+esc(result.start)+' to '+esc(result.end)+'.':''}</p>
       ${metric==='value'?'<p class="pf-caption">Blue shows portfolio value. Gold shows opening value plus net flows during this period.</p>':''}
-      <p class="pf-caption">Performance includes holdings and broker or investment-account cash. Bank money set aside is used for allocation planning.</p>
+      <p class="pf-caption">XIRR is annualized for the selected dates; TWR is cumulative. When cash flows fall between saved valuations, TWR is an estimate. Short periods can produce unusually large annualized XIRR figures. Performance includes broker or investment-account cash; bank money set aside is allocation-only. YTD starts a fresh comparison each January (including January 2027) without deleting earlier history.</p>
       <p class="pf-caption">${ACCOUNTS.map(a=>{const c=history.settings.checks?.[a];if(!c)return esc(names[a])+': not checked';const raw={holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}};return esc(names[a])+': checked '+esc(c.date)+(c.sourceSignature!==sourceSignature(raw,a)?' (balances or holdings changed since)':'');}).join(' · ')}</p>
       </details>
       ${section('advanced','Recovery & corrections')}
