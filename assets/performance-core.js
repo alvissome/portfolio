@@ -161,7 +161,7 @@ export function makeBankTransfer({id,date,amount,bankBefore,brokerBefore,note=''
 export function confirmCashLocations(transfer,bank,broker) {
   if(Math.abs(number(bank)-transfer.bankAfter)>.005||Math.abs(number(broker)-transfer.brokerAfter)>.005)throw Error('Update the bank cash and import/reconcile the broker cash first. Both balances must match the transfer review.');
 }
-export function calculate(history, scope, basis, start, end) {
+export function calculate(history, scope, basis, start, end, {allowUnconfirmedTail=false}={}) {
   dateKey(start); dateKey(end);
   if (start > end) throw Error('Start date must precede end date.');
   if(basis==='total'&&selectedAccounts(scope).includes('cash')&&start<'2026-01-01')return {points:[],message:'Performance not available: bank money set aside has no history before 2026. Select Holdings + broker cash for earlier history.'};
@@ -178,7 +178,10 @@ export function calculate(history, scope, basis, start, end) {
     const c=history.coverage?.[a]?.[basis]||(basis==='broker'&&a!=='cash'?history.coverage?.[a]?.total:null);
     return c && c.start<=first.date && c.end>=last.date;
   });
-  if(!reconciled)return {points:usable.map(p=>({...p,returnPct:null})),start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:null,gain:null,returnPct:null,message:'Value history is available. Reconcile all cash movements for this period before calculating returns.'};
+  const coverage=history.coverage?.[scope]?.[basis];
+  const provisionalThrough=!reconciled&&allowUnconfirmedTail&&scope==='cash'&&basis==='broker'&&
+    coverage&&coverage.start<=first.date&&coverage.end>=first.date ? coverage.end : null;
+  if(!reconciled&&!provisionalThrough)return {points:usable.map(p=>({...p,returnPct:null})),start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:null,gain:null,returnPct:null,message:'Value history is available. Reconcile all cash movements for this period before calculating returns.'};
   const complete = rows.every(r=>r.value!==null);
   const hasFlowValuations = complete && flows.every(f=>!f.dateApproximate&&usable.some(r=>r.date===f.date));
   let method = hasFlowValuations ? 'Time-weighted return' : 'Modified Dietz estimate';
@@ -197,7 +200,7 @@ export function calculate(history, scope, basis, start, end) {
     if (ret!==null && (!Number.isFinite(ret) || ret < -1)) ret=null;
     points.push({...current,returnPct:ret===null?null:ret*100,capital:first.value+runningFlow});
   }
-  return {points,start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:sum,gain,returnPct:points.at(-1).returnPct,method,message:hasFlowValuations?'End-of-day cash-flow convention.':'Estimated return: a cash-flow date is approximate, a valuation is missing on a flow date, or an account is unverified.'};
+  return {points,start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:sum,gain,returnPct:points.at(-1).returnPct,method,provisionalThrough,message:hasFlowValuations?'End-of-day cash-flow convention.':'Estimated return: a cash-flow date is approximate, a valuation is missing on a flow date, or an account is unverified.'};
 }
 export function parseDelimited(text) {
   const delimiter=text.split(/\r?\n/,1)[0].includes('\t')?'\t':',';

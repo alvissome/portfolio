@@ -41,7 +41,13 @@ export async function reviewAccountBatch(files,state,downloadBackup) {
       }catch(e){error.textContent=e.message;}
     };
     form.oninput=e=>{if(!['confirmed','backup'].includes(e.target.name)){form.elements.confirmed.checked=false;review();}};
-    dialog.querySelector('[data-download]').onclick=()=>{downloadBackup();downloaded=true;};
+    dialog.querySelector('[data-download]').onclick=async event=>{
+      const button=event.currentTarget;
+      button.disabled=true;
+      try{await downloadBackup();downloaded=true;}
+      catch(err){error.textContent=err.message;}
+      finally{button.disabled=false;}
+    };
     form.onsubmit=e=>{
       e.preventDefault();try{
         if(!form.reportValidity())return;

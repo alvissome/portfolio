@@ -1,6 +1,7 @@
-import {ACCOUNTS,todaySG,dateKey,number,calculate,makeFlow,makeBankTransfer,confirmCashLocations,parseDelimited,importTrades,stableId,sourceSignature,derivePositions,capturePositions,confirmationSnapshot,importValuations} from './performance-core.js?v=broker-only-20261105';
+import {readCashLedger,ledgerReviewWindow,reconcileLedgerEntries,ledgerPatch} from './stockscafe-ledger.js?v=ledger-checkpoint-20261105';
+import {ACCOUNTS,todaySG,dateKey,number,calculate,makeFlow,makeBankTransfer,confirmCashLocations,importTrades,stableId,sourceSignature,capturePositions,confirmationSnapshot} from './performance-core.js?v=ytd-20261105';
 
-import {cashParts,readCashParts,snapshotProgress,performanceRange} from './performance-view.js?v=broker-only-20261105';
+import {cashParts,readCashParts,snapshotProgress,performanceRange} from './performance-view.js?v=ytd-20261105';
 
 const names={cash:'Investment',srs:'SRS',cpf:'CPF investment'};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -63,8 +64,7 @@ export function createPerformanceComponent(React,jsx) {
   };
 }
 export function mount(root,uid,initialState,storage) {
-  let state=initialState,history=empty(),alive=true,busy=false,loaded=false,error='',scope='cash',basis='broker',metric='value',period='reconciled',customStart='',customEnd=todaySG();
-  let pending=null;
+  let state=initialState,history=empty(),alive=true,busy=false,loaded=false,error='',notice='',scope='cash',basis='broker',metric='value',period='reconciled',customStart='',customEnd=todaySG();
   root.innerHTML='<p>Loading performance history…</p>';
   const merge=(base,patch)=>{for(const [k,v]of Object.entries(patch)){
     if(['__proto__','constructor','prototype'].includes(k))throw Error('Invalid history field.');
@@ -84,8 +84,10 @@ export function mount(root,uid,initialState,storage) {
   function render(){
     if(!alive)return;
     const [start,end]=range();let result;
-    try{result=calculate(history,scope,basis,start,end);}catch(e){result={points:[],message:e.message};}
     const progress=snapshotProgress(history,scope,basis,start,end,state);
+    try{result=calculate(history,scope,basis,start,end,{allowUnconfirmedTail:period==='YTD'&&progress.paused.length===0});}catch(e){result={points:[],message:e.message};}
+    const openSections=new Set([...root.querySelectorAll('details[data-performance-section][open]')].map(el=>el.dataset.performanceSection));
+    const section=(id,title)=>`<details data-performance-section="${id}"${openSections.has(id)?' open':''}><summary>${title}</summary>`;
     const privacy=state.privacyMode;
     const show=n=>privacy?'S$•••':money(n);
     const options=(values,selected)=>values.map(([v,label])=>'<option value="'+v+'" '+(v===selected?'selected':'')+'>'+label+'</option>').join('');
@@ -96,22 +98,32 @@ export function mount(root,uid,initialState,storage) {
       <label>Period<select data-filter="period">${options(['reconciled','1M','3M','6M','YTD','1Y','All','custom'].map(x=>[x,x==='custom'?'Custom':x==='reconciled'?'Confirmed period':x]),period)}</select></label>
       ${period==='custom'?`<form data-custom-dates><label>From<input name="start" type="date" min="1900-01-01" max="${todaySG()}" value="${esc(customStart||start)}" required></label><label>To<input name="end" type="date" min="1900-01-01" max="${todaySG()}" value="${esc(customEnd)}" required></label><button type="submit">Apply dates</button></form>`:''}</div>
       ${error?'<p class="pf-error" role="alert">'+esc(error)+'</p>':''}
+      ${notice?'<p class="pf-caption" role="status">'+esc(notice)+'</p>':''}
       <div class="pf-stats"><div><span>Opening value</span><strong>${show(result.opening)}</strong></div><div><span>Net flows</span><strong>${show(result.netFlow)}</strong></div><div><span>Investment gain / loss</span><strong>${show(result.gain)}</strong></div><div><span>${esc(result.method||'Return')}</span><strong>${result.returnPct==null?'—':result.returnPct.toFixed(2)+'%'}</strong></div></div>
       ${chart(result.points||[],metric,privacy)}
-      <p class="pf-caption">${progress.dates.length} saved snapshot date${progress.dates.length===1?'':'s'} for this view${progress.dates.length?': '+esc(progress.dates[0])+(progress.dates.length>1?' to '+esc(progress.dates.at(-1)):''):''}. ${progress.dates.length===1?(metric==='value'?'Your saved value is shown as one point. ':'Percentage returns need a later snapshot date. ')+'Confirming twice on the same date updates the same saved value; a later date supplies the trend. ':''}${progress.paused.length?'Capture needs reconciliation for: '+progress.paused.map(a=>esc(names[a])).join(', ')+'.':progress.dailyEnabled&&progress.configured?'Daily capture is enabled and scheduled for 08:30 Singapore time; changes still need reconciliation.':'Confirm reconciliation for each account in this view to configure daily capture.'} ${progress.missing.length?'Latest saved date lacks verified values for: '+progress.missing.map(a=>esc(names[a])).join(', ')+'. Combined views need all selected accounts on the same date.':''}</p>
-      ${progress.dates.length<2?'<p class="pf-caption">Current-portfolio TSVs contain today’s holdings and cash, not an earlier valuation series. Historical transaction imports do not create old snapshots. Historical backfill is not yet complete; earlier values require dated source records.</p>':''}
-      <p class="pf-caption">${esc(result.message)} ${result.start?'Actual coverage: '+result.start+' to '+result.end+'.':''}</p>
-      ${metric==='value'?'<p class="pf-caption">Blue: portfolio value · Gold: opening value + net flows during this period (not lifetime contributions).</p>':''}
-      <p class="pf-caption">Performance includes holdings and actual broker/account cash. Money set aside in your bank is used for allocation planning only.</p>
-      <p class="pf-caption">${ACCOUNTS.map(a=>{const c=history.settings.checks?.[a];if(!c)return esc(names[a])+': not checked';const raw={holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}};return esc(names[a])+': checked '+esc(c.date)+(c.sourceSignature!==sourceSignature(raw,a)?' (balances or holdings changed since)':'');}).join(' · ')}</p>
+      ${result.provisionalThrough?`<p class="pf-caption" role="status">Provisional YTD. Assumes zero unrecorded cash movements after ${esc(result.provisionalThrough)}.</p>`:''}
+      ${period==='YTD'&&result.start&&result.start>start?`<p class="pf-caption">Partial YTD. The first available valuation is ${esc(result.start)}.</p>`:''}
+      ${result.returnPct==null&&result.message?`<p class="pf-caption" role="status">${esc(result.message)}</p>`:''}
       <div class="pf-actions"><button data-action="monthly">Monthly update</button><button data-action="money">Money movements</button></div>
-      <p class="pf-caption">Use the top Import menu to upload account-specific StocksCafe TSVs in one batch. Confirm reconciliation or no changes to save today’s snapshot and enable daily snapshots. Holdings values are calculated from quantities and synced prices.</p>
-      <details><summary>Advanced: history, backups & settings</summary>
-      <h3>Earlier history & account setup</h3><div class="pf-actions"><button data-action="valuation">Advanced account setup / earlier snapshot</button></div><p class="pf-caption">Optional setup tools, not monthly uploads. A StocksCafe transaction CSV provides dated trades and account splits; the normal TSV updates current balances. For broker history, use date,account,invested_sgd,broker_cash_sgd,bank_cash_sgd and leave bank_cash_sgd blank. Bank cash is not used for returns. The original four-column format remains supported. A valuation CSV supplies earlier statement values with columns date,account,invested_sgd,cash_sgd. Leave cash_sgd blank when historical cash is unknown: these records appear only in the invested-holdings view. Use zero only when actual cash was zero. Values retain their source dates; lines between sparse snapshots are not daily history.</p><div class="pf-actions"><button data-action="import-trades">Import historical StocksCafe transactions</button><button data-action="import-valuations">Import earlier statement values</button></div>
-      <h3>Performance-history backup</h3><p class="pf-caption">The top Export Backup / Import Backup controls cover your original portfolio data. These separate controls cover the new snapshots and movement history. Use them for recovery, not routine updates.</p><div class="pf-actions"><button data-action="export">Export performance history</button><button data-action="restore">Restore performance history</button></div>
-      <h3>Automatic snapshots</h3><p class="pf-caption">${history.settings.dailyEnabled?'Enabled for accounts confirmed during snapshot setup. Cash stays at its last checked amount; changes need reconciliation. Pause only when you want automatic recording to stop.':'Waiting for verified account setup and confirmation. Confirming today’s reconciliation or no changes enables daily snapshots. Data is private in your personal Firebase account; the daily cloud job does not depend on your laptop.'}</p>${history.settings.dailyEnabled?'<div class="pf-actions"><button data-action="stop-daily">Pause automatic snapshots</button></div>':''}
-      <h3>History & corrections</h3><p class="pf-caption">${Object.keys(history.snapshots).length} snapshot dates · ${Object.values(history.flows).filter(f=>!f.voided).length} cash movements · ${Object.keys(history.trades).length} imported transactions. Trade imports are staged for reconciliation; they do not invent historical valuations or cash flows.</p>
-      <div class="pf-scroll"><table><thead><tr><th>Date</th><th>Account</th><th>Movement</th><th>Amount</th><th></th></tr></thead><tbody>${Object.values(history.flows).filter(f=>!f.voided).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,100).map(f=>`<tr><td>${esc(f.date)}</td><td>${esc(names[f.account])}</td><td>${esc(f.kind==='bank_to_broker'?'Bank → IBKR funding':f.kind==='cash_to_oa'?'CPF investment cash → OA':f.kind)}</td><td>${show(f.amount??Math.abs(f.total||f.invested))}</td><td><button data-void="${esc(f.id)}">Void entry</button></td></tr>`).join('')}</tbody></table></div></details>
+      ${section('status','Performance details')}
+      <p class="pf-caption">${progress.dates.length} saved snapshot date${progress.dates.length===1?'':'s'} for this view${progress.dates.length?': '+esc(progress.dates[0])+(progress.dates.length>1?' to '+esc(progress.dates.at(-1)):''):''}. ${progress.dates.length===1?(metric==='value'?'Your saved value is shown as one point. ':'Percentage returns need a later snapshot date. ')+'Confirming twice on the same date updates the same saved value; a later date supplies the trend. ':''}${progress.paused.length?'Capture needs reconciliation for: '+progress.paused.map(a=>esc(names[a])).join(', ')+'.':progress.dailyEnabled&&progress.configured?'Daily capture is scheduled for 08:30 Singapore time.':'Confirm reconciliation for each account in this view to configure daily capture.'} ${progress.missing.length?'Latest saved date lacks verified values for: '+progress.missing.map(a=>esc(names[a])).join(', ')+'. Combined views need all selected accounts on the same date.':''}</p>
+      <p class="pf-caption">${result.returnPct!=null?esc(result.message)+' ':''}${result.start?'Valuations used: '+esc(result.start)+' to '+esc(result.end)+'.':''}</p>
+      ${metric==='value'?'<p class="pf-caption">Blue shows portfolio value. Gold shows opening value plus net flows during this period.</p>':''}
+      <p class="pf-caption">Performance includes holdings and broker or investment-account cash. Bank money set aside is used for allocation planning.</p>
+      <p class="pf-caption">${ACCOUNTS.map(a=>{const c=history.settings.checks?.[a];if(!c)return esc(names[a])+': not checked';const raw={holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}};return esc(names[a])+': checked '+esc(c.date)+(c.sourceSignature!==sourceSignature(raw,a)?' (balances or holdings changed since)':'');}).join(' · ')}</p>
+      </details>
+      ${section('advanced','Recovery & corrections')}
+      <p class="pf-caption">Use the top bar to back up or restore the dashboard, including performance history.</p>
+      ${section('backfill','Historical trade evidence')}
+      <p class="pf-caption">Use the StocksCafe trade export when you need to check dated buys and sells. For a routine balance update, use the top account TSV import.</p>
+      <div class="pf-actions"><button data-action="import-trades">Stage historical StocksCafe trades</button></div>
+      </details>
+      ${section('movements','Recorded dashboard cash movements')}
+      <p class="pf-caption">Review deposits, withdrawals and transfers previously recorded here. Correct trades in StocksCafe and reimport. Void an entry here if the dashboard movement itself is incorrect.</p>
+      <div class="pf-scroll"><table><thead><tr><th>Date</th><th>Account</th><th>Movement</th><th>Amount</th><th></th></tr></thead><tbody>${Object.values(history.flows).filter(f=>!f.voided).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,100).map(f=>`<tr><td>${esc(f.date)}</td><td>${esc(names[f.account])}</td><td>${esc(f.kind==='bank_to_broker'?'Bank → IBKR funding':f.kind==='cash_to_oa'?'CPF investment cash → OA':f.kind)}</td><td>${show(f.amount??Math.abs(f.total||f.invested))}</td><td><button data-void="${esc(f.id)}">Void entry</button></td></tr>`).join('')}</tbody></table></div>
+      </details>
+      ${history.settings.dailyEnabled?`<div class="pf-actions"><button data-action="stop-daily">Pause automatic snapshots</button></div>`:''}
+      </details>
       <div class="pf-dialog-host"></div>`;
     root.querySelectorAll('[data-filter]').forEach(el=>el.onchange=()=>{const k=el.dataset.filter;if(k==='scope')scope=el.value;else if(k==='basis')basis=el.value;else if(k==='metric')metric=el.value;else if(k==='period')period=el.value;error='';render();});
     const dates=root.querySelector('[data-custom-dates]');if(dates)dates.onsubmit=e=>{e.preventDefault();if(!dates.reportValidity())return;const from=dates.elements.start.value,to=dates.elements.end.value;if(from>to){dates.elements.end.setCustomValidity('The end date must be on or after the start date.');dates.elements.end.reportValidity();return;}customStart=from;customEnd=to;error='';render();};
@@ -127,16 +139,40 @@ export function mount(root,uid,initialState,storage) {
     host.querySelector('[data-close-menu]').onclick=()=>host.replaceChildren();
     host.querySelectorAll('[data-menu-action]').forEach(el=>el.onclick=()=>run(()=>action(el.dataset.menuAction)));
   }
-  function dialog(title,body,onSubmit){
-    const host=root.querySelector('.pf-dialog-host');host.innerHTML=`<dialog open class="pf-dialog"><form><h3>${esc(title)}</h3>${body}<p class="pf-error" role="alert"></p><div class="pf-actions"><button type="button" data-cancel>Cancel</button><button type="submit">Save</button></div></form></dialog>`;
+  function dialog(title,body,onSubmit,buttonLabel='Save'){
+    const host=root.querySelector('.pf-dialog-host');host.innerHTML=`<dialog open class="pf-dialog"><form><h3>${esc(title)}</h3>${body}<p class="pf-error" role="alert"></p><div class="pf-actions"><button type="button" data-cancel>Cancel</button><button type="submit">${esc(buttonLabel)}</button></div></form></dialog>`;
     const form=host.querySelector('form');form.querySelector('[data-cancel]').onclick=()=>host.replaceChildren();
-    form.onsubmit=async e=>{e.preventDefault();const submit=form.querySelector('[type=submit]');submit.disabled=true;try{await onSubmit(new FormData(form));host.replaceChildren();render();}catch(err){form.querySelector('[role=alert]').textContent=err.message;submit.disabled=false;}};
+    form.onsubmit=async e=>{e.preventDefault();const submit=form.querySelector('[type=submit]');submit.disabled=true;try{await onSubmit(new FormData(form));if(host.contains(form)){host.replaceChildren();render();}}catch(err){form.querySelector('[role=alert]').textContent=err.message;submit.disabled=false;}};
+  }
+  function reviewCashLedger(entries,excluded,outsideWindow){
+    const {candidates,existing}=reconcileLedgerEntries(entries,history.flows);
+    const rows=candidates.map(entry=>`<tr><td><label><input type="checkbox" name="include" value="${entry.id}" aria-label="Include ${esc(entry.date+' '+entry.portfolio+' '+entry.kind+(state.privacyMode?'':' '+entry.currency+' '+entry.amount))}"></label></td><td>${esc(entry.date)}</td><td>${esc(names[entry.account])}<br><small>${esc(entry.portfolio)}</small></td><td>${entry.kind==='contribution'?'Deposit':'Withdrawal'}</td><td>${state.privacyMode?'•••':esc(entry.currency+' '+entry.amount.toLocaleString('en-SG'))}</td><td>${state.privacyMode?'Hidden':esc(entry.note)}</td><td>${entry.currency==='SGD'?'Already SGD':`<input type="number" min="0.01" step="0.01" name="sgd-${entry.id}" aria-label="Statement SGD amount for ${esc(entry.date+' '+entry.portfolio+' '+entry.kind)}" placeholder="Statement SGD">`}</td></tr>`).join('');
+    const table=candidates.length?`<div class="pf-scroll"><table><thead><tr><th>Include</th><th>Date</th><th>Account</th><th>Type</th><th>Amount</th><th>StocksCafe details</th><th>SGD for returns</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p>There are no new candidates in this date range.</p>';
+    dialog('Review StocksCafe cash movements',`<p>${existing} already recorded or previously voided. ${excluded} outside the supported accounts or movement types. ${outsideWindow} outside the date range.</p><p>Select only actual funding and withdrawals for the tracked accounts. Leave balance corrections, FX swaps, interest, fees and transfers within one tracked account unchecked. For transfers between tracked accounts, include both legs. For foreign-currency rows, enter the SGD equivalent from your records. Finishing saves the latest transaction date reviewed for each account, including rows you leave unchecked.</p>${state.privacyMode?'<p>Turn off privacy mode to review amounts and StocksCafe details.</p>':''}${table}`,async fd=>{
+      const selected=new Set(fd.getAll('include'));
+      if(!entries.length)return;
+      const reviewed=entries.map(entry=>selected.has(entry.id)&&entry.currency!=='SGD'?
+        {...entry,sgd:number(fd.get('sgd-'+entry.id))}:entry);
+      const latest=await storage.load();
+      const {patch,added,reviewed:checkpointSaved}=ledgerPatch(reviewed,selected,latest);
+      if(added||checkpointSaved)await save(patch);
+      notice=added?`Imported ${added} cash movement${added===1?'':'s'}. Confirm reconciliation after updating the account TSVs.`:'Review complete. No cash movements added.';
+    },entries.length?'Finish review':'Done');
   }
   async function action(which){
     if(which==='monthly'){
-      const items=[['coverage','Confirm reconciliation','Confirm actual cash and complete money movements. Saves today’s snapshot and enables daily cloud snapshots.'],['unchanged','No holdings or cash changes','Skip an identical TSV upload. Saves today’s snapshot using updated prices and unchanged cash, and enables daily snapshots.']];
+      const items=[['cash-ledger','Import StocksCafe cash ledger','Review deposits and withdrawals when money moved into or out of a tracked account.'],['coverage','Confirm reconciliation','Confirm actual cash and complete money movements. Saves today’s snapshot and enables daily cloud snapshots.'],['unchanged','No holdings or cash changes','Skip an identical TSV upload. Saves today’s snapshot using updated prices and unchanged cash, and enables daily snapshots.']];
       if(state.accountImportVersion!==1&&!Object.keys(history.settings.capture||{}).length)items.unshift(['valuation','Complete initial account setup','One-time check of account-specific holdings and actual cash before daily recording can start.']);
-      actionMenu('Monthly update','Use Confirm reconciliation after importing account TSVs, including the first time. It saves today’s snapshot and enables daily recording. No changes is for a previously confirmed account.',items);return;
+      actionMenu('Monthly update','Import current account TSVs and review any external cash movements before confirming reconciliation. No changes is for a previously confirmed account.',items);return;
+    }
+    if(which==='cash-ledger'){
+      dialog('Import StocksCafe cash ledger',`<label>StocksCafe cash transaction export<input type="file" name="ledger" accept=".csv,.tsv,.txt" required></label><label>From date (optional)<input type="date" name="from" max="${todaySG()}"></label><p>Upload the full export. The dashboard picks up new rows since each account’s last ledger review. For the first import, it starts after confirmed cash coverage, or at the beginning of this year if none exists. Use From date for older or backdated entries. Import your usual account TSVs separately to refresh holdings and balances.</p>`,async fd=>{
+        const file=fd.get('ledger'),from=fd.get('from');
+        if(!file?.size||file.size>4*1024*1024)throw Error('Choose a cash transaction export smaller than 4 MB.');
+        const {entries,excluded}=await readCashLedger(await file.text());
+        const recent=ledgerReviewWindow(entries,history,from);
+        reviewCashLedger(recent,excluded,entries.length-recent.length);
+      },'Review movements');return;
     }
     if(which==='money'){
       actionMenu('Money movements','Record actual money entering or leaving investment accounts. Update money set aside for allocation planning in Settings.',[
@@ -182,23 +218,18 @@ export function mount(root,uid,initialState,storage) {
       const form=root.querySelector('.pf-dialog form');const showCash=()=>{const host=form.querySelector('[data-cash-review]');host.innerHTML=cashFields(state,form.elements.account.value,'reconcile',true,true);host.hidden=form.elements.end.value!==todaySG();};form.elements.account.onchange=showCash;form.elements.end.onchange=showCash;
       return;
     }
-    if(which==='export'){
-      const url=URL.createObjectURL(new Blob([JSON.stringify({schema:1,exportedAt:new Date().toISOString(),history},null,2)],{type:'application/json'}));
-      const a=document.createElement('a');a.href=url;a.download='portfolio-performance-'+todaySG()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return;
-    }
     if(which==='valuation'){
       let positions=null;try{if(state.accountImportVersion===1||Object.keys(history.trades).length)positions=capturePositions(history,state);}catch{}
-      const rows=ACCOUNTS.map(account=>{let value='';try{value=amount(state,account,positions?.[account]).toFixed(2);}catch{}return `<fieldset><legend>${names[account]}</legend>${positions?'<details><summary>Holdings included</summary><p>'+esc(positions[account].map(p=>p.ticker+' × '+p.shares).join(', ')||'none')+'</p></details>':'<p>Initial setup needed: check the Cash/SRS/CPF split. Import Cash, SRS and CPF account TSVs together to establish the split. A complete reconciled transaction export is an alternative for legacy records.</p>'}<details><summary>Holdings value: ${value===''?'unavailable — sync prices':money(Number(value))} (calculated)</summary><p>Calculated from holdings quantities, prices and FX. No manual price calculation is needed. Change only to enter a value from an earlier dated statement or correct the initial account split.</p><label>Holdings value (SGD)<input name="${account}-invested" type="number" step="0.01" min="0" value="${value}"></label></details>${cashFields(state,account,account,true)}<label><input name="${account}-verified" type="checkbox"> The account split and actual cash are correct; cash excludes historical dividends already paid out.</label></fieldset>`;}).join('');
-      dialog('Advanced account setup & earlier snapshot',`<label>Snapshot date<input name="date" type="date" value="${todaySG()}" required></label><p>Normal monthly updates only need Confirm reconciliation, including the first confirmation after account TSV import. This advanced form is for legacy setup or recording a statement-backed earlier snapshot. Holdings values are calculated automatically where prices are available; review actual cash and the Cash/SRS/CPF split. Cash defaults to the current dashboard balances, including your StocksCafe cash import. Check actual investment-account cash and exclude money returned to OA. For earlier dates, use statement values from that date, not today’s prices.</p>${rows}<details><summary>Automatic daily snapshots (enabled after setup)</summary><label><input name="daily" type="checkbox" checked> Record daily closing-price snapshots in the cloud after this account setup. Reconfirm actual cash after changes.</label><p>Uses calculated holdings values and the last confirmed cash balance. A later automatic snapshot can provide the chart’s second date. It does not sync new trades or cash activity from your broker.</p></details>`,async fd=>{
-        const date=dateKey(fd.get('date'));if(date>todaySG())throw Error('Future valuations cannot be recorded.');
+      const rows=ACCOUNTS.map(account=>{let value='';try{value=amount(state,account,positions?.[account]).toFixed(2);}catch{}return `<fieldset><legend>${names[account]}</legend>${positions?'<details><summary>Holdings included</summary><p>'+esc(positions[account].map(p=>p.ticker+' × '+p.shares).join(', ')||'none')+'</p></details>':'<p>Initial setup needed: check the Cash/SRS/CPF split. Import Cash, SRS and CPF account TSVs together to establish the split. A complete reconciled transaction export is an alternative for legacy records.</p>'}<details><summary>Holdings value: ${value===''?'unavailable — sync prices':money(Number(value))} (calculated)</summary><p>Calculated from holdings quantities, prices and FX. No manual price calculation is needed. Review the value when confirming the initial account split.</p><label>Holdings value (SGD)<input name="${account}-invested" type="number" step="0.01" min="0" value="${value}"></label></details>${cashFields(state,account,account,true)}<label><input name="${account}-verified" type="checkbox"> The account split and actual cash are correct; cash excludes historical dividends already paid out.</label></fieldset>`;}).join('');
+      dialog('Initial account setup',`<p>Snapshot date: ${todaySG()} (today)</p><p>Normal monthly updates only need Confirm reconciliation, including the first confirmation after account TSV import. Use this form for one-time setup of older dashboard accounts. Holdings values are calculated automatically where prices are available; review actual cash and the Cash/SRS/CPF split. Cash defaults to the current dashboard balances, including your StocksCafe cash import. Check actual investment-account cash and exclude money returned to OA.</p>${rows}<details><summary>Automatic daily snapshots (enabled after setup)</summary><label><input name="daily" type="checkbox" checked> Record daily closing-price snapshots in the cloud after this account setup. Reconfirm actual cash after changes.</label><p>Uses calculated holdings values and the last confirmed cash balance. A later automatic snapshot can provide the chart’s second date. It does not sync new trades or cash activity from your broker.</p></details>`,async fd=>{
+        const date=todaySG();
         const accounts={};let count=0;
-        for(const a of ACCOUNTS)if(fd.has(a+'-verified')){const invested=number(fd.get(a+'-invested')),cash=a==='cash'&&date<'2026-01-01'?number(fd.get(a+'-broker')):readCashParts(fd,a,a);if(invested<0)throw Error('Holdings value cannot be negative.');accounts[a]={invested,cash:date<'2026-01-01'&&a==='cash'?null:cash,cashVerified:!(date<'2026-01-01'&&a==='cash'),verified:true,...(a==='cash'?{brokerCash:number(fd.get(a+'-broker')),bankCash:date<'2026-01-01'?null:number(fd.get(a+'-bank'))}:{}),source:'manual reconciliation'};count++;}
+        for(const a of ACCOUNTS)if(fd.has(a+'-verified')){const invested=number(fd.get(a+'-invested')),cash=readCashParts(fd,a,a);if(invested<0)throw Error('Holdings value cannot be negative.');accounts[a]={invested,cash,cashVerified:true,verified:true,...(a==='cash'?{brokerCash:number(fd.get(a+'-broker')),bankCash:number(fd.get(a+'-bank'))}:{}),source:'manual reconciliation'};count++;}
         if(!count)throw Error('Verify at least one account.');
         const patch={snapshots:{[date]:{accounts,recordedAt:new Date().toISOString()}}};
         const rawCheck={holdings:state.holdings,cashPositions:{...state.cash,cpf:state.cash.cpfIs}};
         patch.settings={checks:{}};for(const a of Object.keys(accounts))patch.settings.checks[a]={date,sourceSignature:sourceSignature(rawCheck,a),recordedAt:new Date().toISOString()};
         if(fd.has('daily')){
-          if(date!==todaySG())throw Error('Daily capture must start with today’s reconciliation.');
           if(!positions)throw Error('Import and reconcile the account-specific TSVs or a complete trade history to establish holdings before daily capture.');
           const raw={holdings:state.holdings,cashPositions:{brokers:state.cash.brokers,growth:state.cash.growth,dividend:state.cash.dividend,srs:state.cash.srs,cpf:state.cash.cpfIs}};
           const capture={...history.settings.capture};for(const a of ACCOUNTS)if(fd.has(a+'-verified'))capture[a]={cash:accounts[a].cash,...(a==='cash'?{brokerCash:accounts[a].brokerCash,bankCash:accounts[a].bankCash}:{}),holdings:positions[a],positionSignature:JSON.stringify(positions[a]),sourceSignature:sourceSignature(raw,a),reconciledOn:date,needsReconciliation:false};
@@ -206,7 +237,6 @@ export function mount(root,uid,initialState,storage) {
         }
         await save(patch);
       });
-      const setupForm=root.querySelector('.pf-dialog form');setupForm.elements.date.onchange=()=>{const historical=setupForm.elements.date.value!==todaySG();setupForm.elements.daily.checked=!historical;setupForm.querySelectorAll('[data-cash-part]').forEach(input=>{input.readOnly=!historical;});const bank=setupForm.querySelector('[name="cash-bank"]');if(bank){const unavailable=setupForm.elements.date.value<'2026-01-01';bank.closest('label').hidden=unavailable;bank.required=!unavailable;} };setupForm.oninput=()=>{for(const account of ACCOUNTS){const total=setupForm.querySelector('[data-cash-total="'+account+'"]');try{total.textContent=money(readCashParts(new FormData(setupForm),account,account));}catch{total.textContent='Enter both balances';}}};
       return;
     }
     if(which==='earmark'){
@@ -215,31 +245,17 @@ export function mount(root,uid,initialState,storage) {
     if(which==='flow'){
       dialog('Record a dated cash movement',`<label>Date<input name="date" type="date" value="${todaySG()}" required></label><label>Account<select name="account">${ACCOUNTS.map(a=>`<option value="${a}">${names[a]}</option>`).join('')}</select></label><label>Movement<select name="kind"><option value="contribution">New money added</option><option value="withdrawal">Money withdrawn</option><option value="buy">Investment purchase (including fees)</option><option value="sale">Investment sale (net proceeds retained)</option><option value="dividend">Dividend paid into account cash</option><option value="cash_to_oa">CPF investment cash transferred to OA (income/sale recorded earlier)</option><option value="dividend_to_oa">CPF dividend paid directly to OA (not recorded earlier)</option><option value="sale_to_oa">CPF sale paid directly to OA (not recorded earlier)</option><option value="transfer_in">Transfer from another tracked account</option><option value="transfer_out">Transfer to another tracked account</option></select></label><label>Amount in SGD<input name="amount" type="number" min="0.01" step="0.01" required></label><label>Note<input name="note" maxlength="500"></label><p>Money entering your broker is funding for performance. Use the bank → IBKR action or a direct contribution once; do not record the same transfer twice. Between tracked accounts, record matching transfer-out and transfer-in entries. Dividends are income, not contributions. Movement entries adjust performance only; reconcile the actual cash balance separately.</p>`,async fd=>{const flow=makeFlow({id:crypto.randomUUID(),...Object.fromEntries(fd)});if(flow.date>todaySG())throw Error('Future movements cannot be recorded.');const patch={flows:{[flow.id]:flow}};const c=history.settings.capture?.[flow.account];if(c)patch.settings={capture:{[flow.account]:{...c,needsReconciliation:true}}};await save(patch);});return;
     }
-    const input=document.createElement('input');input.type='file';input.accept=which==='restore'?'.json':'.csv,.tsv,.txt';
-    input.onchange=()=>run(async()=>{
-      const file=input.files[0];if(!file)return;if(file.size>4*1024*1024)throw Error('Use an export smaller than 4 MB.');const text=await file.text();let patch,summary;
-      if(which==='import-trades'){
-        const parsed=importTrades(text),trades={};for(const t of parsed.trades){const id=await stableId(t.sourceKey);trades[id]=t;}
-        patch={trades};summary=`Stage ${Object.keys(trades).length} investment and retirement trades for reconciliation. ${parsed.missingBase} trades need historical SGD conversion. Excluded portfolios: ${parsed.excluded.join(', ')||'none'}. Valuations and cash flows remain unchanged.`;
-      }else if(which==='import-valuations'){
-        const parsed=importValuations(text,history.snapshots);
-        patch={snapshots:parsed.snapshots};summary=`Import ${parsed.count} account valuations across ${Object.keys(parsed.snapshots).length} dates. ${parsed.holdingsOnly} records have incomplete cash locations. Checked broker cash is used for performance; bank cash is allocation information only. Returns require reconciliation for the selected period. Existing matching dates and accounts will be replaced.`;
-      }else{
-        const backup=JSON.parse(text);if(backup.schema!==1||!backup.history)throw Error('Use a performance history backup.');
-        patch=validateBackup(backup.history);summary='Merge this performance history backup. Matching records will be replaced. Existing portfolio holdings and settings stay unchanged.';
-      }
-      pending=patch;dialog('Review import',`<p>${esc(summary)}</p><label><input name="verified" type="checkbox" required> I checked the source and confirm these records.</label>`,async()=>{await save(pending);pending=null;});
-    });input.click();
-  }
-  function validateBackup(h){
-    const patch={snapshots:{},flows:{},trades:{},coverage:{},settings:{dailyEnabled:false}};
-    for(const [date,s]of Object.entries(h.snapshots||{})){dateKey(date);if(date>todaySG())throw Error('Future valuation in backup.');const accounts={};for(const a of ACCOUNTS)if(s.accounts?.[a]){const r=s.accounts[a],invested=number(r.invested),cash=r.cashVerified===false?null:number(r.cash);if(invested<0)throw Error('Invalid valuation.');accounts[a]={invested,cash,brokerCash:r.brokerCash==null?null:number(r.brokerCash),bankCash:r.bankCash==null?null:number(r.bankCash),cashVerified:r.cashVerified!==false,verified:r.verified===true,source:'history backup'};}patch.snapshots[date]={accounts};}
-    for(const [id,f]of Object.entries(h.flows||{})){if(!/^[a-f0-9-]{16,100}$/.test(id)||!ACCOUNTS.includes(f.account))throw Error('Invalid flow.');dateKey(f.date);if(f.date>todaySG())throw Error('Future movement in backup.');patch.flows[id]=f.kind==='bank_to_broker'?{...makeBankTransfer({...f,id}),voided:!!f.voided}:{id,date:f.date,account:f.account,kind:String(f.kind),total:number(f.total),invested:number(f.invested),dateApproximate:f.dateApproximate===true,location:f.location==='bank'?'bank':'account',voided:!!f.voided,note:String(f.note||'').slice(0,500)};}
-    for(const a of ACCOUNTS){const c=h.settings?.checks?.[a];if(c){dateKey(c.date);if(c.date>todaySG()||typeof c.sourceSignature!=='string')throw Error('Invalid check date.');patch.settings.checks||={};patch.settings.checks[a]={date:c.date,sourceSignature:c.sourceSignature};}}
-    // Trades remain source evidence; never execute or infer cash transactions.
-    for(const [id,t]of Object.entries(h.trades||{})){if(!/^[a-f0-9]{64}$/.test(id)||!ACCOUNTS.includes(t.account))throw Error('Invalid trade evidence.');dateKey(t.date);patch.trades[id]=t;}
-    for(const a of ACCOUNTS)for(const b of ['total','broker','invested'])if(h.coverage?.[a]?.[b]){const c=h.coverage[a][b];dateKey(c.start);dateKey(c.end);if(c.start>c.end||c.end>todaySG())throw Error('Invalid reconciliation coverage.');patch.coverage[a]||={};patch.coverage[a][b]={start:c.start,end:c.end};}
-    return patch;
+    if(which==='import-trades'){
+      const input=document.createElement('input');input.type='file';input.accept='.csv,.tsv,.txt';
+      input.onchange=()=>run(async()=>{
+        const file=input.files[0];if(!file)return;
+        if(file.size>4*1024*1024)throw Error('Use an export smaller than 4 MB.');
+        const parsed=importTrades(await file.text()),trades={};
+        for(const t of parsed.trades){const id=await stableId(t.sourceKey);trades[id]=t;}
+        const summary=`Stage ${Object.keys(trades).length} investment and retirement trades for reconciliation. ${parsed.missingBase} trades need historical SGD conversion. Excluded portfolios: ${parsed.excluded.join(', ')||'none'}. Valuations and cash flows remain unchanged.`;
+        dialog('Review import',`<p>${esc(summary)}</p><label><input name="verified" type="checkbox" required> I checked the source and confirm these records.</label>`,async()=>{await save({trades});});
+      });input.click();
+    }
   }
   storage.load().then(h=>{if(alive){history={...empty(),...h};loaded=true;render();}}).catch(e=>{if(alive){error='Could not load history: '+e.message;render();}});
   return {update(s){const changedPrivacy=s.privacyMode!==state.privacyMode;state=s;if(alive&&loaded&&(changedPrivacy||(!root.querySelector('dialog')&&!root.querySelector('[data-custom-dates]')?.contains(document.activeElement))))render();},destroy(){alive=false;root.replaceChildren();}};
