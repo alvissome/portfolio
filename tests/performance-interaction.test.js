@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chart,bindChart,mount} from '../assets/performance-panel.js';
 import {performanceRange} from '../assets/performance-view.js';
+import {calculate,makeFlow} from '../assets/performance-core.js';
 
 test('confirmed period intersects account coverage instead of using newer unchecked snapshots',()=>{
   const history={snapshots:{'2015-12-31':{},'2026-11-05':{}},coverage:{cash:{broker:{start:'2025-12-31',end:'2026-11-03'}},srs:{total:{start:'2025-12-31',end:'2026-09-30'}},cpf:{broker:{start:'2026-01-01',end:'2026-10-31'}}}};
@@ -11,6 +12,38 @@ test('confirmed period intersects account coverage instead of using newer unchec
   assert.deepEqual(performanceRange(history,{...options,scope:'cash',period:'All'}),['2015-12-31','2026-11-05']);
   assert.deepEqual(performanceRange(history,{...options,scope:'cash',period:'custom',customStart:'2025-12-31',customEnd:'2026-06-30'}),['2025-12-31','2026-06-30']);
   assert.deepEqual(performanceRange({...history,coverage:{}},{...options,scope:'combined'}),['2015-12-31','2026-11-05']);
+});
+
+test('Investment YTD includes year-end and calculates beyond confirmed cash coverage when opted in',()=>{
+  const snapshot=value=>({accounts:{cash:{invested:value,cash:0,brokerCash:0,verified:true}}});
+  const withdrawal=makeFlow({id:'gsh',date:'2026-01-26',account:'cash',kind:'withdrawal',amount:10});
+  const history={snapshots:{'2025-12-31':snapshot(100),'2026-01-26':snapshot(90),'2026-11-05':snapshot(99)},flows:{withdrawal},coverage:{cash:{broker:{start:'2023-10-31',end:'2026-11-04'}}}};
+  const [start,end]=performanceRange(history,{scope:'cash',basis:'broker',period:'YTD',today:'2026-11-05'});
+  assert.deepEqual([start,end],['2025-12-31','2026-11-05']);
+  assert.equal(calculate(history,'cash','broker',start,end).returnPct,null);
+  const allow={allowUnconfirmedTail:true};
+  const result=calculate(history,'cash','broker',start,end,allow);
+  assert.equal(result.provisionalThrough,'2026-11-04');
+  assert.equal(result.netFlow,-10);
+  assert.equal(result.gain,9);
+  assert.ok(Math.abs(result.returnPct-10)<1e-10);
+  assert.equal(calculate(history,'cash','invested',start,end,allow).returnPct,null);
+  history.coverage.cash.broker.end='2026-11-05';
+  history.snapshots['2026-11-06']=snapshot(100);
+  const afterReconciliation=calculate(history,'cash','broker',start,'2026-11-06',allow);
+  assert.equal(afterReconciliation.provisionalThrough,'2026-11-05');
+  assert.equal(afterReconciliation.netFlow,-10);
+  history.coverage.cash.broker.start='2026-01-01';
+  assert.equal(calculate(history,'cash','broker',start,'2026-11-06',allow).returnPct,null);
+});
+
+test('YTD uses Friday when year-end falls on a weekend without a snapshot or intervening movement',()=>{
+  const options={scope:'cash',basis:'broker',period:'YTD',today:'2024-01-15'};
+  const history={snapshots:{'2023-12-29':{accounts:{cash:{invested:100,cash:0,brokerCash:0,verified:true}}}}};
+  assert.deepEqual(performanceRange(history,options),['2023-12-29','2024-01-15']);
+  history.flows={contribution:makeFlow({id:'c',date:'2023-12-31',account:'cash',kind:'contribution',amount:10})};
+  assert.deepEqual(performanceRange(history,options),['2023-12-31','2024-01-15']);
+  assert.deepEqual(performanceRange({},options),['2023-12-31','2024-01-15']);
 });
 
 test('chart has readable, accessible dates and values without leaking hidden money',()=>{

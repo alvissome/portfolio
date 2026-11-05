@@ -1,4 +1,4 @@
-import {number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=broker-only-20261105';
+import {flowValue,number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=ytd-20261105';
 
 export function performanceRange(history,{scope,basis,period,customStart='',customEnd,today}){
   let end=period==='custom'?customEnd:today,start=Object.keys(history.snapshots||{}).sort()[0]||end;
@@ -8,7 +8,17 @@ export function performanceRange(history,{scope,basis,period,customStart='',cust
       const from=coverage.map(c=>c.start).sort().at(-1),through=coverage.map(c=>c.end).sort()[0];
       if(from<=through){start=from;end=through;}
     }
-  }else if(period==='YTD')start=end.slice(0,4)+'-01-01';
+  }else if(period==='YTD'){
+    const year=Number(end.slice(0,4));
+    start=String(year-1).padStart(4,'0')+'-12-31';
+    const close=new Date(start+'T00:00:00Z'),weekday=close.getUTCDay();
+    if((weekday===0||weekday===6)&&snapshotValue(history.snapshots?.[start]||{},scope,basis)===null){
+      close.setUTCDate(close.getUTCDate()-(weekday===0?2:1));
+      const lastFriday=close.toISOString().slice(0,10);
+      const hasWeekendFlow=Object.values(history.flows||{}).some(f=>!f.voided&&f.date>lastFriday&&f.date<=start&&flowValue(f,scope,basis)!==0);
+      if(!hasWeekendFlow&&snapshotValue(history.snapshots?.[lastFriday]||{},scope,basis)!==null)start=lastFriday;
+    }
+  }
   else if(['1M','3M','6M','1Y'].includes(period)){const d=new Date(end+'T00:00:00Z'),months=period==='1Y'?12:parseInt(period);d.setUTCMonth(d.getUTCMonth()-months);start=d.toISOString().slice(0,10);}
   else if(period==='custom')start=customStart||start;
   return [start,end];
