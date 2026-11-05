@@ -1,4 +1,18 @@
-import {number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=cashscope-20261105';
+import {number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=broker-only-20261105';
+
+export function performanceRange(history,{scope,basis,period,customStart='',customEnd,today}){
+  let end=period==='custom'?customEnd:today,start=Object.keys(history.snapshots||{}).sort()[0]||end;
+  if(period==='reconciled'){
+    const coverage=selectedAccounts(scope).map(a=>history.coverage?.[a]?.[basis]||(basis==='broker'&&a!=='cash'?history.coverage?.[a]?.total:null));
+    if(coverage.every(Boolean)){
+      const from=coverage.map(c=>c.start).sort().at(-1),through=coverage.map(c=>c.end).sort()[0];
+      if(from<=through){start=from;end=through;}
+    }
+  }else if(period==='YTD')start=end.slice(0,4)+'-01-01';
+  else if(['1M','3M','6M','1Y'].includes(period)){const d=new Date(end+'T00:00:00Z'),months=period==='1Y'?12:parseInt(period);d.setUTCMonth(d.getUTCMonth()-months);start=d.toISOString().slice(0,10);}
+  else if(period==='custom')start=customStart||start;
+  return [start,end];
+}
 
 export function cashParts(state,account) {
   if(account==='cash')return [
