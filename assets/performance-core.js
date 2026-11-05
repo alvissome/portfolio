@@ -161,6 +161,39 @@ export function makeBankTransfer({id,date,amount,bankBefore,brokerBefore,note=''
 export function confirmCashLocations(transfer,bank,broker) {
   if(Math.abs(number(bank)-transfer.bankAfter)>.005||Math.abs(number(broker)-transfer.brokerAfter)>.005)throw Error('Update the bank cash and import/reconcile the broker cash first. Both balances must match the transfer review.');
 }
+// Personal annualized money-weighted return and cumulative linked time-weighted return.
+export function datedXirr(opening,closing,start,end,flows,scope,basis) {
+  if(!(opening>0)||!(closing>=0)||day(end)<=day(start))return null;
+  const entries=[{date:start,value:-opening},...flows.map(f=>({date:f.date,value:-flowValue(f,scope,basis)})),{date:end,value:closing}];
+  const npv=rate=>entries.reduce((n,e)=>n+e.value/Math.pow(1+rate,(day(e.date)-day(start))/365.25),0);
+  let low=-0.999999,high=1;
+  if(!Number.isFinite(npv(low)))return null;
+  while(npv(high)>0&&high<1e8)high=high*2+1;
+  if(npv(low)<0||npv(high)>0)return null;
+  for(let i=0;i<140;i++){const mid=(low+high)/2;if(npv(mid)>0)low=mid;else high=mid;}
+  const value=(low+high)*50;
+  return Number.isFinite(value)?value:null;
+}
+export function linkedTimeWeighted(valuations,flows,scope,basis) {
+  if(valuations.length<2)return {twrPct:null,twrMethod:null,twrPoints:[]};
+  let factor=1,estimated=false;
+  const twrPoints=[{date:valuations[0].date,twrPct:0}];
+  for(let i=1;i<valuations.length;i++){
+    const previous=valuations[i-1],current=valuations[i],duration=day(current.date)-day(previous.date);
+    if(duration<=0)return {twrPct:null,twrMethod:null,twrPoints:[]};
+    const movements=flows.filter(f=>f.date>previous.date&&f.date<=current.date);
+    const net=movements.reduce((sum,f)=>sum+flowValue(f,scope,basis),0);
+    const weighted=movements.reduce((sum,f)=>sum+flowValue(f,scope,basis)*(day(current.date)-day(f.date))/duration,0);
+    const denominator=previous.value+weighted;
+    if(!(denominator>0))return {twrPct:null,twrMethod:null,twrPoints:[]};
+    if(movements.some(f=>f.date!==current.date||f.dateApproximate))estimated=true;
+    const subperiod=(current.value-previous.value-net)/denominator;
+    if(!Number.isFinite(subperiod)||subperiod<=-1)return {twrPct:null,twrMethod:null,twrPoints:[]};
+    factor*=1+subperiod;
+    twrPoints.push({date:current.date,twrPct:(factor-1)*100});
+  }
+  return {twrPct:(factor-1)*100,twrMethod:estimated?'Estimated TWR (linked Modified Dietz)':'TWR (end-of-day valuations)',twrPoints};
+}
 export function calculate(history, scope, basis, start, end, {allowUnconfirmedTail=false}={}) {
   dateKey(start); dateKey(end);
   if (start > end) throw Error('Start date must precede end date.');
@@ -200,7 +233,10 @@ export function calculate(history, scope, basis, start, end, {allowUnconfirmedTa
     if (ret!==null && (!Number.isFinite(ret) || ret < -1)) ret=null;
     points.push({...current,returnPct:ret===null?null:ret*100,capital:first.value+runningFlow});
   }
-  return {points,start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:sum,gain,returnPct:points.at(-1).returnPct,method,provisionalThrough,message:hasFlowValuations?'End-of-day cash-flow convention.':'Estimated return: a cash-flow date is approximate, a valuation is missing on a flow date, or an account is unverified.'};
+  const weightedReturns=linkedTimeWeighted(usable,flows,scope,basis);
+  const xirrPct=datedXirr(first.value,last.value,first.date,last.date,flows,scope,basis);
+  const chartPoints=points.map(p=>({...p,twrPct:weightedReturns.twrPoints.find(t=>t.date===p.date)?.twrPct??null}));
+  return {points:chartPoints,start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:sum,gain,returnPct:points.at(-1).returnPct,xirrPct,twrPct:weightedReturns.twrPct,twrMethod:weightedReturns.twrMethod,method,provisionalThrough,message:hasFlowValuations?'End-of-day cash-flow convention.':'Estimated return: a cash-flow date is approximate, a valuation is missing on a flow date, or an account is unverified.'};
 }
 export function parseDelimited(text) {
   const delimiter=text.split(/\r?\n/,1)[0].includes('\t')?'\t':',';
