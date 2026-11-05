@@ -113,3 +113,19 @@ test('preset returns use the overlap with confirmed coverage and label the actua
   assert.match(root.innerHTML,/>21\.00%<\/strong>/);
   mounted.destroy();
 });
+
+
+test('performance summary shows five metrics in a single row',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const {fileURLToPath}=await import('node:url');
+  const {resolve,dirname}=await import('node:path');
+  const dir=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+  const panel=readFileSync(resolve(dir,'assets/performance-panel.js'),'utf8');
+  const css=readFileSync(resolve(dir,'assets/performance.css'),'utf8');
+  const bundle=readFileSync(resolve(dir,'assets/index-CUEh86Kk.js'),'utf8');
+  assert.match(panel,/pf-stats-five/);
+  assert.match(css,/grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(panel,/performance-core\.js\?v=xirr-twr-cache-fix-20261105/);
+  assert.match(bundle,/performance-panel\.js\?v=xirr-twr-cache-fix-20261105/);
+  assert.match(bundle,/dashboard-backup\.js\?v=secrets-redacted-20261105/);
+});

@@ -40,8 +40,17 @@ function validateHistory(history) {
   return history;
 }
 
+// Keep recovery data, but never place third-party credentials in portable backups.
+const isSensitiveField = key => /(?:apiKey|dataKey|secret|token|password|credential|privateKey|publicKey|authorization|accessKey)/i.test(key);
+export function withoutCredentials(value) {
+  if(Array.isArray(value))return value.map(withoutCredentials);
+  if(value===null||typeof value!=='object')return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key])=>!isSensitiveField(key))
+    .map(([key,child])=>[key,withoutCredentials(child)]));
+}
 export function createDashboardBackup(state,performance) {
-  return JSON.stringify({_version:6,_exportDate:new Date().toISOString(),state,performance},null,2);
+  return JSON.stringify({_version:6,_exportDate:new Date().toISOString(),state:withoutCredentials(state),performance:withoutCredentials(performance)},null,2);
 }
 
 export function readDashboardBackup(text) {

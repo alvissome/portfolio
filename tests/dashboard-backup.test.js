@@ -42,3 +42,25 @@ test('incomplete and unrelated files fail before choosing a restore scope',()=>{
   assert.throws(()=>readDashboardBackup('{"__proto__":{"polluted":true}}'),/Invalid field/);
   assert.throws(()=>readDashboardBackup(createDashboardBackup(state,{snapshots:[]})),/Invalid performance snapshots/);
 });
+
+
+test('portable dashboard backup excludes API credentials but preserves holdings and history',()=>{
+  const withSecrets={...state,emailSettings:{
+    email:'user@example.com',digestTime:'08:00',
+    twelveDataKey:'test-twelve-secret',fmpApiKey:'test-fmp-secret',
+    emailjsPublicKey:'test-emailjs-public',
+    emailjsServiceId:'service-example',emailjsTemplateId:'template-example'
+  },nested:{accessToken:'test-access-token',credentials:{password:'test-password'}}};
+  const serialized=createDashboardBackup(withSecrets,history);
+  for(const marker of ['test-twelve-secret','test-fmp-secret','test-emailjs-public','test-access-token','test-password']){
+    assert.equal(serialized.includes(marker),false);
+  }
+  const restored=readDashboardBackup(serialized);
+  assert.equal(restored.kind,'dashboard');
+  assert.deepEqual(restored.performance,history);
+  assert.deepEqual(restored.state.holdings,state.holdings);
+  assert.equal(restored.state.emailSettings.email,'user@example.com');
+  assert.equal(restored.state.emailSettings.emailjsServiceId,'service-example');
+  assert.equal(restored.state.emailSettings.twelveDataKey,undefined);
+  assert.equal(withSecrets.emailSettings.twelveDataKey,'test-twelve-secret');
+});

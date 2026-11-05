@@ -1,4 +1,4 @@
-import {flowValue,number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=ytd-20261105';
+import {flowValue,number,selectedAccounts,snapshotValue,sourceSignature} from './performance-core.js?v=xirr-twr-cache-fix-20261105';
 
 export function confirmedPerformanceRange(history,scope,basis){
   const coverage=selectedAccounts(scope).map(a=>history.coverage?.[a]?.[basis]||(basis==='broker'&&a!=='cash'?history.coverage?.[a]?.total:null));
