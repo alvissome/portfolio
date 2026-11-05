@@ -33,7 +33,7 @@ export function chart(points,metric,privateMode) {
   for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4,Y=y(v);svg+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y+'" y2="'+Y+'" stroke="#e5eaf0"/><text x="'+(L-10)+'" y="'+(Y+4)+'" text-anchor="end">'+esc(privateMode&&metric==='value'?'•••':metric==='value'?Math.round(v).toLocaleString('en-SG'):v.toFixed(1)+'%')+'</text>';}
   svg+=line(metric,'#167d9a');if(metric==='value')svg+=line('capital','#ab8b50',1.35);
   for(const p of data){
-    const label=p.date+' · '+(metric==='value'?'Portfolio value: '+(privateMode?'Hidden':money(p.value)) : 'TWR: '+p.twrPct.toFixed(2)+'%')+(metric==='value'&&Number.isFinite(p.capital)?' · Opening value + net flows: '+(privateMode?'Hidden':money(p.capital)):'');
+    const label=p.date+' · '+(metric==='value'?'Portfolio value: '+(privateMode?'Hidden':money(p.value)) : (metric==='twrPct'?'TWR: '+p.twrPct.toFixed(2)+'%':'Return: '+p.returnPct.toFixed(2)+'%'))+(metric==='value'&&Number.isFinite(p.capital)?' · Opening value + net flows: '+(privateMode?'Hidden':money(p.capital)):'');
     svg+='<circle data-chart-point data-label="'+esc(label)+'" cx="'+x(p)+'" cy="'+y(p[metric])+'" r="12" fill="transparent" tabindex="0" role="button" aria-label="'+esc(label)+'"><title>'+esc(label)+'</title></circle><circle cx="'+x(p)+'" cy="'+y(p[metric])+'" r="3" fill="#167d9a" pointer-events="none"/>';
   }
   return svg+'<text x="'+L+'" y="'+(H-8)+'">'+data[0].date+'</text><text x="'+(W-R)+'" y="'+(H-8)+'" text-anchor="end">'+data.at(-1).date+'</text></svg></figure>';
