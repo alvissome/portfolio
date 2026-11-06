@@ -110,10 +110,34 @@ test('preset returns use the overlap with confirmed coverage and label the actua
   assert.match(root.innerHTML,/>10\.00%<\/strong>/);
   filters[3].value='1Y';filters[3].onchange();
   assert.ok(root.innerHTML.includes('Partial 1Y. Valuations used: '+start+' to '+end));
-  assert.match(root.innerHTML,/>21\.00%<\/strong>/);
+  assert.match(root.innerHTML,/TWR \(cumulative\)<\/span><strong>21\.00%<\/strong>/);
+  filters[3].value='All';filters[3].onchange();
+  assert.match(root.innerHTML,/TWR \(cumulative\)<\/span><strong>—<\/strong>/);
+  assert.doesNotMatch(root.innerHTML,/TWR \(annualized\)/);
   mounted.destroy();
 });
 
+
+test('All shows estimated annualized TWR in the summary and cumulative TWR in the chart',async()=>{
+  const start='2022-01-01',end='2024-01-01';
+  const snapshot=invested=>({accounts:{cash:{invested,cash:0,brokerCash:0,verified:true}}});
+  const contribution=makeFlow({id:'c',date:'2023-01-01',account:'cash',kind:'contribution',amount:20});
+  const history={
+    snapshots:{[start]:snapshot(100),[end]:snapshot(143.1)},flows:{contribution},
+    coverage:{cash:{broker:{start,end}}},settings:{}
+  };
+  const filters=['metric','period'].map(filter=>({dataset:{filter},value:''}));
+  const root={innerHTML:'',replaceChildren(){},querySelector(){return null;},querySelectorAll:s=>s==='[data-filter]'?filters:[]};
+  const state={holdings:[],cash:{},privacyMode:false,accountImportVersion:1};
+  const mounted=mount(root,'sample',state,{load:async()=>history});
+  await Promise.resolve();
+  filters[0].value='twrPct';filters[0].onchange();
+  filters[1].value='All';filters[1].onchange();
+  assert.match(root.innerHTML,/title="Estimated TWR \(linked Modified Dietz\)">TWR \(annualized\)<\/span><strong>10\.01%<\/strong>/);
+  assert.match(root.innerHTML,/Estimated TWR\. A cash-flow date/);
+  assert.match(root.innerHTML,/TWR \(cumulative\): 21\.00%/);
+  mounted.destroy();
+});
 
 test('performance summary shows five metrics in a single row',async()=>{
   const {readFileSync}=await import('node:fs');
@@ -125,7 +149,7 @@ test('performance summary shows five metrics in a single row',async()=>{
   const bundle=readFileSync(resolve(dir,'assets/index-CUEh86Kk.js'),'utf8');
   assert.match(panel,/pf-stats-five/);
   assert.match(css,/grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
-  assert.match(panel,/performance-core\.js\?v=xirr-twr-cache-fix-20261105/);
-  assert.match(bundle,/performance-panel\.js\?v=xirr-twr-cache-fix-20261105/);
+  assert.match(panel,/performance-core\.js\?v=twr-basis-20261106/);
+  assert.match(bundle,/performance-panel\.js\?v=twr-basis-20261106/);
   assert.match(bundle,/dashboard-backup\.js\?v=secrets-redacted-20261105/);
 });

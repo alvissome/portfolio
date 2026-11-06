@@ -192,7 +192,7 @@ export function linkedTimeWeighted(valuations,flows,scope,basis) {
     factor*=1+subperiod;
     twrPoints.push({date:current.date,twrPct:(factor-1)*100});
   }
-  return {twrPct:(factor-1)*100,twrMethod:estimated?'Estimated TWR (linked Modified Dietz)':'TWR (end-of-day valuations)',twrPoints};
+  return {twrPct:(factor-1)*100,twrMethod:estimated?'Estimated TWR (linked Modified Dietz)':'TWR (end-of-day valuations)',twrEstimated:estimated,twrPoints};
 }
 export function calculate(history, scope, basis, start, end, {allowUnconfirmedTail=false}={}) {
   dateKey(start); dateKey(end);
@@ -234,9 +234,19 @@ export function calculate(history, scope, basis, start, end, {allowUnconfirmedTa
     points.push({...current,returnPct:ret===null?null:ret*100,capital:first.value+runningFlow});
   }
   const weightedReturns=linkedTimeWeighted(usable,flows,scope,basis);
+  // Use the calendar anniversary, clamping a February 29 opening to February 28.
+  const anniversary=new Date(first.date+'T00:00:00Z');
+  const openingMonth=anniversary.getUTCMonth();
+  anniversary.setUTCFullYear(anniversary.getUTCFullYear()+1);
+  if(anniversary.getUTCMonth()!==openingMonth)anniversary.setUTCDate(0);
+  const {twrPct,twrMethod,twrEstimated}=weightedReturns;
+  const annualize=twrPct!=null&&last.date>anniversary.toISOString().slice(0,10);
+  const twrBasis=annualize?'annualized':'cumulative';
+  // Compound over actual elapsed days, using a 365.25-day year.
+  const twrKpiPct=annualize?(Math.pow(1+twrPct/100,365.25/(day(last.date)-day(first.date)))-1)*100:twrPct;
   const xirrPct=datedXirr(first.value,last.value,first.date,last.date,flows,scope,basis);
   const chartPoints=points.map(p=>({...p,twrPct:weightedReturns.twrPoints.find(t=>t.date===p.date)?.twrPct??null}));
-  return {points:chartPoints,start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:sum,gain,returnPct:points.at(-1).returnPct,xirrPct,twrPct:weightedReturns.twrPct,twrMethod:weightedReturns.twrMethod,method,provisionalThrough,message:hasFlowValuations?'End-of-day cash-flow convention.':'Estimated return: a cash-flow date is approximate, a valuation is missing on a flow date, or an account is unverified.'};
+  return {points:chartPoints,start:first.date,end:last.date,opening:first.value,closing:last.value,netFlow:sum,gain,returnPct:points.at(-1).returnPct,xirrPct,twrPct,twrKpiPct,twrBasis,twrMethod,twrEstimated,method,provisionalThrough,message:hasFlowValuations?'End-of-day cash-flow convention.':'Estimated return: a cash-flow date is approximate, a valuation is missing on a flow date, or an account is unverified.'};
 }
 export function parseDelimited(text) {
   const delimiter=text.split(/\r?\n/,1)[0].includes('\t')?'\t':',';

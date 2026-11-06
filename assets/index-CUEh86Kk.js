@@ -1,5 +1,5 @@
 import {createDashboardBackup,readDashboardBackup} from './dashboard-backup.js?v=secrets-redacted-20261105';
-import {createPerformanceComponent} from './performance-panel.js?v=xirr-twr-cache-fix-20261105';
+import {createPerformanceComponent} from './performance-panel.js?v=twr-basis-20261106';
 import {readPortfolioTSV} from './stockscafe-cash.js';
 import {holdingKey,planAccountImports,editAccountHolding,combinedHolding} from './account-portfolio.js?v=monthly-20261104';
 import {reviewAccountBatch,createCashSettings} from './account-import-dialog.js?v=dashboard-backup-20261105';
