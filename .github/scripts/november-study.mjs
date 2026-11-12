@@ -56,7 +56,24 @@ function ladders(bars){
   const year=w.slice(-52),peak=year.reduce((i,b,j)=>b.high>=year[i].high?j:i,0);
   const high=year[peak].high,low=Math.min(...year.slice(0,peak).map(b=>b.low));
   const fib=peak?[.382,.5,.618,.786].map(r=>high-r*(high-low)):[];
-  return {weeklyMA:distinct(averages),weeklyResistance:distinct(resistance),dailyResistance:distinct(former(bars.slice(-252))),monthlyResistance:distinct(former(candles(bars,'monthly').slice(-60))),fibonacci:distinct(fib),confluence:distinct(overlap)};
+  // Define candidates from chart data alone. Retain the actual level of the
+  // first contributing family instead of averaging nearby prices.
+  const families={
+    weeklyResistance:distinct(resistance), weeklyMA:distinct(averages),
+    monthlyResistance:distinct(former(candles(bars,'monthly').slice(-60))),
+    dailyResistance:distinct(former(bars.slice(-252))), fibonacci:distinct(fib)
+  };
+  const candidates=Object.values(families).flat();
+  const ranked=candidates.map(price=>({
+    price, votes:Object.values(families).filter(list=>list.some(v=>Math.abs(v/price-1)<=.02)).length
+  })).sort((a,b)=>b.votes-a.votes||b.price-a.price);
+  const selected=[];
+  for(const {price,votes} of ranked){
+    if(selected.length>=5||(selected.length>=3&&votes<2))break;
+    if(selected.every(v=>Math.abs(v/price-1)>.02))selected.push(price);
+  }
+  const mixed=selected.sort((a,b)=>b-a);
+  return {...families,confluence:distinct(overlap),mixed,candidatePool:[...new Set(candidates)]};
 }
 function score(pred,ref){
   const a=[...pred].sort((x,y)=>x-y),b=[...ref].sort((x,y)=>x-y);
@@ -69,7 +86,7 @@ function score(pred,ref){
 for(const user of await db.collection('users').listDocuments()){
   const data=(await user.collection('portfolio').doc('data').get()).data();
   const universe=new Set([...Object.values(data?.holdings||{}).filter(h=>!h.exited),...Object.values(data?.watchlist||{})].map(r=>r.ticker||r.symbol));
-  const confidence={mid:0,low:0,high:0},results={},totals={};let eligible=0,levels=0,bestHits=0,anyFull=0;
+  const confidence={mid:0,low:0,high:0},results={},totals={};const counts={},paired={better:0,same:0,worse:0};let eligible=0,levels=0,bestHits=0,anyFull=0;
   for(const [symbol,record] of Object.entries(data?.researchBySecurity||{})){
     const ref=resolveReference(record,data.researchReferenceSnapshotMeta)||record.reference;
     if(!universe.has(symbol)||symbol==='NKE'||!['2026-11-03','2026-11-04'].includes(ref?.asOf)||!ref.supports?.length)continue;
@@ -84,13 +101,17 @@ for(const user of await db.collection('users').listDocuments()){
       const t=totals[name]??={hits:0,full:0,predictions:0};
       t.hits+=hits;t.full+=Number(full);t.predictions+=pred.length;
     }
-    const best=Math.max(...Object.values(fits).map(s=>s.hits));
+    const best=fits.mixed.hits;
+    const count=fits.mixed.pred.length;
+    counts[count]=(counts[count]||0)+1;
+    const delta=best-fits.weeklyResistance.hits;
+    paired[delta>0?'better':delta<0?'worse':'same']++;
     bestHits+=best;
-    if(Object.values(fits).some(s=>s.full))anyFull++;
+    if(fits.mixed.full)anyFull++;
     const rating=best/ref.supports.length>=.6?'mid':'low';
     confidence[rating]++;
-    results[symbol]={asOf:ref.asOf,fits,bestNovemberFit:rating};
+    results[symbol]={asOf:ref.asOf,fits,mixedNovemberFit:rating};
   }
-  if(eligible)await user.collection('researchStudies').doc('november-2026-personal-v1').set({results,totals,eligible,levels});
-  console.log('STUDY',JSON.stringify({eligible,evaluated:Object.keys(results).length,levels,totals,bestHits,anyFull,confidence}));
+  if(eligible)await user.collection('researchStudies').doc('november-2026-mixed-v1').set({results,totals,eligible,levels});
+  console.log('STUDY',JSON.stringify({eligible,evaluated:Object.keys(results).length,levels,totals,bestHits,anyFull,confidence,counts,paired}));
 }
