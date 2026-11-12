@@ -148,6 +148,35 @@ function staggerRules(bars,iv) {
       }
     }
   }
+  const nearby=(target,width)=>{
+    const choices=candidates.filter(c=>Math.abs(c.price/target-1)<=width);
+    const merit=c=>Math.min(8,c.strength)*.004-Math.abs(c.price/target-1);
+    return choices.sort((a,b)=>merit(b)-merit(a))[0]?.price??target;
+  };
+  for(const [anchorName,anchor] of Object.entries(anchors)){
+    if(anchorName==='sheetIV')continue;
+    for(const discount of [0,.06,.12]){
+      const top=nearby(anchor*(1-discount),.04);
+      for(const lookback of [13,26,52,104]){
+        const recent=w.slice(-lookback),bottom=Math.min(...recent.map(b=>b.low));
+        for(const count of [3,4,5,'adaptive']){
+          const n=count==='adaptive'?Math.max(3,Math.min(5,1+Math.round(Math.log(bottom/top)/Math.log(.91)))):count;
+          for(const shape of ['linear','geometric','linearSnap','geometricSnap']){
+            const levels=[];
+            if(bottom<top*.94){
+              for(let rung=0;rung<n;rung++){
+                const f=rung/(n-1);
+                const target=shape.startsWith('linear')?top+(bottom-top)*f:top*(bottom/top)**f;
+                const value=shape.endsWith('Snap')&&rung>0&&rung<n-1?nearby(target,Math.min(.025,(1-bottom/top)/(3*n))):target;
+                levels.push(value);
+              }
+            }
+            spaced[['endpoint',anchorName,discount,lookback,count,shape].join('/')]=levels;
+          }
+        }
+      }
+    }
+  }
   return {spaced,all};
 }
 for(const user of await db.collection('users').listDocuments()){
@@ -187,7 +216,7 @@ for(const user of await db.collection('users').listDocuments()){
   const keys=common.filter(k=>!k.startsWith('sheetIV/'));
   const summary={eligible,evaluated:rows.length,levels,rules:keys.length,above:rows.reduce((s,r)=>s+r.above,0),pool:rows.reduce((s,r)=>s+r.pool,0),poolSize:rows.reduce((s,r)=>s+r.poolSize,0)};
   const privateFits={};
-  for(const [mode,subset] of Object.entries({all:keys,grid:keys.filter(k=>k.includes('/grid/')),technical:keys.filter(k=>!k.includes('/grid/'))})){
+  for(const [mode,subset] of Object.entries({all:keys,grid:keys.filter(k=>k.includes('/grid/')),technical:keys.filter(k=>!k.includes('/grid/')&&!k.startsWith('endpoint/')),endpoints:keys.filter(k=>k.startsWith('endpoint/'))})){
     const key=choose(rows,subset),total={key,hits:0,full:0,pred:0,looHits:0,looFull:0,looPred:0,oracleFull:0};
     for(const [symbol,row] of Object.entries(results)){
       const held=choose(rows.filter(r=>r!==row),subset);
@@ -195,10 +224,12 @@ for(const user of await db.collection('users').listDocuments()){
       total.hits+=s.hits;total.full+=Number(s.full);total.pred+=s.n;
       total.looHits+=v.hits;total.looFull+=Number(v.full);total.looPred+=v.n;
       total.oracleFull+=Number(subset.some(k=>row.scores[k].full));
-      if(mode==='technical')privateFits[symbol]={heldOutRule:held,...v,referenceCount:row.refCount};
+      if(mode==='all')privateFits[symbol]={heldOutRule:held,...v,referenceCount:row.refCount,
+        confidence:v.hits/row.refCount>=.6?'mid':'low'};
     }
     summary[mode]=total;
   }
+  summary.mid=Object.values(privateFits).filter(v=>v.confidence==='mid').length;
   const ivRows=rows.filter(r=>Object.keys(r.scores).some(k=>k.startsWith('sheetIV/')));
   if(ivRows.length>1){
     const ivKeys=Object.keys(ivRows[0].scores).filter(k=>k.startsWith('sheetIV/'));
@@ -209,6 +240,6 @@ for(const user of await db.collection('users').listDocuments()){
     }
     summary.conditionalSheetIV=total;
   }
-  await user.collection('researchStudies').doc('november-2026-stagger-v1').set({summary,privateFits});
+  await user.collection('researchStudies').doc('november-2026-endpoints-v1').set({summary,privateFits});
   console.log('STAGGER',JSON.stringify(summary));
 }
