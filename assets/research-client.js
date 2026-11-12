@@ -96,7 +96,7 @@ export function parseAdamSnapshot(input, securities = []) {
     if (!validSymbol(raw?.symbol)) throw new TypeError('Snapshot contains an invalid symbol.');
     if (!date(raw.asOf)) throw new TypeError('Every reference row needs its source update date.');
     if (typeof raw.currency !== 'string' || !/^[A-Z]{3}$/.test(raw.currency)) throw new TypeError('Every reference row needs its currency.');
-    const variants = METHOD_FIELDS.flatMap(([key, method, label]) => {
+    let variants = METHOD_FIELDS.flatMap(([key, method, label]) => {
       const value = raw[key];
       if (value == null || value === '' || value === 'NA') return [];
       if (typeof value !== 'number' || !Number.isFinite(value)) throw new TypeError('Reference IV must be a number or null.');
@@ -104,9 +104,11 @@ export function parseAdamSnapshot(input, securities = []) {
     });
     const family = raw.methodFamily ?? (/bank/i.test(raw.classification ?? raw.sector ?? '') ? 'bank'
       : /reit/i.test(raw.classification ?? '') ? 'reit'
-        : /ETF/i.test(raw.category ?? '') ? 'fund'
+        : /ETF|\bfund\b/i.test(`${raw.category??''} ${raw.classification??''}`) ? 'fund'
           : /Large|Turnaround/i.test(raw.category ?? '') ? 'stock' : null);
     if (family !== null && !['stock','bank','reit','fund'].includes(family)) throw new TypeError('Unknown valuation method family in reference.');
+    if(raw.source==='dividend'&&family===null)variants=variants.map(v=>['conservativeIV','baseIV','averageIV'].includes(v.key)
+      ?{...v,method:'published_'+v.key.replace(/IV$/,'').toLowerCase()+'_unspecified'}:v);
     const entry = {source: String(raw.source ?? ''), label: sourceName(String(raw.source ?? '')),
       asOf: raw.asOf, currency: raw.currency, supports: normalizeSupports(raw.supportLevels ?? raw.supports ?? []),
       variants, category: raw.category ?? null, classification: raw.classification ?? null, methodFamily: family};

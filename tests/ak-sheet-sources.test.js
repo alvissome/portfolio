@@ -103,3 +103,8 @@ test('backdated confidence imports are bound to the exact source values and roll
   await assert.rejects(failing.importSnapshot(input),/offline/);
   assert.equal(failing.getState().records.EXAMPLE.backdatedSupportAssessment,undefined);
 });
+test('generic dividend conservative/base labels do not assert an unverified DCF method',()=>{
+  const parsed=parseAdamSnapshot({retrievedAt:'2026-11-12',rows:[{...sourceRow,source:'dividend',category:'Cash Cows',classification:'Asset Management',conservativeIV:21}]});
+  assert.equal(parsed.references.EXAMPLE.methodFamily,null);
+  assert.ok(parsed.references.EXAMPLE.iv.variants.every(v=>!v.method.startsWith('dcf')));
+});
