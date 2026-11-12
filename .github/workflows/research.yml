@@ -8,6 +8,7 @@ on:
       - .github/scripts/runResearch.js
       - .github/scripts/research-cli.js
       - assets/research-core.js
+      - assets/research-*
       - .github/workflows/research.yml
   schedule:
     - cron: '7,22,37,52 * * * *'
@@ -43,7 +44,7 @@ jobs:
       - name: Run private research requests
         run: node .github/scripts/runResearch.js "--${RESEARCH_MODE}"
         env:
-          RESEARCH_MODE: ${{ github.event_name == 'push' && 'dry-run' || inputs.mode || 'process' }}
+          RESEARCH_MODE: ${{ inputs.mode || 'process' }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}

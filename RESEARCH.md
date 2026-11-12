@@ -5,10 +5,12 @@ watchlist exports, subscribed sheet snapshots, API keys or account identifiers
 in this repository. Calculations remain experimental; completion is separate
 from matching a reference and from validating the method.
 
-Activation: prepared on the research branch, not deployed. Provider-specific
-permission for transmitting private ticker/company identifiers is pending.
-Keep the background consumer and monthly validation task inactive until that
-permission is recorded; synthetic tests and generic public examples are safe.
+Activation: publication and provider requests were explicitly authorized on
+12 November 2026. The app and personal background consumer are deployed;
+the monthly validation reviews are enabled. Company/ticker identifiers and
+required data dates are used for data lookups; portfolio quantities, costs and
+account details are not sent to market-data providers. Calculations remain
+experimental while dated replication is assessed.
 
 ## Product design
 
@@ -71,7 +73,9 @@ The scheduled consumer runs at minutes 7, 22, 37 and 52, processes a bounded
 number of requests and logs aggregate counters only. Scheduling can be delayed;
 Requested means saved but not acknowledged. A claimed request has an ownership
 token/expiry guard so late or expired consumers cannot replace newer work.
-A manual dry-run reads pending counts without calculations or writes.
+A manual dry-run reads pending counts without calculations or writes. Changes
+to research code also process already-pending requests, so an initial deployment
+does not depend entirely on the timing of the first scheduled run.
 
 ## Processing and validation are separate
 
