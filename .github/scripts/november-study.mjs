@@ -1,3 +1,5 @@
+import {randomBytes,publicEncrypt,createCipheriv,constants} from 'node:crypto';
+import {gzipSync} from 'node:zlib';
 import {initializeApp,cert} from 'firebase-admin/app';
 import {getFirestore} from 'firebase-admin/firestore';
 import {fetchResearchData} from './research-data.mjs';
@@ -240,6 +242,25 @@ for(const user of await db.collection('users').listDocuments()){
     }
     summary.conditionalSheetIV=total;
   }
+  const complete=Object.fromEntries(Object.entries(results).map(([symbol,row])=>[symbol,keys.filter(k=>row.scores[k].full)]));
+  const report={complete,overall:summary.all.key};
+  await user.collection('researchStudies').doc('november-2026-complete-rules').set(report);
+  const key=randomBytes(32),iv=randomBytes(12);
+  const cipher=createCipheriv('aes-256-gcm',key,iv);
+  const ciphertext=Buffer.concat([cipher.update(gzipSync(JSON.stringify(report))),cipher.final()]);
+  const wrapped=publicEncrypt({key:`-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAoeXuSwwmPo8Z80xymLdo
++0lr2hj1IZJwJeuNpDboZZDOyKCxip2nTL6avy1PfCXtKHqXVUZtbdeUKv2nTEzy
+ZuO0eA+sv1/OR+Lg1OQ6YPGqCnEOKCmGrQBNpXZa7iB489J7qWq8xUb68szJVzeJ
+RzUSYyEpX6HNWQmhxxPQZWfJf0rYT42LQfMQnYVulJKi/IshiVR+9AMBsvillV1/
+qkBDL1V7DiS2qzIQkQxiHwBX+X5PI4iYURrfT6IxSDZC7tG4y5FQipSplTOH1fCO
+9Csb7g1fz3juq0sy4QO5TZclWdhrhoEsoYEWPdv5fGC/mj6VNqni4H3FhFhG2ERi
+I66xzUFyC4uWm/WEz2nC+kSHqRCALIaOdcQXsHVvkujzsXnShjPwfDg4B8AfpXXW
+bXdz0CaBPHrztEOV2gaGcA+fttGNrd4nMC5xRfkfze7IUM7bz1RW59CdejoL5y9N
+ZSgdQD8SxoShC5djq65gBGbDDDDPxCdf96qPmPF8QP2vAgMBAAE=
+-----END PUBLIC KEY-----
+`,padding:constants.RSA_PKCS1_OAEP_PADDING,oaepHash:'sha256'},key);
+  console.log('SEALEDREVIEW',Buffer.concat([wrapped,iv,cipher.getAuthTag(),ciphertext]).toString('base64'));
   await user.collection('researchStudies').doc('november-2026-endpoints-v1').set({summary,privateFits});
   console.log('STAGGER',JSON.stringify(summary));
 }
