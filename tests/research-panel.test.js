@@ -391,3 +391,11 @@ test('backdated confidence cannot carry over to a different model, date or refer
   for(const changed of [{...base,modelVersion:'v2'},{...base,reference:{...reference,asOf:'2026-11-04'}},{...base,reference:{...reference,supports:[19,17]}}])
     assert.match(content(render(changed)),/Backdated confidence: Not assessed/);
 });
+test('monthly IV arithmetic can be compared while the historical input vintage remains unvalidated',()=>{
+  const reference={present:true,asOf:'2026-11-04',iv:{value:20}};
+  const record={reference,iv:{processing:'completed',result:{value:22}},comparison:{iv:{status:'awaiting_comparable_vintage',selectedKey:'baseIV',errorPct:10,
+    variants:[{referenceKey:'baseIV',status:'different'}]}}};
+  assert.equal(researchComparisonLabel(record,'iv').text,'Different');
+  record.comparison.iv.variants[0].status='matched';assert.equal(researchComparisonLabel(record,'iv').text,'Matches');
+  record.comparison.iv.variants[0].status='method_mismatch';assert.equal(researchComparisonLabel(record,'iv').text,'Different data dates');
+});

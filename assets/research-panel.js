@@ -49,6 +49,10 @@ export function researchComparisonLabel(record, part) {
   if(part==='supports'&&status==='awaiting_comparable_vintage'&&numeric(comparison?.referenceCount)&&comparison.referenceCount>0&&numeric(comparison?.matchedCount)){
     return comparison.missingCount===0&&comparison.extraCount===0?{text:'Matches',tone:'match'}:{text:'Different',tone:'different'};
   }
+  if(part==='iv'&&status==='awaiting_comparable_vintage'&&numeric(comparison?.errorPct)){
+    const selected=comparison.variants?.find(v=>v.referenceKey===comparison.selectedKey);
+    if(['matched','different'].includes(selected?.status))return selected.status==='matched'?{text:'Matches',tone:'match'}:{text:'Different',tone:'different'};
+  }
   return ({matched:{text:'Matches',tone:'match'}, different:{text:'Different',tone:'different'},
     no_benchmark:{text:'No benchmark',tone:'neutral'}, no_reference_value:{text:`No published ${part === 'iv' ? 'IV' : 'SL'}`,tone:'neutral'},
     reference_unknown:{text:'Reference not loaded',tone:'neutral'},
@@ -90,7 +94,9 @@ export function createResearchComponents(React) {
     const currentComparison = ready(record, part) && comparison?.status !== 'pending' && reference &&
       (comparison?.snapshotId ?? null) === (reference.snapshotId ?? null) &&
       (comparison?.referenceAsOf ?? null) === (reference.asOf ?? null);
-    const detail = [record?.[part]?.reason, researchWaitReason(record,part), currentComparison ? comparison?.reason : null].filter(Boolean).join(' ');
+    const detail = [record?.[part]?.reason, researchWaitReason(record,part),
+      currentComparison&&comparison?.status==='awaiting_comparable_vintage'?'Numerical comparison with the monthly sheet; dates and method validation remain separate.':null,
+      currentComparison ? comparison?.reason : null].filter(Boolean).join(' ');
     const error = currentComparison && numeric(comparison?.errorPct) ? `Difference ${comparison.errorPct.toFixed(1)}%.` : '';
     const supportMatches = currentComparison && numeric(comparison?.matchedCount) ? `${comparison.matchedCount}/${comparison.referenceCount} supports matched; ${comparison.missingCount ?? 0} missing, ${comparison.extraCount ?? 0} extra.` : '';
     const assessment=record?.backdatedSupportAssessment;
