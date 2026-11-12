@@ -149,7 +149,7 @@ export async function processResearchRequest(request, {fetchData, now = () => ne
   }
   const calculating = {...base, instrument: data.instrument || null, phase: 'calculating'};
   await progress?.(calculating);
-  const {reference: ignoredReference, comparison: ignoredComparison, ...independentRequest} = request;
+  const {reference: ignoredReference, comparison: ignoredComparison, backdatedSupportAssessment: ignoredAssessment, ...independentRequest} = request;
   // methodFamily is an explicit instrument classification, never the target IV.
   const iv = withPrevious('iv', calculateIV(data, independentRequest, asOf));
   const supports = withPrevious('supports', calculateSupports(data, independentRequest, asOf));

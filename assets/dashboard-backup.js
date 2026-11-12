@@ -1,4 +1,5 @@
 import {ACCOUNTS,dateKey,todaySG} from './performance-core.js?v=ytd-20261105';
+import {normalizeAkSourceSettings} from './ak-sheet-sources.js';
 
 const isRecord=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 
@@ -52,6 +53,11 @@ export function withoutCredentials(value) {
 function validateResearch(research) {
   if(!isRecord(research)||!isRecord(research.records)||
     research.referenceMeta!=null&&!isRecord(research.referenceMeta))throw Error('Research data is missing or invalid.');
+  if(Object.hasOwn(research,'sourceSettings')){
+    if(!isRecord(research.sourceSettings))throw Error('Invalid sheet-source settings in backup.');
+    normalizeAkSourceSettings(research.sourceSettings);
+  }
+  if(Object.hasOwn(research,'syncStatus')&&research.syncStatus!==null&&!isRecord(research.syncStatus))throw Error('Invalid sheet sync status in backup.');
   for(const [symbol,record] of Object.entries(research.records)){
     if(!/^[A-Za-z0-9^][A-Za-z0-9.^=:_-]{0,39}$/.test(symbol)||!isRecord(record)||
       record.symbol!==symbol||record.securityId!==symbol)throw Error('Invalid research security in backup.');
@@ -99,7 +105,9 @@ export function prepareResearchRestore(research,{requestId=()=>crypto.randomUUID
     }
     records[symbol]=record;
   }
-  return {records,referenceMeta:restored.referenceMeta??null};
+  return {records,referenceMeta:restored.referenceMeta??null,
+    ...(Object.hasOwn(restored,'sourceSettings')?{sourceSettings:restored.sourceSettings}:{}),
+    ...(Object.hasOwn(restored,'syncStatus')?{syncStatus:restored.syncStatus}:{})};
 }
 
 export function readDashboardBackup(text) {

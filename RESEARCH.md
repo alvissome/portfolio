@@ -264,6 +264,39 @@ all source entries, their own dates, variants and listing currencies. Complete
 coverage is bounded to the snapshot's verified markets; a partial snapshot
 cannot establish that an arbitrary security is absent from all four lists.
 
+## AK sheet sync and reconstruction confidence
+
+Watchlist Research offers Sync AK sheets, editable per-list Google Sheets URLs,
+and a separate AK sheet level view. The browser fetches readable Google CSV
+feeds directly with credentials omitted; portfolio rows/amounts are not sent.
+No subscription password, browser session or private sheet ID is bundled in
+public code. Authentication-only URLs require a readable source link; source
+discovery through the subscriber portal is an authorised manual setup step.
+Each list retains its own publication date and last check. Missing access,
+wrong-list headers, older replacement sheets and changed layouts retain the
+previous reference with a visible error. Unchanged values do not enqueue fresh
+calculations. Complete absence requires all four lists to be readable.
+
+Sync changes reference data and the displayed AK view. Applying AK support
+levels to an existing watchlist row is a separate explicit preview/apply action:
+only s1-s5 change, unpublished slots clear, and existing alert configuration
+then uses those new levels. It does not change holdings, manual IV or notes.
+Reference JSON import remains under Advanced research maintenance; dashboard
+backup remains the recovery mechanism and includes source settings/checks.
+
+The current backdated SL study is November only. The private study policy
+excludes exceptional cases identified by the user and counts eligible tickers,
+not merely individual matching levels, toward a 90% full-reconstruction target.
+Daily/weekly/monthly candle zones, former resistance/retests and optional
+Fibonacci anchors are hypotheses to test, not asserted causes of every level.
+High/Mid/Low describes dated fit and evidence quality, not investment success.
+High requires complete level/count agreement plus reviewed technical evidence
+and nearby-session stability; numerical agreement alone earns at most Mid.
+An assessment is bound to its model, source date and exact reference levels.
+Unknown evidence is Not assessed; explicit study exclusions remain Excluded.
+Small date differences remain freshness context for monthly SL arithmetic;
+they do not automatically imply a formula failure or a validated reconstruction.
+
 The credential-free CLI uses the same engine as the scheduled worker:
 
 ```

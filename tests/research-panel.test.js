@@ -357,3 +357,37 @@ test('an old unacknowledged request reports worker delay without claiming calcul
   assert.equal(researchProcessingLabel({...older,phase:'restored',iv:{processing:'blocked'}},'iv',now),'Request blocked');
   assert.equal(researchWaitReason({...older,phase:'restored'},'iv',now),'');
 });
+
+test('AK view displays dated sheet levels and updates active levels only after the explicit preview action',()=>{
+  const app=host(),applied=[];
+  const watchlist=[{id:'existing',symbol:'EXAMPLE',s1:'99',notes:'keep',notifEnabled:true}];
+  const record={symbol:'EXAMPLE',securityId:'EXAMPLE',modelVersion:'v1',reference:{present:true,asOf:'2026-11-03',label:'Capital gains',supports:[18,16],iv:{value:20}},supports:{processing:'completed',result:{value:[80,60]}}};
+  const props={scope:'watchlist',watchlist,onApplyAkLevels:(...args)=>applied.push(args),research:{records:{EXAMPLE:record}}};
+  let tree=app.render(app.components.ResearchPanel,props);
+  nodes(tree,'select').find(n=>n.props['aria-label']==='Displayed level source').props.onChange({target:{value:'ak'}});
+  tree=app.render(app.components.ResearchPanel,props);
+  assert.match(content(tree),/AK IV/);assert.match(content(tree),/Sheet 2026-11-03/);
+  nodes(tree,'button').find(n=>content(n)==='Use AK SL in watchlist').props.onClick();
+  assert.equal(applied.length,0,'opening a preview does not change active alerts');
+  tree=app.render(app.components.ResearchPanel,props);
+  nodes(tree,'button').find(n=>content(n)==='Apply AK levels').props.onClick();
+  assert.deepEqual(applied,[['existing',{s1:'18',s2:'16',s3:'',s4:'',s5:''}]]);
+  assert.equal(watchlist[0].s1,'99');assert.equal(watchlist[0].notifEnabled,true);
+});
+
+test('monthly SL numerical comparison is separate from backdated confidence and source freshness',()=>{
+  const record={reference:{present:true,asOf:'2026-11-03',supports:[18]},supports:{processing:'completed',result:{value:[18]}},
+    comparison:{supports:{status:'awaiting_comparable_vintage',matchedCount:1,referenceCount:1,missingCount:0,extraCount:0}}};
+  assert.equal(researchComparisonLabel(record,'supports').text,'Matches');
+  assert.equal(researchComparisonLabel({...record,comparison:{supports:{...record.comparison.supports,missingCount:1}}},'supports').text,'Different');
+});
+
+test('backdated confidence cannot carry over to a different model, date or reference levels',()=>{
+  const app=host();const reference={present:true,asOf:'2026-11-03',supports:[18,16]};
+  const assessment={modelVersion:'v1',studyMonth:'2026-11',referenceAsOf:'2026-11-03',referenceKey:JSON.stringify(['EXAMPLE','2026-11-03',[18,16]]),confidence:'low'};
+  const base={symbol:'EXAMPLE',securityId:'EXAMPLE',modelVersion:'v1',reference,backdatedSupportAssessment:assessment};
+  const render=record=>app.render(app.components.ResearchPanel,{scope:'watchlist',watchlist:[{symbol:'EXAMPLE'}],research:{records:{EXAMPLE:record}}});
+  assert.match(content(render(base)),/Backdated confidence: Low/);
+  for(const changed of [{...base,modelVersion:'v2'},{...base,reference:{...reference,asOf:'2026-11-04'}},{...base,reference:{...reference,supports:[19,17]}}])
+    assert.match(content(render(changed)),/Backdated confidence: Not assessed/);
+});

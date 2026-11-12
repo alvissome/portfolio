@@ -1,4 +1,6 @@
 import {prioritizeUniverse, planTrackInWatchlist} from './research-core.js';
+import {createAkSheetControls} from './ak-sheet-controls.js';
+import {planAkLevelCopy} from './ak-sheet-sources.js';
 
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
 const price = value => numeric(value) ? value.toLocaleString('en-SG', {
@@ -44,6 +46,9 @@ export function researchComparisonLabel(record, part) {
     return {text:'Awaiting comparison',tone:'pending'};
   }
   const status = comparison?.status;
+  if(part==='supports'&&status==='awaiting_comparable_vintage'&&numeric(comparison?.referenceCount)&&comparison.referenceCount>0&&numeric(comparison?.matchedCount)){
+    return comparison.missingCount===0&&comparison.extraCount===0?{text:'Matches',tone:'match'}:{text:'Different',tone:'different'};
+  }
   return ({matched:{text:'Matches',tone:'match'}, different:{text:'Different',tone:'different'},
     no_benchmark:{text:'No benchmark',tone:'neutral'}, no_reference_value:{text:`No published ${part === 'iv' ? 'IV' : 'SL'}`,tone:'neutral'},
     reference_unknown:{text:'Reference not loaded',tone:'neutral'},
@@ -58,6 +63,7 @@ export function researchComparisonLabel(record, part) {
  */
 export function createResearchComponents(React) {
   const h = React.createElement;
+  const AkSheetControls=createAkSheetControls(React);
 
   function ResearchViewSwitch({research, onChange, defaultLabel = 'Positions', label = 'Table view'}) {
     return h('div', {className: 'research-view-switch', role: 'group', 'aria-label': label},
@@ -87,10 +93,15 @@ export function createResearchComponents(React) {
     const detail = [record?.[part]?.reason, researchWaitReason(record,part), currentComparison ? comparison?.reason : null].filter(Boolean).join(' ');
     const error = currentComparison && numeric(comparison?.errorPct) ? `Difference ${comparison.errorPct.toFixed(1)}%.` : '';
     const supportMatches = currentComparison && numeric(comparison?.matchedCount) ? `${comparison.matchedCount}/${comparison.referenceCount} supports matched; ${comparison.missingCount ?? 0} missing, ${comparison.extraCount ?? 0} extra.` : '';
+    const assessment=record?.backdatedSupportAssessment;
+    const assessed=!!assessment&&assessment.modelVersion===record?.modelVersion&&assessment.referenceAsOf===record?.reference?.asOf&&assessment.studyMonth===record?.reference?.asOf?.slice(0,7)&&
+      assessment.referenceKey===JSON.stringify([record.symbol,record.reference.asOf,record.reference.supports]);
+    const confidence=assessed?({high:'High',mid:'Mid',low:'Low',excluded:'Excluded',not_assessed:'Not assessed'}[assessment.confidence]??'Not assessed'):'Not assessed';
     return h('div', {className:'research-part-status'},
       h('span', {className:'research-status'}, researchProcessingLabel(record, part)),
       h('span', {className:`research-comparison research-${label.tone}`, title:[detail,error,supportMatches].filter(Boolean).join(' ')}, label.text),
       result?.asOf ? h('small', null, `${ready(record,part) ? 'As of' : 'Previous result'} ${date(result.asOf)}`) : null,
+      part==='supports'?h('small',{title:assessed?assessment.reason:'Confidence needs a backdated case assessment. It is separate from latest numerical comparison.'},`Backdated confidence: ${confidence}`):null,
       detail ? h('small', {className:'research-reason'}, detail) : null);
   }
 
@@ -116,13 +127,16 @@ export function createResearchComponents(React) {
   }
 
   function ResearchPanel({holdings = [], watchlist = [], scope = 'holdings',
-    onTrack, getHoldingMetrics, privacyMode = false, research}) {
+    onTrack,onApplyAkLevels, getHoldingMetrics, privacyMode = false, research}) {
     const pending = React.useRef(new Map());
     const [tracked, setTracked] = React.useState(() => new Set());
     const [error, setError] = React.useState('');
     const [importBusy, setImportBusy] = React.useState(false);
     const [importMessage, setImportMessage] = React.useState('');
     const [pastedReference, setPastedReference] = React.useState('');
+    const [levelSource,setLevelSource]=React.useState('independent');
+    const [copyPreview,setCopyPreview]=React.useState(null);
+    const fromAk=levelSource==='ak';
     const importPending = React.useRef(false);
     const records = research?.records ?? {};
     const allRows = scope === 'watchlist' ? prioritizeUniverse([], watchlist)
@@ -171,19 +185,23 @@ export function createResearchComponents(React) {
       } catch (problem) {setError(problem?.message || 'Reference import failed.');}
       finally {event.target.value = '';}
     };
-    const headings = ['Symbol / Name', 'Avg Price', 'BValue (SGD)', 'Close', 'Independent IV', 'IV status',
+    const headings = ['Symbol / Name', 'Avg Price', 'BValue (SGD)', 'Close', fromAk?'AK IV':'Independent IV', fromAk?'IV source / date':'IV status',
       'SL1', 'SL2', 'SL3', 'SL4', 'SL5', 'SL status', 'Research'];
     if (scope === 'holdings') headings.push('Watchlist');
 
     return h('div', {className:'research-panel'},
       h('div', {className:'research-notice',role:'note'},
-        h('strong', null, 'Independent research'),
-        h('strong', {className:'research-comparison research-different',style:{fontSize:'11px'}}, 'Experimental · validation in progress'),
+        h('strong', null, fromAk?'AK sheet levels':'Independent research'),
+        h('strong', {className:'research-comparison research-different',style:{fontSize:'11px'}},fromAk?'Published monthly reference':'Experimental · validation in progress'),
         h('span', null, research ? 'Saving a symbol requests research. Requested means it is waiting for the background worker; completed values and benchmark comparisons have separate statuses.'
           : 'Research service is not connected.'),
         scope === 'holdings' ? h('span', null, 'Showing all active holdings across accounts.') : null),
+      h('label',{style:{fontSize:'11px'}},'Displayed levels ',h('select',{'aria-label':'Displayed level source',value:levelSource,onChange:e=>setLevelSource(e.target.value)},
+        h('option',{value:'independent'},'Independent reconstruction'),h('option',{value:'ak'},'AK sheets'))),
+      scope==='watchlist'&&research?.syncAkSheets?h(AkSheetControls,{research,onSynced:()=>setLevelSource('ak')}):null,
       scope === 'watchlist' && research ? h('div', {className:'research-controls'},
         h('button', {type:'button',className:'research-track',onClick:()=>research.refresh?.()}, 'Refresh status'),
+        h('details',{className:'research-details'},h('summary',null,'Advanced research maintenance'),
         h('label', {className:'research-import'}, importBusy ? 'Importing reference…' : 'Import reference snapshot',
           h('input', {type:'file',accept:'.json,application/json',onChange:importFile,disabled:importBusy || !research.importSnapshot})),
         h('details', {className:'research-details'}, h('summary', null, 'Paste reference JSON'),
@@ -192,7 +210,7 @@ export function createResearchComponents(React) {
               onChange:event=>setPastedReference(event.target.value),disabled:importBusy,
               style:{display:'block',width:'100%',minWidth:'260px',maxWidth:'560px',fontFamily:'monospace',fontSize:'10px',margin:'5px 0'}})),
           h('button', {type:'button',className:'research-track',disabled:importBusy || !pastedReference.trim() || !research.importSnapshot,
-            onClick:()=>importReference(pastedReference,true)}, 'Import pasted reference')),
+            onClick:()=>importReference(pastedReference,true)}, 'Import pasted reference'))),
         research.referenceMeta ? h('small', null, `Reference dates: ${(research.referenceMeta.dates ?? []).join(', ')}`) : null,
         importMessage ? h('span', {role:'status'}, importMessage) : null) : null,
       error || research?.error ? h('p', {className:'research-error',role:'alert'}, error || research.error) : null,
@@ -206,8 +224,11 @@ export function createResearchComponents(React) {
             const watched = watchlist.find(item => item.symbol === row.symbol);
             const name = watched?.name || held?.name || record?.instrument?.name;
             const trackedNow = tracked.has(row.securityId) || planTrackInWatchlist(watchlist, row).kind === 'existing';
-            const iv = output(record,'iv');
-            const supports = partValue(record,'supports');
+            const iv = fromAk?record?.reference?.iv:output(record,'iv');
+            const supports = fromAk?record?.reference?.supports:partValue(record,'supports');
+            const akStatus=part=>h('div',{className:'research-part-status'},h('span',null,record?.reference?.present===false?'No benchmark':record?.reference?.present!==true?'Reference not loaded':
+              part==='supports'&&!record.reference.supports?.length?'No published SL':part==='iv'&&!numeric(record.reference.iv?.value)?'No published IV':'AK sheet'),
+              record?.reference?.asOf?h('small',null,`Sheet ${date(record.reference.asOf)} · ${record.reference.label??record.reference.source}`):null);
             const cells = [
               h('td', {key:'symbol',className:'research-symbol'}, row.symbol,
                 name && name !== row.symbol ? h('small', null, name) : null),
@@ -216,15 +237,21 @@ export function createResearchComponents(React) {
               h('td', {key:'close',className:'research-number'}, price(metrics.close)),
               h('td', {key:'iv',className:'research-number'}, price(iv?.value), iv?.method ? h('small', null, iv.method) : null,
                 iv?.variants?.length > 1 ? h('small', null, 'Multiple methods — see details') : null),
-              h('td', {key:'iv-status'}, h(PartStatus,{record,part:'iv'})),
+              h('td', {key:'iv-status'},fromAk?akStatus('iv'):h(PartStatus,{record,part:'iv'})),
               ...['sl1','sl2','sl3','sl4','sl5'].map((key,index) => h('td', {key,className:'research-number'}, price(supports?.[index]))),
-              h('td', {key:'sl-status'}, h(PartStatus,{record,part:'supports'})),
+              h('td', {key:'sl-status'},fromAk?akStatus('supports'):h(PartStatus,{record,part:'supports'})),
               h('td', {key:'research'}, h('select',{'aria-label':`IV method family for ${row.symbol}`,className:'research-method-select',
                 value:record?.methodFamilySource === 'user' ? record.methodFamily : 'auto', disabled:!research?.request,
                 onChange:event=>request(row,event.target.value)},
                 ...[['auto','Auto method'],['stock','Company DCF'],['bank','Bank'],['reit','REIT'],['fund','Fund / ETF']].map(([value,label])=>h('option',{key:value,value},label))),
                 h('button',{type:'button',className:'research-track',disabled:!research?.request,
-                onClick:()=>request(row)}, record?.requestId ? 'Recalculate' : 'Calculate'), h(ResearchDetails,{record})),
+                onClick:()=>request(row)}, record?.requestId ? 'Recalculate' : 'Calculate'), h(ResearchDetails,{record}),
+                fromAk&&scope==='watchlist'&&onApplyAkLevels&&record?.reference?.supports?.length?h('button',{type:'button',className:'research-track',
+                  onClick:()=>setCopyPreview(row.symbol)},'Use AK SL in watchlist'):null,
+                fromAk&&copyPreview===row.symbol?h('div',{className:'research-details'},
+                  h('p',null,`Replace watchlist SL1–SL5 with sheet ${record?.reference?.asOf}: ${(record?.reference?.supports??[]).map(price).join(' / ')}. Unpublished levels will be cleared. Existing alert settings will use the new levels.`),
+                  h('button',{type:'button',className:'research-track',onClick:()=>{try{const plan=planAkLevelCopy(watchlist,row.symbol,record.reference);onApplyAkLevels(plan.id,plan.patch);setCopyPreview(null);setError('');}catch(e){setError(e.message);}}},'Apply AK levels'),
+                  h('button',{type:'button',className:'research-track',onClick:()=>setCopyPreview(null)},'Cancel')):null),
             ];
             if (scope === 'holdings') cells.push(h('td', {key:'track'}, h('button', {type:'button',className:'research-track',
               disabled:trackedNow || typeof onTrack !== 'function', onClick:()=>track(row)}, trackedNow ? 'Tracked' : 'Track in watchlist')));

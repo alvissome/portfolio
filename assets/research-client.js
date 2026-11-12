@@ -1,4 +1,5 @@
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
+import {normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js';
 
 export const RESEARCH_MODEL_VERSION = 'ak-reconstruction-v1';
 const PARTS = ['iv', 'supports'];
@@ -149,8 +150,9 @@ export function parseAdamSnapshot(input, securities = []) {
  * logged. A request is Requested until the worker acknowledges it.
  */
 export function createResearchController({load, write, now = () => new Date().toISOString(),
-  uuid = () => crypto.randomUUID(), modelVersion = RESEARCH_MODEL_VERSION}) {
-  let state = {records: {}, loading: true, hydrated: false, paused: false, error: '', referenceMeta: null};
+  uuid = () => crypto.randomUUID(), modelVersion = RESEARCH_MODEL_VERSION,sheetFetch=globalThis.fetch}) {
+  let state = {records: {}, loading: true, hydrated: false, paused: false, error: '', referenceMeta: null,
+    sheetSources:{},sheetSyncStatus:null,sheetSyncBusy:false};
   let closed = false;
   let paused = false;
   let refreshing = null;
@@ -160,6 +162,7 @@ export function createResearchController({load, write, now = () => new Date().to
   const pendingMutations = new Set();
   const imports = new Map();
   const listeners = new Set();
+  let sheetSync=null,sourceEpoch=0,sourceAbort=null;
   const publish = patch => {
     if (closed) return;
     state = {...state, ...patch};
@@ -190,7 +193,8 @@ export function createResearchController({load, write, now = () => new Date().to
           next[symbol] = record;
           if (pending.get(symbol) === incoming.requestId) pending.delete(symbol);
         }
-        publish({records: next, loading: false, hydrated: true, error: '', referenceMeta: data?.researchReferenceSnapshotMeta ?? state.referenceMeta});
+        publish({records: next, loading: false, hydrated: true, error: '', referenceMeta: data?.researchReferenceSnapshotMeta ?? state.referenceMeta,
+          sheetSources:data?.researchSheetSources??state.sheetSources,sheetSyncStatus:data?.researchSheetSyncStatus??state.sheetSyncStatus});
       } catch {
         publish({loading: false, error: 'Research could not refresh. Check the connection and retry.'});
       } finally {refreshing = null;}
@@ -257,19 +261,40 @@ export function createResearchController({load, write, now = () => new Date().to
     if (paused || closed) throw new Error('Research is paused during backup restore.');
     if (!state.hydrated) throw new Error('Research has not loaded. Refresh before importing a reference.');
     const parsed = parseAdamSnapshot(input, universe);
+    const assessments=typeof input==='string'?JSON.parse(input).supportAssessmentsBySymbol:input.supportAssessmentsBySymbol;
+    if(assessments!==undefined&&(!assessments||typeof assessments!=='object'||Array.isArray(assessments)))throw Error('Invalid backdated assessments.');
+    for(const [symbol,a] of Object.entries(assessments??{})){
+      if(!validSymbol(symbol)||a?.symbol!==symbol||!['high','mid','low','excluded','not_assessed'].includes(a.confidence)||
+        typeof a.modelVersion!=='string'||!date(a.referenceAsOf)||!date(a.asOf)||a.studyMonth!==a.referenceAsOf.slice(0,7))throw Error('Invalid backdated assessment identity or dates.');
+      if(!parsed.references[symbol]||parsed.references[symbol].asOf!==a.referenceAsOf)throw Error('Backdated assessment must match the imported source date.');
+      if(a.referenceKey!==JSON.stringify([symbol,a.referenceAsOf,parsed.references[symbol].supports]))throw Error('Backdated assessment must match the imported levels.');
+      if(a.confidence==='high'&&(!a.technicalReviewed||!a.nearbyCutoffsStable||!a.fullFit||a.missingCount!==0||a.extraCount!==0||!(a.referenceCount>0)||a.matchedCount!==a.referenceCount))throw Error('High confidence requires complete fit and reviewed evidence.');
+    }
+    if(!parsed.metadata.complete)for(const security of universe){
+      if(!parsed.references[security.symbol]&&state.records[security.symbol]?.reference?.present===false){
+        parsed.references[security.symbol]={present:null,snapshotId:parsed.metadata.id,capturedAt:parsed.metadata.capturedAt,
+          reason:'Some reference lists are unavailable; absence is not confirmed.'};
+      }
+    }
     // A retry cannot commit an older request after this import's new request.
     await Promise.all([...inFlightWrites.values()]);
     if (paused || closed) throw new Error('Research is paused during backup restore.');
     const previousReferences = new Map();
+    const previousAssessments = new Map();
     const patchRecords = {};
     const nextRecords = {...state.records};
     for (const [symbol, reference] of Object.entries(parsed.references)) {
       previousReferences.set(symbol, state.records[symbol]?.reference);
+      previousAssessments.set(symbol,state.records[symbol]?.backdatedSupportAssessment);
       imports.set(symbol, reference);
       const current = state.records[symbol] ?? {securityId: symbol, symbol};
       const comparison = {iv: {status:'pending',reason:null}, supports: {status:'pending',reason:null}};
       nextRecords[symbol] = {...current, reference, comparison};
       patchRecords[symbol] = {securityId:symbol, symbol, reference, comparison};
+      if(assessments?.[symbol]){
+        nextRecords[symbol].backdatedSupportAssessment=assessments[symbol];
+        patchRecords[symbol].backdatedSupportAssessment=assessments[symbol];
+      }
     }
     const metadata = {...parsed.metadata, importedAt: now()};
     publish({records: nextRecords});
@@ -284,6 +309,8 @@ export function createResearchController({load, write, now = () => new Date().to
         const restored = {...rollback[symbol], comparison:{iv:{status:'pending',reason:null},supports:{status:'pending',reason:null}}};
         if (previousReference === undefined) delete restored.reference;
         else restored.reference = previousReference;
+        if(previousAssessments.get(symbol)===undefined)delete restored.backdatedSupportAssessment;
+        else restored.backdatedSupportAssessment=previousAssessments.get(symbol);
         rollback[symbol] = restored;
       }
       publish({records:rollback,error:'Reference import was not saved. Please retry.'});
@@ -300,6 +327,7 @@ export function createResearchController({load, write, now = () => new Date().to
   };
   const pause = async () => {
     paused = true;
+    sourceEpoch++;sourceAbort?.abort();
     publish({paused:true});
     // Stop loops before they advance to another symbol and drain every write
     // already started, including atomic reference imports. Restore can then
@@ -313,8 +341,34 @@ export function createResearchController({load, write, now = () => new Date().to
     await refresh();
     return ensure(universe);
   };
+  const saveSheetSources = async settings => {
+    if(paused||closed)throw Error('Research is paused during backup restore.');
+    const normalized=normalizeAkSourceSettings(settings);
+    await persist({researchSheetSources:normalized});publish({sheetSources:normalized});return normalized;
+  };
+  const syncAkSheets = settings => {
+    if(sheetSync)return sheetSync;
+    const epoch=sourceEpoch;
+    sheetSync=(async()=>{
+      if(paused||closed)throw Error('Research is paused during backup restore.');
+      if(!state.hydrated)await refresh();
+      if(!state.hydrated||paused||closed)throw Error('Load research before syncing sheets.');
+      const normalized=await saveSheetSources(settings??state.sheetSources);
+      if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
+      sourceAbort=new AbortController();publish({sheetSyncBusy:true});
+      const result=await readAkSources(normalized,state.records,{fetch:sheetFetch,now:new Date(now()),signal:sourceAbort.signal});
+      if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
+      const status={checkedAt:now(),readable:result.readable,complete:result.readable===4,sources:result.statuses};
+      if(result.changed&&result.readable)await importSnapshot(result.snapshot);
+      if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
+      await persist({researchSheetSyncStatus:status});publish({sheetSyncStatus:status});
+      if(!result.readable)throw Error('No sheet could be read. Saved references have been kept. Check the source links and access.');
+      return status;
+    })().finally(()=>{sheetSync=null;sourceAbort=null;publish({sheetSyncBusy:false});});
+    return sheetSync;
+  };
   return {getState: () => state, subscribe(listener) {listeners.add(listener); return () => listeners.delete(listener);},
-    refresh, request, ensure, importSnapshot, pause, resume, close() {closed = true; listeners.clear();}};
+    refresh, request, ensure, importSnapshot,saveSheetSources,syncAkSheets,pause, resume, close() {closed = true;sourceEpoch++;sourceAbort?.abort();listeners.clear();}};
 }
 
 export function createResearchHook(React, {load, write}) {
@@ -333,6 +387,7 @@ export function createResearchHook(React, {load, write}) {
     React.useEffect(() => {if (loaded) controller.ensure(securities);}, [controller, loaded, signature, state.hydrated]);
     React.useEffect(() => {onResolvedNames?.(state.records);}, [state.records, onResolvedNames]);
     return {...state, request: (security, options) => controller.request(security, options),
-      refresh: controller.refresh, importSnapshot: controller.importSnapshot, pause: controller.pause, resume: controller.resume};
+      refresh: controller.refresh, importSnapshot: controller.importSnapshot,saveSheetSources:controller.saveSheetSources,syncAkSheets:controller.syncAkSheets,
+      pause: controller.pause, resume: controller.resume};
   };
 }
