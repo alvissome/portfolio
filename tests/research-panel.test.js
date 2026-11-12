@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {combinedHolding} from '../assets/account-portfolio.js';
-import {createResearchComponents} from '../assets/research-panel.js';
+import {createResearchComponents,researchProcessingLabel,researchComparisonLabel} from '../assets/research-panel.js';
+import {mergeResolvedWatchlistNames} from '../assets/research-client.js';
 import {planTrackInWatchlist, VALIDATION_STATES} from '../assets/research-core.js';
 
 // Minimal hook host tests the component's event and render contracts without
@@ -14,7 +15,7 @@ function host() {
   let effects = [];
   const React = {
     createElement(type, props, ...children) {
-      return {type, props: props || {}, children: children.flat(Infinity).filter(x => x != null)};
+      return typeof type === 'function' ? type({...props,children}) : {type, props: props || {}, children: children.flat(Infinity).filter(x => x != null)};
     },
     useRef(initial) {
       const index = cursor++;
@@ -45,6 +46,7 @@ function nodes(tree, type) {
   if (!tree || typeof tree !== 'object') return [];
   return [...(tree.type === type ? [tree] : []), ...tree.children.flatMap(child => nodes(child, type))];
 }
+function trackButton(tree) {return nodes(tree, 'button').find(button => ['Track in watchlist', 'Tracked'].includes(content(button)));}
 function content(tree) {
   if (tree == null) return '';
   return typeof tree === 'object' ? tree.children.map(content).join(' ') : String(tree);
@@ -84,8 +86,8 @@ test('research view deduplicates account positions and never exposes manual leve
   assert.ok(text.includes('15.00'));
   assert.ok(!text.includes('98765'));
   assert.ok(!text.includes('87654'));
-  assert.equal((text.match(/data worker not connected/g) || []).length, 1);
-  assert.equal((text.match(/Not started/g) || []).length, 3, 'one notice plus separate IV and SL badges');
+  assert.equal((text.match(/Research service is not connected/g) || []).length, 1);
+  assert.equal((text.match(/Not started/g) || []).length, 2, 'separate IV and SL processing badges');
   assert.equal(nodes(tree, 'td').filter(cell => content(cell) === '—').length, 6);
 });
 
@@ -94,15 +96,15 @@ test('track button uses existing add callback once even on repeated clicks befor
   const additions = [];
   const props = {holdings: [holding], watchlist: [], onTrack: row => additions.push(row)};
   let tree = runtime.render(runtime.components.ResearchPanel, props);
-  const button = nodes(tree, 'button')[0];
+  const button = trackButton(tree);
   button.props.onClick();
   button.props.onClick();
   assert.equal(additions.length, 1);
   assert.equal(additions[0].name, 'Example Company');
   assert.equal(additions[0].symbol, 'EXAMPLE');
   tree = runtime.render(runtime.components.ResearchPanel, props);
-  assert.equal(nodes(tree, 'button')[0].props.disabled, true);
-  assert.equal(content(nodes(tree, 'button')[0]), 'Tracked');
+  assert.equal(trackButton(tree).props.disabled, true);
+  assert.equal(content(trackButton(tree)), 'Tracked');
 });
 
 test('already tracked holding never calls add or patches existing notes and alerts', () => {
@@ -113,7 +115,7 @@ test('already tracked holding never calls add or patches existing notes and aler
   const tree = runtime.render(runtime.components.ResearchPanel, {
     holdings: [holding], watchlist: [existing], onTrack: () => additions++,
   });
-  const button = nodes(tree, 'button')[0];
+  const button = trackButton(tree);
   assert.equal(button.props.disabled, true);
   button.props.onClick();
   assert.equal(additions, 0);
@@ -125,18 +127,18 @@ test('parent watchlist owns tracking after add acknowledgement and permits later
   const additions = [];
   let props = {holdings: [holding], watchlist: [], onTrack: row => additions.push(row)};
   let tree = runtime.render(runtime.components.ResearchPanel, props);
-  nodes(tree, 'button')[0].props.onClick();
+  trackButton(tree).props.onClick();
   assert.equal(additions.length, 1);
   // The app's real add path now publishes the row back through props.
   props = {...props, watchlist: [{...additions[0], id: 'accepted'}]};
   tree = runtime.render(runtime.components.ResearchPanel, props);
-  assert.equal(content(nodes(tree, 'button')[0]), 'Tracked');
+  assert.equal(content(trackButton(tree)), 'Tracked');
   // User removes that row through the independent watchlist view.
   props = {...props, watchlist: []};
   tree = runtime.render(runtime.components.ResearchPanel, props);
-  assert.equal(content(nodes(tree, 'button')[0]), 'Track in watchlist');
-  assert.equal(nodes(tree, 'button')[0].props.disabled, false);
-  nodes(tree, 'button')[0].props.onClick();
+  assert.equal(content(trackButton(tree)), 'Track in watchlist');
+  assert.equal(trackButton(tree).props.disabled, false);
+  trackButton(tree).props.onClick();
   assert.equal(additions.length, 2);
 });
 
@@ -149,7 +151,8 @@ test('watchlist research metrics update from callbacks and respect monetary priv
   assert.ok(content(tree).includes('10.00'));
   assert.ok(content(tree).includes('8.00'), 'Avg Price remains visible in privacy mode, matching existing tables');
   assert.ok(content(tree).includes('S$•••'));
-  assert.equal(nodes(tree, 'button').length, 0);
+  assert.equal(nodes(tree, 'button').length, 1);
+  assert.equal(nodes(tree, 'button')[0].props.disabled, true, 'calculation is unavailable without a service adapter');
   close = 11;
   tree = runtime.render(runtime.components.ResearchPanel, props);
   assert.ok(content(tree).includes('11.00'));
@@ -213,4 +216,60 @@ test('compiled Holdings integration keeps Research across accounts despite remem
   assert.equal(nodes(rendered, 'tbody')[0].children.length, 2, 'hidden filters cannot remove a Research symbol');
   assert.ok(content(rendered).includes('OTHER-EXAMPLE'));
   assert.ok(!content(rendered).includes('EXITED-EXAMPLE'));
+});
+
+test('completed research renders independent values and separate matched or uncovered comparisons', () => {
+  const runtime=host();
+  const base={securityId:'EXAMPLE',symbol:'EXAMPLE',requestId:'request',workerAcknowledged:true,
+    reference:{present:true,asOf:'2026-11-03',currency:'USD',source:'capital_gains',iv:{value:20,method:'dcf_20y',variants:[{label:'Base IV',value:20}]},supports:[18,16]},
+    iv:{processing:'completed',validation:'experimental',result:{value:20.5,method:'Historical-growth DCF20',source:'Fixture',asOf:'2026-11-03'}},
+    supports:{processing:'completed',validation:'experimental',result:{value:[18.1,16],method:'Chart confluence',source:'Fixture',asOf:'2026-11-03'}},
+    comparison:{iv:{status:'matched',errorPct:2.5},supports:{status:'different',matchedCount:1,referenceCount:2,missingCount:1,extraCount:1}}};
+  const tree=runtime.render(runtime.components.ResearchPanel,{scope:'watchlist',watchlist:[{symbol:'EXAMPLE',iv:'999'}],
+    research:{records:{EXAMPLE:base},request:async()=>{}}});
+  const text=content(tree);
+  assert.ok(text.includes('20.50'));
+  assert.ok(text.includes('18.10'));
+  assert.ok(text.includes('Matches Adam'));
+  assert.ok(text.includes('In Adam · differs'));
+  assert.ok(text.includes('Historical-growth DCF20'));
+  assert.ok(!text.includes('999'));
+  assert.equal(researchComparisonLabel({...base,reference:{present:false}},'iv').text,'Not in Adam');
+  assert.equal(researchComparisonLabel({...base,reference:undefined},'iv').text,'Reference not loaded');
+});
+
+test('requested, no reference value, different dates and ETF states are never presented as a validated match', () => {
+  const completed={requestId:'one',workerAcknowledged:true,reference:{present:true,iv:{value:20},supports:[18]},
+    iv:{processing:'completed'},supports:{processing:'completed'},comparison:{iv:{status:'matched'},supports:{status:'matched'}}};
+  assert.equal(researchProcessingLabel({...completed,workerAcknowledged:false,iv:{processing:'processing'}},'iv'),'Requested');
+  assert.equal(researchComparisonLabel({...completed,iv:{processing:'not_started'}},'iv').text,'Awaiting calculation');
+  assert.equal(researchComparisonLabel({...completed,reference:{present:true,iv:{value:null,variants:[]}}},'iv').text,'No published IV');
+  assert.equal(researchComparisonLabel({...completed,comparison:{iv:{status:'awaiting_comparable_vintage'}}},'iv').text,'Different data dates');
+  assert.equal(researchComparisonLabel({...completed,iv:{processing:'unsupported',validation:'not_applicable'}},'iv').text,'Not applicable');
+});
+
+test('the compiled original watchlist receives automatic names without overwriting a custom name',()=>{
+  const bundle=readFileSync(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8');
+  const start=bundle.indexOf('function tN('),end=bundle.indexOf('const nN=',start);
+  assert.ok(start>=0&&end>start);
+  const values=[];let cursor=0;
+  const initial={holdings:[],priceCache:{},emailSettings:{},watchlist:[{id:'one',symbol:'EXAMPLE',name:''},{id:'two',symbol:'CUSTOM',name:'My custom company'}]};
+  const React={useState:initial=>{const index=cursor++;if(!(index in values))values[index]=initial;return [values[index],next=>{values[index]=typeof next==='function'?next(values[index]):next;}];},
+    useRef:value=>({current:value}),useEffect:()=>{},useCallback:fn=>fn};
+  const context={ne:React,In:initial,mergeResolvedWatchlistNames};
+  runInNewContext(`${bundle.slice(start,end)};this.hook=tN;`,context);
+  cursor=0;let result=context.hook({uid:'private-test-user',restoring:{current:false}});
+  result.resolveResearchNames({EXAMPLE:{securityId:'EXAMPLE',symbol:'EXAMPLE',instrument:{name:'Resolved company'}},CUSTOM:{securityId:'CUSTOM',symbol:'CUSTOM',instrument:{name:'Vendor name'}}});
+  cursor=0;result=context.hook({uid:'private-test-user',restoring:{current:false}});
+  assert.equal(result.state.watchlist[0].name,'Resolved company');
+  assert.equal(result.state.watchlist[1].name,'My custom company');
+  assert.ok(bundle.includes('onResolvedNames:resolveResearchNames'));
+});
+
+test('a completed result with an old comparison snapshot cannot claim a match against a newly imported reference',()=>{
+  const base={requestId:'one',workerAcknowledged:true,reference:{present:true,snapshotId:'new',asOf:'2026-11-03',iv:{value:20}},
+    iv:{processing:'completed'},comparison:{iv:{status:'matched',snapshotId:'old',referenceAsOf:'2026-10-20'}}};
+  assert.equal(researchComparisonLabel(base,'iv').text,'Awaiting comparison');
+  const current={...base,comparison:{iv:{status:'matched',snapshotId:'new',referenceAsOf:'2026-11-03'}}};
+  assert.equal(researchComparisonLabel(current,'iv').text,'Matches Adam');
 });

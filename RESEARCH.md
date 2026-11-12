@@ -1,30 +1,38 @@
 # IV and support-level validation
 
-Status: draft Research views and tested validation foundation. No research
-worker has been enabled by this change. There are no private holdings, watchlist
-exports, subscribed sheet snapshots, API keys or account identifiers here.
+Status: independent research implementation. There are no private holdings,
+watchlist exports, subscribed sheet snapshots, API keys or account identifiers
+in this repository. Calculations remain experimental; completion is separate
+from matching a reference and from validating the method.
+
+Activation: prepared on the research branch, not deployed. Provider-specific
+permission for transmitting private ticker/company identifiers is pending.
+Keep the background consumer and monthly validation task inactive until that
+permission is recorded; synthetic tests and generic public examples are safe.
 
 ## Product design
 
 Keep Watchlist as the decision table. It already includes manual IV and S1-S5
 columns and links Avg Price/BValue to holdings. This draft adds an optional
 Research view in Watchlist and Holding Details. Positions remains the default
-Holdings view. Research currently shows linked Avg Price/BValue/Close, blank
-generated IV and supports, and separate Not started statuses with a single
-worker-not-connected notice. Track in watchlist uses the existing add path,
+Holdings view. Research shows linked Avg Price/BValue/Close, independent IV and
+up to five supports, per-part calculation and reference-comparison states,
+method, input/source dates, assumptions and specific missing-data reasons.
+Track in watchlist uses the existing add path,
 preserves existing rows/notes/alerts and prevents a duplicate row. New rows have
 alerts off. It does not create or change a holding.
 
-The eventual results view should include method and as-of date, and reuse the
-same per-security analysis in both tables. These are not connected in this
-draft. All active account positions are deduplicated by security in Research;
+Both tables reuse the same per-security analysis. Blank/placeholder Watchlist
+names are resolved from verified listing metadata, with provenance so a symbol
+edit can replace a previous automatic name. User-entered names are preserved.
+All active account positions are deduplicated by security in Research;
 existing Positions filters and account-specific rows remain in Positions.
 
 In this app BValue is current position market value in SGD, not accounting book
 value. Do not use it as a bank's book value per share in an IV calculation.
 Avg Price is share-weighted native-currency cost across active accounts.
 
-The requested end state is: saving a watchlist symbol requests analysis, a
+Saving a new watchlist symbol or introducing an active holding requests analysis. A
 worker acknowledges and processes it, and results arrive without blocking
 price sync. Price sync remains the source for current daily close. Holdings
 remain the source for quantity, average cost and market value. IV can refresh
@@ -44,16 +52,26 @@ ADR, Hong Kong and US listings cannot be silently conflated. Existing aliases
 need an explicit reviewed mapping. Account positions remain separate.
 
 The portfolio state serializer and scheduled alert worker write full watchlist
-arrays. Research results must therefore live in a separate private collection,
-with a result listener or bounded polling. An analysis worker must not rewrite
-the portfolio's holdings/watchlist document. A result is attached only when
+arrays. Research therefore uses separate top-level researchBySecurity fields
+in the existing private portfolio document, excluded from the portfolio
+serializer. The client merges only research fields and polls every 30 seconds.
+The worker transactionally replaces only the claimed security child with a
+literal FieldPath, never portfolio arrays or active alerts. A result is attached only when
 securityId, requestId and modelVersion match the current request. Retrying or
 editing a symbol must not allow old work to overwrite a newer result.
 
 The current source explicitly guards its personal portfolio project. Before
 any worker deployment, verify the actual personal account, project, credential
 scope, queue consumer, database rules and recovery path. No business resources
-may be used. This draft neither deploys infrastructure nor changes permissions.
+may be used. This implementation adds no hosting, paid service, public data
+endpoint, database permission or new secret. It uses the existing personal
+repository's Actions environment and project-guarded Firebase credentials.
+
+The scheduled consumer runs at minutes 7, 22, 37 and 52, processes a bounded
+number of requests and logs aggregate counters only. Scheduling can be delayed;
+Requested means saved but not acknowledged. A claimed request has an ownership
+token/expiry guard so late or expired consumers cannot replace newer work.
+A manual dry-run reads pending counts without calculations or writes.
 
 ## Processing and validation are separate
 
@@ -165,8 +183,47 @@ benchmark. Do not label the security itself Adam-matched by analogy.
    partial/failure states. Preserve price sync and holding/account behavior.
 5. Validate on the user-prioritized universe and retain monthly holdout results.
 
-This draft implements Research switches, linked context, Track in watchlist,
-and the pure validation foundation with tests. It does not populate generated
-research or initiate jobs. No user should be told symbol entry already
-triggers analysis until the worker, storage rules, data access and result UI
-have been implemented and verified together.
+The client, independent calculators, data adapters, private request consumer,
+comparison logic and credential-free monthly validation CLI are implemented.
+Verify the private request/result lifecycle after deployment, including a new
+symbol, an edited symbol, retries, name resolution and continued price sync.
+No match badge promotes research into active alert levels or labels the method
+validated automatically.
+
+## Data, assumptions and private monthly runs
+
+Yahoo supplies exact-listing OHLC and financial series where available; SEC
+filings provide dated US-filer facts/classification and share-basis checks.
+An existing optional Twelve Data key is a fallback, not a guarantee of market
+coverage. Missing inputs end with a specific reason rather than placeholder
+zeros. No reference IV or support price enters the independent calculator.
+
+When analyst assumptions cannot be reproduced, the historical-growth DCF/DNI
+fallback is explicitly experimental and shows its growth, discount and share
+inputs. Bank/REIT alternatives retain method labels. Unverified FX/ADR/share
+denominators, book-versus-tangible-book basis and corporate-action vintages must
+block a replication pass rather than manufacture comparability. The method
+selector supplies an explicit override when classification needs review.
+
+Reference import is a private JSON operation in Watchlist Research. Preserve
+all source entries, their own dates, variants and listing currencies. Complete
+coverage is bounded to the snapshot's verified markets; a partial snapshot
+cannot establish that an arbitrary security is absent from all four lists.
+
+The credential-free CLI uses the same engine as the scheduled worker:
+
+```
+node .github/scripts/research-cli.js --input PRIVATE_REQUESTS.json --output PRIVATE_RESULTS.json
+```
+
+Inputs/results belong outside this public repository. The input contains a
+requests array with exact identity, model version, cutoff and optional private
+reference. Output is written privately; console output contains counts only.
+Use this path for dated monthly calibration/holdout runs and record results in
+the user's private research ledger. Never upload private inputs/outputs as
+public Actions artifacts or attach them to a pull request.
+
+Recovery: disable the Research workflow to pause new consumption; existing
+results remain readable. Revert the relevant app commit to roll back UI/code.
+Research lives outside the existing portfolio serializer, so rollback must not
+delete holdings, watchlist rows, manual levels or historical performance.
