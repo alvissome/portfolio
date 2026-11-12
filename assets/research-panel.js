@@ -108,6 +108,8 @@ export function createResearchComponents(React) {
     const [error, setError] = React.useState('');
     const [importBusy, setImportBusy] = React.useState(false);
     const [importMessage, setImportMessage] = React.useState('');
+    const [pastedReference, setPastedReference] = React.useState('');
+    const importPending = React.useRef(false);
     const records = research?.records ?? {};
     const allRows = scope === 'watchlist' ? prioritizeUniverse([], watchlist)
       : prioritizeUniverse(holdings, watchlist).filter(row => row.held);
@@ -133,17 +135,27 @@ export function createResearchComponents(React) {
       try {await research?.request?.(row, {force:true, ...(methodFamily ? {methodFamily} : {})}); setError('');}
       catch {setError('Could not request research. Please try again.');}
     };
+    const importReference = async (text, clearPaste = false) => {
+      if (importPending.current) return;
+      importPending.current = true;
+      setImportBusy(true); setImportMessage('');
+      try {
+        if (new TextEncoder().encode(text).byteLength > 3 * 1024 * 1024) throw new Error('Reference snapshot is too large.');
+        const metadata = await research.importSnapshot(text);
+        setImportMessage(`Reference imported: ${metadata.dates.join(', ')}. Calculations requested for comparison.`);
+        if (clearPaste) setPastedReference('');
+        setError('');
+      } catch (problem) {setError(problem?.message || 'Reference import failed.');}
+      finally {importPending.current = false; setImportBusy(false);}
+    };
     const importFile = async event => {
       const file = event.target.files?.[0];
       if (!file) return;
-      setImportBusy(true); setImportMessage('');
       try {
         if (file.size > 3 * 1024 * 1024) throw new Error('Reference file is too large.');
-        const metadata = await research.importSnapshot(await file.text());
-        setImportMessage(`Reference imported: ${metadata.dates.join(', ')}. Calculations requested for comparison.`);
-        setError('');
+        await importReference(await file.text());
       } catch (problem) {setError(problem?.message || 'Reference import failed.');}
-      finally {setImportBusy(false); event.target.value = '';}
+      finally {event.target.value = '';}
     };
     const headings = ['Symbol / Name', 'Avg Price', 'BValue (SGD)', 'Close', 'Independent IV', 'IV status',
       'SL1', 'SL2', 'SL3', 'SL4', 'SL5', 'SL status', 'Research'];
@@ -152,6 +164,7 @@ export function createResearchComponents(React) {
     return h('div', {className:'research-panel'},
       h('div', {className:'research-notice',role:'note'},
         h('strong', null, 'Independent research'),
+        h('strong', {className:'research-comparison research-different',style:{fontSize:'11px'}}, 'Experimental · validation in progress'),
         h('span', null, research ? 'Saving a symbol requests research. Requested means it is waiting for the background worker; completed values and benchmark comparisons have separate statuses.'
           : 'Research service is not connected.'),
         scope === 'holdings' ? h('span', null, 'Showing all active holdings across accounts.') : null),
@@ -159,6 +172,13 @@ export function createResearchComponents(React) {
         h('button', {type:'button',className:'research-track',onClick:()=>research.refresh?.()}, 'Refresh status'),
         h('label', {className:'research-import'}, importBusy ? 'Importing reference…' : 'Import reference snapshot',
           h('input', {type:'file',accept:'.json,application/json',onChange:importFile,disabled:importBusy || !research.importSnapshot})),
+        h('details', {className:'research-details'}, h('summary', null, 'Paste reference JSON'),
+          h('label', {style:{display:'block',marginTop:'8px'}}, 'Reference JSON',
+            h('textarea', {'aria-label':'Reference JSON',rows:5,value:pastedReference,
+              onChange:event=>setPastedReference(event.target.value),disabled:importBusy,
+              style:{display:'block',width:'100%',minWidth:'260px',maxWidth:'560px',fontFamily:'monospace',fontSize:'10px',margin:'5px 0'}})),
+          h('button', {type:'button',className:'research-track',disabled:importBusy || !pastedReference.trim() || !research.importSnapshot,
+            onClick:()=>importReference(pastedReference,true)}, 'Import pasted reference')),
         research.referenceMeta ? h('small', null, `Reference dates: ${(research.referenceMeta.dates ?? []).join(', ')}`) : null,
         importMessage ? h('span', {role:'status'}, importMessage) : null) : null,
       error || research?.error ? h('p', {className:'research-error',role:'alert'}, error || research.error) : null,

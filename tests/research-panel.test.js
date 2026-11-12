@@ -273,3 +273,46 @@ test('a completed result with an old comparison snapshot cannot claim a match ag
   const current={...base,comparison:{iv:{status:'matched',snapshotId:'new',referenceAsOf:'2026-11-03'}}};
   assert.equal(researchComparisonLabel(current,'iv').text,'Matches');
 });
+
+test('collapsed pasted-reference fallback uses the existing private importer and clears successful pasted data',async()=>{
+  const runtime=host();
+  const imports=[];
+  const props={scope:'watchlist',watchlist:[],research:{records:{},importSnapshot:async text=>{imports.push(text);return {dates:['2026-11-03']};}}};
+  let tree=runtime.render(runtime.components.ResearchPanel,props);
+  assert.ok(content(tree).includes('Experimental · validation in progress'));
+  const fallback=nodes(tree,'details').find(item=>content(item).includes('Paste reference JSON'));
+  assert.equal(fallback.props.open,undefined,'paste fallback stays collapsed by default');
+  assert.ok(nodes(tree,'input').some(item=>item.props.type==='file'),'existing file chooser is retained');
+  const source='{"retrievedAt":"2026-11-12","rows":[]}';
+  nodes(tree,'textarea')[0].props.onChange({target:{value:source}});
+  tree=runtime.render(runtime.components.ResearchPanel,props);
+  const button=nodes(tree,'button').find(item=>content(item)==='Import pasted reference');
+  assert.equal(button.props.disabled,false);
+  await Promise.all([button.props.onClick(),button.props.onClick()]);
+  assert.deepEqual(imports,[source],'repeated clicks cannot duplicate the import');
+  tree=runtime.render(runtime.components.ResearchPanel,props);
+  assert.equal(nodes(tree,'textarea')[0].props.value,'','successful pasted data is cleared');
+  assert.ok(content(tree).includes('Reference imported: 2026-11-03'));
+});
+
+test('pasted-reference validation errors use the same status path and keep text available for correction',async()=>{
+  const runtime=host();
+  const imports=[];
+  const props={scope:'watchlist',watchlist:[],research:{records:{},importSnapshot:async text=>{
+    imports.push(text);if(text==='invalid')throw Error('Invalid reference JSON.');return {dates:['2026-11-04']};
+  }}};
+  let tree=runtime.render(runtime.components.ResearchPanel,props);
+  nodes(tree,'textarea')[0].props.onChange({target:{value:'invalid'}});
+  tree=runtime.render(runtime.components.ResearchPanel,props);
+  await nodes(tree,'button').find(item=>content(item)==='Import pasted reference').props.onClick();
+  tree=runtime.render(runtime.components.ResearchPanel,props);
+  assert.equal(nodes(tree,'textarea')[0].props.value,'invalid');
+  assert.ok(nodes(tree,'p').some(item=>item.props.role==='alert'&&content(item)==='Invalid reference JSON.'));
+  const target={files:[{size:100,text:async()=> 'file-reference'}],value:'chosen.json'};
+  await nodes(tree,'input').find(item=>item.props.type==='file').props.onChange({target});
+  assert.deepEqual(imports,['invalid','file-reference'],'both controls use the same importer');
+  assert.equal(target.value,'');
+  tree=runtime.render(runtime.components.ResearchPanel,props);
+  assert.ok(content(tree).includes('Reference imported: 2026-11-04'));
+  assert.ok(!content(tree).includes('Invalid reference JSON.'));
+});
