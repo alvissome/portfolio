@@ -117,10 +117,12 @@ export function previousAkRows(records={}) {
   }
   return rows;
 }
-export function planAkLevelCopy(watchlist,symbol,reference) {
+export function planAkLevelCopy(watchlist,symbol,reference,{instrument}={}) {
   const row=watchlist.find(r=>r.symbol===symbol);
   if(!row||reference?.present!==true||!Array.isArray(reference.supports)||!reference.supports.length)throw Error('A watchlist row and published AK levels are required.');
   if(!validDate(reference.asOf)||reference.conflict)throw Error('Resolve the reference date or conflicting sources before copying levels.');
+  if(/-UK$/.test(symbol))throw Error('Verify the UK listing and pounds/pence quote units before copying these levels.');
+  if(instrument?.currency&&reference.currency&&instrument.currency!==reference.currency)throw Error('The reference and current listing currencies differ. Review before copying.');
   if(reference.supports.length>5||reference.supports.some((v,i)=>!Number.isFinite(v)||v<=0||(i&&v>=reference.supports[i-1])))throw Error('AK support ordering needs review.');
   return {id:row.id,patch:Object.fromEntries([1,2,3,4,5].map((n,i)=>['s'+n,reference.supports[i]===undefined?'':String(reference.supports[i])]))};
 }
@@ -143,5 +145,6 @@ export async function readAkSources(settings,records,{fetch:fetchImpl=globalThis
   const readable=results.filter(r=>['updated','unchanged'].includes(r.status));const rows=results.flatMap(r=>r.rows);
   const statuses=Object.fromEntries(results.map(({rows,...r})=>[r.source,r]));
   return {settings:urls,statuses,readable:readable.length,changed:readable.some(r=>r.status==='updated'),snapshot:{snapshotId:'ak-sync-'+now.toISOString().replace(/[^0-9]/g,''),retrievedAt:today,
-    complete:readable.length===4,coveredMarkets:['US','SG','HK'],rows,sources:statuses}};
+    complete:readable.length===4,coveredMarkets:['US','SG','HK'],rows,sources:statuses,
+    unresolvedListings:rows.filter(r=>/-UK$/.test(r.symbol)).map(r=>({sourceTicker:r.symbol,source:r.source,reason:'UK listing and quote units require verification.'}))}};
 }

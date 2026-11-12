@@ -71,6 +71,8 @@ test('copying AK SL is an explicit five-field edit and clears unpublished levels
   assert.deepEqual(plan,{id:'row-one',patch:{s1:'18',s2:'16',s3:'',s4:'',s5:''}});
   assert.equal(row.s5,'7');assert.equal(row.notifEnabled,true);
   assert.throws(()=>planAkLevelCopy([row],'EXAMPLE',{...references.EXAMPLE,conflict:true}),/conflicting/);
+  assert.throws(()=>planAkLevelCopy([row],'EXAMPLE',references.EXAMPLE,{instrument:{currency:'HKD'}}),/currencies differ/);
+  assert.throws(()=>planAkLevelCopy([{id:'uk',symbol:'EXAMPLE-UK'}],'EXAMPLE-UK',references.EXAMPLE),/pounds\/pence/);
 });
 test('all four readable lists are required to establish absence, with their separate sheet dates retained',async()=>{
   const titles=['Capital Gains Portfolio','Dividend Portfolio','Priority Watchlist','Secondary Watchlist'];

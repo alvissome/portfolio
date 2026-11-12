@@ -250,7 +250,7 @@ export function createResearchComponents(React) {
                   onClick:()=>setCopyPreview(row.symbol)},'Use AK SL in watchlist'):null,
                 fromAk&&copyPreview===row.symbol?h('div',{className:'research-details'},
                   h('p',null,`Replace watchlist SL1–SL5 with sheet ${record?.reference?.asOf}: ${(record?.reference?.supports??[]).map(price).join(' / ')}. Unpublished levels will be cleared. Existing alert settings will use the new levels.`),
-                  h('button',{type:'button',className:'research-track',onClick:()=>{try{const plan=planAkLevelCopy(watchlist,row.symbol,record.reference);onApplyAkLevels(plan.id,plan.patch);setCopyPreview(null);setError('');}catch(e){setError(e.message);}}},'Apply AK levels'),
+                  h('button',{type:'button',className:'research-track',onClick:()=>{try{const plan=planAkLevelCopy(watchlist,row.symbol,record.reference,{instrument:record.instrument});onApplyAkLevels(plan.id,plan.patch);setCopyPreview(null);setError('');}catch(e){setError(e.message);}}},'Apply AK levels'),
                   h('button',{type:'button',className:'research-track',onClick:()=>setCopyPreview(null)},'Cancel')):null),
             ];
             if (scope === 'holdings') cells.push(h('td', {key:'track'}, h('button', {type:'button',className:'research-track',
