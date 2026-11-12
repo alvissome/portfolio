@@ -1,0 +1,49 @@
+name: Portfolio Research
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/scripts/research-*
+      - .github/scripts/runResearch.js
+      - .github/scripts/research-cli.js
+      - assets/research-core.js
+      - .github/workflows/research.yml
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Read-only check or process pending private research requests'
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - process
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portfolio-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install existing personal portfolio dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: .github/scripts
+      - name: Run private research requests
+        run: node .github/scripts/runResearch.js "--${RESEARCH_MODE}"
+        env:
+          RESEARCH_MODE: ${{ github.event_name == 'push' && 'dry-run' || inputs.mode || 'process' }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
