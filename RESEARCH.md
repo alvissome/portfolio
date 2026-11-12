@@ -80,8 +80,8 @@ data. A completed calculation is not a validated calculation.
 
 - Processing: Not started, Blocked, Queued, Fetching data, Calculating,
   Completed, Partial, Failed, Unsupported.
-- Validation: Experimental, Comparing, Provisional, Validated, No Adam
-  benchmark, Needs review, Not applicable.
+- Validation: Experimental, Comparing, Provisional, Validated, No benchmark,
+  Needs review, Not applicable.
 
 Do not display Queued/Fetching/Calculating unless an actual worker has
 acknowledged the job. Missing data or a missing worker produces a specific
@@ -227,3 +227,8 @@ Recovery: disable the Research workflow to pause new consumption; existing
 results remain readable. Revert the relevant app commit to roll back UI/code.
 Research lives outside the existing portfolio serializer, so rollback must not
 delete holdings, watchlist rows, manual levels or historical performance.
+
+Export Backup includes research results and reference metadata alongside the
+existing portfolio and performance history. Older backup formats keep their
+previous restore scopes. Restoring research invalidates old execution claims
+and pauses unfinished requests; it does not silently restart old jobs.

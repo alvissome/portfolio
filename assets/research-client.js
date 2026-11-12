@@ -42,7 +42,7 @@ export function buildResearchRequest(security, {previous, now = new Date().toISO
       : security.methodFamily ?? previous?.reference?.methodFamily ?? previous?.methodFamily ?? null;
   const record = {securityId: symbol, symbol, requestId, modelVersion,
     requestedAt: now, workerAcknowledged: false, acknowledgedAt: null, completedAt: null,
-    phase: 'requested', startedAt: null, finishedAt: null, leaseUntil: null,
+    phase: 'requested', startedAt: null, finishedAt: null, leaseUntil: null, asOf: null,
     requestError: null, priority: security.held ? 'holding' : 'watchlist',
     methodFamily: family,
     methodFamilySource: override !== undefined ? override === 'auto' ? 'auto' : 'user'
@@ -149,18 +149,26 @@ export function parseAdamSnapshot(input, securities = []) {
  */
 export function createResearchController({load, write, now = () => new Date().toISOString(),
   uuid = () => crypto.randomUUID(), modelVersion = RESEARCH_MODEL_VERSION}) {
-  let state = {records: {}, loading: true, hydrated: false, error: '', referenceMeta: null};
+  let state = {records: {}, loading: true, hydrated: false, paused: false, error: '', referenceMeta: null};
   let closed = false;
+  let paused = false;
   let refreshing = null;
   let universe = [];
   const pending = new Map();
   const inFlightWrites = new Map();
+  const pendingMutations = new Set();
   const imports = new Map();
   const listeners = new Set();
   const publish = patch => {
     if (closed) return;
     state = {...state, ...patch};
     for (const listener of listeners) listener(state);
+  };
+  const persist = patch => {
+    if (paused || closed) throw new Error('Research is paused during backup restore.');
+    const operation = Promise.resolve(write(patch));
+    pendingMutations.add(operation);
+    return operation.finally(() => pendingMutations.delete(operation));
   };
   const refresh = () => {
     if (closed) return Promise.resolve(state);
@@ -190,10 +198,13 @@ export function createResearchController({load, write, now = () => new Date().to
     return refreshing;
   };
   const requestOnce = async (security, {force = false, methodFamily} = {}) => {
+    if (paused || closed) throw new Error('Research is paused during backup restore.');
     if (!state.hydrated) await refresh();
+    if (paused || closed) throw new Error('Research is paused during backup restore.');
     if (!state.hydrated) throw new Error('Research has not loaded. Refresh before requesting a calculation.');
     const symbol = security.symbol ?? security.ticker ?? security.securityId;
     const previous = state.records[symbol];
+    if (!force && previous?.phase === 'restored') return previous;
     if (!force && pending.has(symbol)) return previous;
     if (!force && previous?.requestId && previous.modelVersion === modelVersion) return previous;
     const record = buildResearchRequest({...security, ...(methodFamily !== undefined ? {methodFamilyOverride:methodFamily} : {})},
@@ -201,7 +212,7 @@ export function createResearchController({load, write, now = () => new Date().to
     pending.set(symbol, record.requestId);
     publish({records: {...state.records, [symbol]: {...previous, ...record}}, error: ''});
     try {
-      await write({researchBySecurity: {[symbol]: record}});
+      await persist({researchBySecurity: {[symbol]: record}});
       return record;
     } catch {
       if (pending.get(symbol) !== record.requestId || state.records[symbol]?.requestId !== record.requestId) return state.records[symbol];
@@ -213,6 +224,7 @@ export function createResearchController({load, write, now = () => new Date().to
     }
   };
   const request = (security, options) => {
+    if (paused || closed) return Promise.reject(new Error('Research is paused during backup restore.'));
     const symbol = security.symbol ?? security.ticker ?? security.securityId;
     if (inFlightWrites.has(symbol)) return inFlightWrites.get(symbol);
     const operation = requestOnce(security, options);
@@ -228,20 +240,25 @@ export function createResearchController({load, write, now = () => new Date().to
   };
   const ensure = async securities => {
     universe = securities;
+    if (paused || closed) return state;
     if (!state.hydrated) await refresh();
     if (!state.hydrated) return state;
     for (const security of securities) {
-      if (closed) break;
+      if (paused || closed) break;
       if (!validSymbol(security.symbol)) continue;
-      await request(security);
+      try {await request(security);}
+      catch (error) {if (paused || closed) break; throw error;}
     }
   };
   const importSnapshot = async input => {
+    if (paused || closed) throw new Error('Research is paused during backup restore.');
     if (!state.hydrated) await refresh();
+    if (paused || closed) throw new Error('Research is paused during backup restore.');
     if (!state.hydrated) throw new Error('Research has not loaded. Refresh before importing a reference.');
     const parsed = parseAdamSnapshot(input, universe);
     // A retry cannot commit an older request after this import's new request.
     await Promise.all([...inFlightWrites.values()]);
+    if (paused || closed) throw new Error('Research is paused during backup restore.');
     const previousReferences = new Map();
     const patchRecords = {};
     const nextRecords = {...state.records};
@@ -258,7 +275,7 @@ export function createResearchController({load, write, now = () => new Date().to
     try {
       // One atomic nested merge imports the references and their provenance;
       // generated results, request identities and portfolio arrays are absent.
-      await write({researchBySecurity: patchRecords, researchReferenceSnapshotMeta: metadata});
+      await persist({researchBySecurity: patchRecords, researchReferenceSnapshotMeta: metadata});
     } catch (error) {
       const rollback = {...state.records};
       for (const [symbol, previousReference] of previousReferences) {
@@ -273,11 +290,30 @@ export function createResearchController({load, write, now = () => new Date().to
     }
     publish({referenceMeta: metadata, error: ''});
     // Existing results need a fresh guarded comparison against this vintage.
-    for (const security of universe) await request(security, {force: true});
+    for (const security of universe) {
+      if (paused || closed) break;
+      try {await request(security, {force: true});}
+      catch (error) {if (paused || closed) break; throw error;}
+    }
     return metadata;
   };
+  const pause = async () => {
+    paused = true;
+    publish({paused:true});
+    // Stop loops before they advance to another symbol and drain every write
+    // already started, including atomic reference imports. Restore can then
+    // commit without an older client write landing after it.
+    await Promise.allSettled([...pendingMutations, ...inFlightWrites.values()]);
+  };
+  const resume = async () => {
+    if (closed) return state;
+    paused = false;
+    publish({paused:false});
+    await refresh();
+    return ensure(universe);
+  };
   return {getState: () => state, subscribe(listener) {listeners.add(listener); return () => listeners.delete(listener);},
-    refresh, request, ensure, importSnapshot, close() {closed = true; listeners.clear();}};
+    refresh, request, ensure, importSnapshot, pause, resume, close() {closed = true; listeners.clear();}};
 }
 
 export function createResearchHook(React, {load, write}) {
@@ -296,6 +332,6 @@ export function createResearchHook(React, {load, write}) {
     React.useEffect(() => {if (loaded) controller.ensure(securities);}, [controller, loaded, signature, state.hydrated]);
     React.useEffect(() => {onResolvedNames?.(state.records);}, [state.records, onResolvedNames]);
     return {...state, request: (security, options) => controller.request(security, options),
-      refresh: controller.refresh, importSnapshot: controller.importSnapshot};
+      refresh: controller.refresh, importSnapshot: controller.importSnapshot, pause: controller.pause, resume: controller.resume};
   };
 }

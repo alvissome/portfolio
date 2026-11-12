@@ -22,7 +22,7 @@ export function researchProcessingLabel(record, part) {
 export function researchComparisonLabel(record, part) {
   if (record?.[part]?.validation === 'not_applicable') return {text:'Not applicable', tone:'neutral'};
   const reference = record?.reference;
-  if (reference?.present === false) return {text:'Not in Adam', tone:'neutral'};
+  if (reference?.present === false) return {text:'No benchmark', tone:'neutral'};
   if (reference?.present !== true) return {text:'Reference not loaded', tone:'neutral'};
   const published = part === 'iv' ? numeric(reference.iv?.value) || reference.iv?.variants?.some(item => numeric(item.value))
     : Array.isArray(reference.supports) && reference.supports.length > 0;
@@ -34,8 +34,8 @@ export function researchComparisonLabel(record, part) {
     return {text:'Awaiting comparison',tone:'pending'};
   }
   const status = comparison?.status;
-  return ({matched:{text:'Matches Adam',tone:'match'}, different:{text:'In Adam · differs',tone:'different'},
-    no_benchmark:{text:'Not in Adam',tone:'neutral'}, no_reference_value:{text:`No published ${part === 'iv' ? 'IV' : 'SL'}`,tone:'neutral'},
+  return ({matched:{text:'Matches',tone:'match'}, different:{text:'Different',tone:'different'},
+    no_benchmark:{text:'No benchmark',tone:'neutral'}, no_reference_value:{text:`No published ${part === 'iv' ? 'IV' : 'SL'}`,tone:'neutral'},
     reference_unknown:{text:'Reference not loaded',tone:'neutral'},
     awaiting_comparable_vintage:{text:'Different data dates',tone:'pending'},
     method_mismatch:{text:'Different IV methods',tone:'pending'}, currency_mismatch:{text:'Different currencies',tone:'pending'},
@@ -91,13 +91,13 @@ export function createResearchComponents(React) {
         result.assumptions ? h('pre', null, typeof result.assumptions === 'string' ? result.assumptions : JSON.stringify(result.assumptions, null, 2)) : null,
         Array.isArray(result.variants) ? h('ul', null, ...result.variants.map((variant,index) => h('li', {key:index},
           `${variant.method ?? variant.label ?? variant.key}: ${price(variant.value)}`))) : null)),
-      ref?.present === true ? h('div', null, h('strong', null, `Adam: ${ref.label ?? ref.source ?? 'reference'} · ${date(ref.asOf)}`),
+      ref?.present === true ? h('div', null, h('strong', null, `Reference: ${ref.label ?? ref.source ?? 'reference'} · ${date(ref.asOf)}`),
         h('p', null, `Currency ${ref.currency ?? 'not supplied'}. ${ref.conflict ? 'Conflicting source entries — review needed.' : ''}`),
         ref.iv?.selectedKey ? h('p', null, `Headline IV method: ${ref.iv.method ?? ref.iv.selectedKey}. Alternative methods remain separate.`) : null,
         h('ul', null, ...(ref.iv?.variants ?? []).map((variant,index) => h('li', {key:index}, `${variant.label ?? variant.method}: ${price(variant.value)}`))),
         h('p', null, `Supports: ${(ref.supports ?? []).map(price).join(' / ') || 'not supplied'}`),
         ref.entries?.length > 1 ? h('p', null, `${ref.entries.length} source entries retained.`) : null)
-        : h('p', null, ref?.present === false ? 'No exact Adam reference in the imported snapshot. Independent calculation still runs.' : 'Import a dated reference snapshot to compare this security.'),
+        : h('p', null, ref?.present === false ? 'No exact benchmark in the imported snapshot. Independent calculation still runs.' : 'Import a dated reference snapshot to compare this security.'),
       h('p', {className:'research-footnote'}, 'Experimental reconstruction. Matching a reference is separate from method validation; current and historical data dates may differ.'));
   }
 
@@ -152,12 +152,12 @@ export function createResearchComponents(React) {
     return h('div', {className:'research-panel'},
       h('div', {className:'research-notice',role:'note'},
         h('strong', null, 'Independent research'),
-        h('span', null, research ? 'Saving a symbol requests research. Requested means it is waiting for the background worker; completed values and Adam comparisons have separate statuses.'
+        h('span', null, research ? 'Saving a symbol requests research. Requested means it is waiting for the background worker; completed values and benchmark comparisons have separate statuses.'
           : 'Research service is not connected.'),
         scope === 'holdings' ? h('span', null, 'Showing all active holdings across accounts.') : null),
       scope === 'watchlist' && research ? h('div', {className:'research-controls'},
         h('button', {type:'button',className:'research-track',onClick:()=>research.refresh?.()}, 'Refresh status'),
-        h('label', {className:'research-import'}, importBusy ? 'Importing reference…' : 'Import Adam reference snapshot',
+        h('label', {className:'research-import'}, importBusy ? 'Importing reference…' : 'Import reference snapshot',
           h('input', {type:'file',accept:'.json,application/json',onChange:importFile,disabled:importBusy || !research.importSnapshot})),
         research.referenceMeta ? h('small', null, `Reference dates: ${(research.referenceMeta.dates ?? []).join(', ')}`) : null,
         importMessage ? h('span', {role:'status'}, importMessage) : null) : null,
@@ -197,7 +197,7 @@ export function createResearchComponents(React) {
             return h('tr',{key:row.securityId},...cells);
           })))) : h('p', {className:'research-empty'}, scope === 'holdings' ? 'No active holdings to show.' : 'Add a symbol in the Watchlist view to include it here.'),
       h('p', {className:'research-footnote'}, 'Generated IV and support levels are experimental. Missing output stays blank; no generated levels are activated as alerts automatically. ',
-        'IV and support comparisons are independent. No Adam coverage does not prevent calculation.'));
+        'IV and support comparisons are independent. A missing benchmark does not prevent calculation.'));
   }
 
   return {ResearchPanel, ResearchViewSwitch, ResearchBadge};

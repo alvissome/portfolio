@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildResearchRequest, createResearchController, mergeResolvedWatchlistNames, parseAdamSnapshot} from '../assets/research-client.js';
+import {processResearchRequest} from '../.github/scripts/research-engine.mjs';
 
 const security = {symbol:'EXAMPLE',securityId:'EXAMPLE',held:true};
 const clock = '2026-11-12T02:00:00.000Z';
@@ -73,6 +74,20 @@ test('a retry keeps its previous result visible but resets current comparison an
   assert.equal(next.comparison.iv.status,'pending');
   assert.equal(next.methodFamily,'bank');
   assert.equal(Object.hasOwn(next,'reference'),false);
+});
+
+test('recalculation clears the previous cutoff through cloud merge so the worker uses the current date', async()=>{
+  const store=storage({researchBySecurity:{EXAMPLE:{...record('older'),asOf:'2026-11-03'}}});
+  await store.controller.refresh();
+  await store.controller.request(security,{force:true});
+  const saved=store.get().researchBySecurity.EXAMPLE;
+  assert.equal(saved.asOf,null);
+  let usedCutoff;
+  await processResearchRequest(saved,{now:()=>new Date(clock),fetchData:async(_symbol,{asOf})=>{
+    usedCutoff=asOf;
+    return {instrument:{type:'ETF',currency:'USD'},bars:[]};
+  }});
+  assert.equal(usedCutoff,'2026-11-12');
 });
 
 test('auto names fill original watchlist placeholders, follow symbol edits and preserve a manual override',()=>{
@@ -195,4 +210,61 @@ test('a complete market-scoped snapshot does not infer no coverage for an unreso
   const explicit=parseAdamSnapshot({retrievedAt:'2026-11-12',complete:true,coveredMarkets:['US','SG','HK'],
     universe:['UK-EXAMPLE.L'],rows:[sourceRow]});
   assert.equal(explicit.references['UK-EXAMPLE.L'].present,false,'an explicitly checked universe can cover an outside-market listing');
+});
+
+test('backup quiesce drains the first write, stops the next symbol and resumes only after restore failure',async()=>{
+  const writes=[];let releaseFirst,started;
+  const firstStarted=new Promise(resolve=>{started=resolve;});
+  const gate=new Promise(resolve=>{releaseFirst=resolve;});
+  let cloud={};let serial=0;
+  const controller=createResearchController({load:async()=>({researchBySecurity:cloud}),now:()=>clock,uuid:()=>`pause-${++serial}`,
+    write:async patch=>{writes.push(patch);if(writes.length===1){started();await gate;}cloud={...cloud,...patch.researchBySecurity};}});
+  const ensuring=controller.ensure([security,{symbol:'OTHER',securityId:'OTHER',held:true}]);
+  await firstStarted;
+  let drained=false;
+  const pausing=controller.pause().then(()=>{drained=true;});
+  await Promise.resolve();
+  assert.equal(drained,false,'restore must wait for the already-started save');
+  releaseFirst();
+  await Promise.all([ensuring,pausing]);
+  assert.equal(writes.length,1,'the old ensure loop cannot advance after restore is paused');
+  assert.equal(controller.getState().paused,true);
+  await assert.rejects(controller.request({symbol:'THIRD'},{force:true}),/paused/);
+  await assert.rejects(controller.importSnapshot({retrievedAt:'2026-11-12',rows:[sourceRow]}),/paused/);
+  assert.equal(writes.length,1);
+  await controller.resume();
+  assert.equal(controller.getState().paused,false);
+  assert.equal(writes.length,2,'a failed restore may explicitly resume missing live requests');
+});
+
+test('backup quiesce also drains an active atomic reference import without starting its follow-up calculations',async()=>{
+  let finishImport,started;
+  const waiting=new Promise(resolve=>{started=resolve;});
+  const gate=new Promise(resolve=>{finishImport=resolve;});
+  const writes=[];
+  const controller=createResearchController({load:async()=>({researchBySecurity:{EXAMPLE:record()}}),now:()=>clock,
+    write:async patch=>{writes.push(patch);if(patch.researchReferenceSnapshotMeta){started();await gate;}}});
+  await controller.ensure([security]);
+  const importing=controller.importSnapshot({retrievedAt:'2026-11-12',universe:['EXAMPLE'],rows:[sourceRow]});
+  await waiting;
+  const pausing=controller.pause();
+  finishImport();
+  await Promise.all([importing,pausing]);
+  assert.equal(writes.length,1);
+  assert.ok(writes[0].researchReferenceSnapshotMeta);
+  assert.equal(controller.getState().paused,true);
+});
+
+test('a restored unfinished record stays paused across model upgrades until explicit recalculation',async()=>{
+  const saved={...record('restore-one'),modelVersion:'old-model-version',phase:'restored',
+    iv:{processing:'blocked',reason:'Paused after backup restore.'},supports:{processing:'blocked'}};
+  const writes=[];
+  const controller=createResearchController({load:async()=>({researchBySecurity:{EXAMPLE:saved}}),now:()=>clock,uuid:()=> 'manual-retry',
+    write:async patch=>{writes.push(patch);}});
+  await controller.ensure([security]);
+  assert.equal(writes.length,0,'version mismatch cannot override the restored pause');
+  await controller.request(security,{force:true});
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].researchBySecurity.EXAMPLE.phase,'requested');
+  assert.equal(writes[0].researchBySecurity.EXAMPLE.modelVersion,'ak-reconstruction-v1');
 });

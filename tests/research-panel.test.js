@@ -230,11 +230,11 @@ test('completed research renders independent values and separate matched or unco
   const text=content(tree);
   assert.ok(text.includes('20.50'));
   assert.ok(text.includes('18.10'));
-  assert.ok(text.includes('Matches Adam'));
-  assert.ok(text.includes('In Adam · differs'));
+  assert.ok(text.includes('Matches'));
+  assert.ok(text.includes('Different'));
   assert.ok(text.includes('Historical-growth DCF20'));
   assert.ok(!text.includes('999'));
-  assert.equal(researchComparisonLabel({...base,reference:{present:false}},'iv').text,'Not in Adam');
+  assert.equal(researchComparisonLabel({...base,reference:{present:false}},'iv').text,'No benchmark');
   assert.equal(researchComparisonLabel({...base,reference:undefined},'iv').text,'Reference not loaded');
 });
 
@@ -271,5 +271,5 @@ test('a completed result with an old comparison snapshot cannot claim a match ag
     iv:{processing:'completed'},comparison:{iv:{status:'matched',snapshotId:'old',referenceAsOf:'2026-10-20'}}};
   assert.equal(researchComparisonLabel(base,'iv').text,'Awaiting comparison');
   const current={...base,comparison:{iv:{status:'matched',snapshotId:'new',referenceAsOf:'2026-11-03'}}};
-  assert.equal(researchComparisonLabel(current,'iv').text,'Matches Adam');
+  assert.equal(researchComparisonLabel(current,'iv').text,'Matches');
 });
