@@ -3,6 +3,7 @@
  * safe code, never a response body or URL (which could contain an API key).
  */
 import {loadBundledSecTickerCatalog, SEC_CATALOG_MAX_AGE_DAYS} from './sec-ticker-catalog.mjs';
+import {GENERIC_RESEARCH_USER_AGENT} from './research-http.mjs';
 const DAY = 86400000;
 const METRICS = {
   cfo: 'OperatingCashFlow', capex: 'CapitalExpenditure', netIncome: 'NetIncome',
@@ -357,7 +358,7 @@ export function parseTwelveDataHistory(payload, symbol, {now = new Date(), asOf}
  * fail independently. No aliasing between ADRs and overseas listings occurs.
  */
 export async function fetchResearchData(symbol, {fetch:fetchImpl = globalThis.fetch, now = new Date(),
-  asOf, twelveDataKey = null, secUserAgent = 'PersonalPortfolioResearch https://github.com/alvissome/portfolio',
+  asOf, twelveDataKey = null, secUserAgent = GENERIC_RESEARCH_USER_AGENT,
   loadSecCatalog = loadBundledSecTickerCatalog} = {}) {
   validateSymbol(symbol);
   const warnings = [];
@@ -367,8 +368,8 @@ export async function fetchResearchData(symbol, {fetch:fetchImpl = globalThis.fe
   const period1 = Math.floor((cutoffMs - 11*365.25*DAY)/1000);
   const types = Object.values(METRICS).flatMap(type=>['annual','trailing','quarterly'].map(f=>f+type));
   const [chart, facts] = await Promise.all([
-    safeJSON(fetchImpl, `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&period1=${period1}&period2=${chartPeriod2}&events=div%2Csplits`, 'YAHOO_HISTORY', {'User-Agent':secUserAgent}),
-    safeJSON(fetchImpl, `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}?type=${types.join(',')}&period1=${period1}&period2=${period2}`, 'YAHOO_FUNDAMENTALS', {'User-Agent':secUserAgent}),
+    safeJSON(fetchImpl, `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&period1=${period1}&period2=${chartPeriod2}&events=div%2Csplits`, 'YAHOO_HISTORY', {'User-Agent':GENERIC_RESEARCH_USER_AGENT}),
+    safeJSON(fetchImpl, `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}?type=${types.join(',')}&period1=${period1}&period2=${period2}`, 'YAHOO_FUNDAMENTALS', {'User-Agent':GENERIC_RESEARCH_USER_AGENT}),
   ]);
   let history = null;
   if (chart.data) {try {history = parseYahooChart(chart.data,symbol,{now,asOf});} catch {warnings.push('YAHOO_HISTORY_INVALID');}}

@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {claimRecord, mergeProgress, LEASE_MS} from '../.github/scripts/runResearch.js';
+import {claimRecord, mergeProgress, LEASE_MS, canClaimResearchJob, MAX_RESEARCH_JOBS, RESEARCH_CLAIM_WINDOW_MS} from '../.github/scripts/runResearch.js';
 import {runPrivateResearch} from '../.github/scripts/research-cli.js';
 
 const request={symbol:'EXAMPLE.HK',securityId:'EXAMPLE.HK',requestId:'one',modelVersion:'ak-reconstruction-v1',
   iv:{processing:'not_started'},supports:{processing:'not_started'},reference:{present:false}};
+test('queue claim budget permits a 23-security batch but stops at the cap or ten-minute deadline',()=>{
+  const started=Date.parse('2026-01-01T00:00:00Z');
+  assert.equal(canClaimResearchJob(22,started,started+RESEARCH_CLAIM_WINDOW_MS-1),true);
+  assert.equal(canClaimResearchJob(MAX_RESEARCH_JOBS,started,started+1),false);
+  assert.equal(canClaimResearchJob(0,started,started+RESEARCH_CLAIM_WINDOW_MS),false);
+  assert.equal(canClaimResearchJob(-1,started,started+1),false);
+  assert.equal(canClaimResearchJob(0,started,started-1),false);
+});
 test('claim owns an eight-minute lease; simultaneous consumers cannot claim it',()=>{
   const first=claimRecord(request,Date.parse('2026-01-01T00:00:00Z'),'lease-one');
   assert.equal(first.workerAcknowledged,true);

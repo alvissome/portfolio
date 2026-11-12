@@ -3,10 +3,19 @@ import {randomUUID} from 'node:crypto';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {fetchResearchData} from './research-data.mjs';
+import {buildSecUserAgent, secContactConfigurationMessage} from './research-http.mjs';
 import {processResearchRequest, compareResearch, needsProcessing, sameRequest, resolveReference, prioritizeRequests} from './research-engine.mjs';
 
 export const PERSONAL_PROJECT = 'alvissome-portfolio';
 export const LEASE_MS = 8 * 60 * 1000;
+export const MAX_RESEARCH_JOBS = 24;
+export const RESEARCH_CLAIM_WINDOW_MS = 10 * 60 * 1000;
+
+export function canClaimResearchJob(claimed, startedAt, now = Date.now()) {
+  return Number.isInteger(claimed) && claimed >= 0 && claimed < MAX_RESEARCH_JOBS &&
+    Number.isFinite(startedAt) && Number.isFinite(now) && now >= startedAt &&
+    now - startedAt < RESEARCH_CLAIM_WINDOW_MS;
+}
 
 export function claimRecord(current, now, leaseToken) {
   if (!needsProcessing(current, now)) return null;
@@ -35,8 +44,10 @@ export function mergeProgress(current, expected, incoming, leaseToken) {
 }
 
 async function main() {
+  const runStartedAt = Date.now();
   const dryRun = process.argv.includes('--dry-run');
   if (!dryRun && !process.argv.includes('--process')) throw new Error('Explicit process or dry-run mode is required');
+  const secUserAgent = buildSecUserAgent(process.env.SEC_CONTACT_EMAIL);
   let serviceAccount;
   try { serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || ''); }
   catch { throw new Error('Personal research credentials are missing or invalid'); }
@@ -51,7 +62,6 @@ async function main() {
   const db = getFirestore();
   const userRefs = await db.collection('users').listDocuments();
   const counters = {portfolios: 0, pending: 0, claimed: 0, completed: 0, partial: 0, failed: 0, staleDiscarded: 0};
-  const maxJobs = 12;
   for (const user of userRefs) {
     const ref = user.collection('portfolio').doc('data');
     const snap = await ref.get();
@@ -60,15 +70,17 @@ async function main() {
     const requests = prioritizeRequests(Object.entries(snap.data().researchBySecurity || {}).filter(([,record]) => needsProcessing(record)));
     counters.pending += requests.length;
     for (const [symbol, observed] of requests) {
-      if (counters.claimed >= maxJobs) break;
+      if (!canClaimResearchJob(counters.claimed, runStartedAt)) break;
       if (symbol !== observed.symbol) continue;
       if (dryRun) continue;
       const leaseToken = randomUUID();
       const claimed = await db.runTransaction(async transaction => {
+        if (!canClaimResearchJob(counters.claimed, runStartedAt)) return null;
         const fresh = await transaction.get(ref);
         const data = fresh.data();
         const current = data?.researchBySecurity?.[symbol];
         if (!sameRequest(current, observed)) return null;
+        if (!canClaimResearchJob(counters.claimed, runStartedAt)) return null;
         const reference = resolveReference(current, data.researchReferenceSnapshotMeta);
         const record = claimRecord({...current, ...(reference ? {reference} : {})}, Date.now(), leaseToken);
         if (!record) return null;
@@ -88,7 +100,7 @@ async function main() {
         const output = await processResearchRequest(claimed, {
           fetchData: (ticker, options) => fetchResearchData(ticker, {...options,
             twelveDataKey: process.env.TWELVE_DATA_KEY,
-            secUserAgent: 'PersonalPortfolioResearch https://github.com/alvissome/portfolio'}),
+            secUserAgent}),
           progress: persist,
         });
         if (!await persist(output)) {counters.staleDiscarded++; continue;}
@@ -112,5 +124,6 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().catch(() => {console.error('Personal research worker failed; no request details logged.'); process.exitCode = 1;});
+  main().catch(error => {console.error(secContactConfigurationMessage(error) ||
+    'Personal research worker failed; no request details logged.'); process.exitCode = 1;});
 }

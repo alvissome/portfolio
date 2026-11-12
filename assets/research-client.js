@@ -37,7 +37,8 @@ export function buildResearchRequest(security, {previous, now = new Date().toISO
   if (!validSymbol(symbol)) throw new TypeError('Enter a supported exchange-qualified stock symbol.');
   const override = security.methodFamilyOverride;
   if (override !== undefined && !['auto','stock','bank','reit','fund'].includes(override)) throw new TypeError('Unknown valuation method family.');
-  const family = override !== undefined ? override === 'auto' ? null : override
+  const automaticFamily = security.methodFamily ?? previous?.reference?.methodFamily ?? null;
+  const family = override !== undefined ? override === 'auto' ? automaticFamily : override
     : previous?.methodFamilySource === 'user' ? previous.methodFamily
       : security.methodFamily ?? previous?.reference?.methodFamily ?? previous?.methodFamily ?? null;
   const record = {securityId: symbol, symbol, requestId, modelVersion,
@@ -45,7 +46,7 @@ export function buildResearchRequest(security, {previous, now = new Date().toISO
     phase: 'requested', startedAt: null, finishedAt: null, leaseUntil: null, asOf: null,
     requestError: null, priority: security.held ? 'holding' : 'watchlist',
     methodFamily: family,
-    methodFamilySource: override !== undefined ? override === 'auto' ? 'auto' : 'user'
+    methodFamilySource: override !== undefined ? override === 'auto' ? previous?.reference?.methodFamily ? 'reference' : 'auto' : 'user'
       : previous?.methodFamilySource === 'user' ? 'user' : previous?.reference?.methodFamily ? 'reference' : 'auto',
     comparison: {iv: {status: 'pending', reason: null}, supports: {status: 'pending', reason: null}}};
   for (const part of PARTS) record[part] = {

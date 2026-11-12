@@ -65,12 +65,15 @@ editing a symbol must not allow old work to overwrite a newer result.
 The current source explicitly guards its personal portfolio project. Before
 any worker deployment, verify the actual personal account, project, credential
 scope, queue consumer, database rules and recovery path. No business resources
-may be used. This implementation adds no hosting, paid service, public data
-endpoint, database permission or new secret. It uses the existing personal
+may be used. This implementation requires no new hosting, paid service, public
+data endpoint, database permission or provider credential. It uses the existing personal
 repository's Actions environment and project-guarded Firebase credentials.
 
 The scheduled consumer runs at minutes 7, 22, 37 and 52, processes a bounded
-number of requests and logs aggregate counters only. Scheduling can be delayed;
+batch of at most 24 requests and logs aggregate counters only. It stops claiming
+new jobs after ten minutes, leaving time for the final claimed job before the
+existing 15-minute workflow timeout. Scheduling can be delayed and the configured
+15-minute cadence is not a processing-time guarantee;
 Requested means saved but not acknowledged. A claimed request has an ownership
 token/expiry guard so late or expired consumers cannot replace newer work.
 A manual dry-run reads pending counts without calculations or writes. Changes
@@ -163,17 +166,32 @@ without changing the user's watchlist.
 
 Three monthly snapshots can support a provisional release if the gates pass.
 Prefer six snapshots for a first reliability assessment: three calibration
-months followed by three untouched holdout months. With November 2026 as the
-baseline, those six vintages are November-April; that means five new monthly
-updates after the baseline. Three vintages means two updates after baseline.
-Historical archived vintages may shorten calibration; prospective holdout is
-still needed. An unchanged/older source vintage is not a fresh monthly test.
-The calendar illustration assumes each relevant source actually updates.
+months followed by three untouched holdout months. Retain October/November 2026
+as retrospective diagnostic calibration. The formal study uses December
+2026-February 2027 for calibration, then a frozen model and March-May 2027
+holdouts. November's review is an extra preparation checkpoint. Historical
+archives can inform calibration; prospective holdout is still needed. An
+unchanged/older source vintage is not a fresh monthly test. This calendar
+assumes each relevant source actually updates.
 Month count alone is not a pass, particularly if all months show
 the same market regime or a model family lacks comparable securities.
 
 For uncovered securities, distinguish validated method from no instrument
 benchmark. Do not label the security itself Adam-matched by analogy.
+
+Align SL inputs to the last complete exchange session available before the
+reference's publication timestamp. A sheet date alone does not prove which US
+close was available. If publication time or timezone is unknown, compare prior-
+session and same-date cutoffs as sensitivity diagnostics and retain the cutoff
+uncertainty. Do not equate matching date strings or a verified split basis with
+verified publication timing. Historical IV additionally needs financial facts
+as published by the cutoff and the relevant forecast/consensus vintage.
+
+Use individual security case studies to distinguish input/cutoff errors,
+missing candidate detection, ranking, level retention and level-count policy.
+Derive shared rules and test securities excluded from fitting; do not introduce
+arbitrary ticker-specific constants to match published targets. Current
+dashboard output and dated benchmark evaluations remain separate.
 
 ## Implementation sequence and completion gate
 
@@ -201,6 +219,23 @@ filings provide dated US-filer facts/classification and share-basis checks.
 An existing optional Twelve Data key is a fallback, not a guarantee of market
 coverage. Missing inputs end with a specific reason rather than placeholder
 zeros. No reference IV or support price enters the independent calculator.
+
+SEC's documented declared-bot header example includes an application/company
+name and contact email. Optional configuration is the private GitHub repository
+Actions secret `SEC_CONTACT_EMAIL` (Settings > Secrets and variables > Actions).
+Use a dedicated personal contact address; do not commit its value. The worker,
+private research CLI and catalog-refresh CLI build an SEC-only header from it.
+Yahoo requests always retain the generic application header and never receive
+that contact value. With the secret absent, the existing generic header remains
+in use; support calculations do not require an email or paid source. Invalid
+nonempty contact configuration fails before provider requests and logs only a
+fixed configuration error, never the supplied value.
+
+No contact value has been supplied or tested as part of this change. Header
+format compliance does not establish that it will resolve SEC's observed 403
+responses. After the user authorizes a contact value, perform one controlled
+check; if denial persists, stop rather than change network routes or weaken
+issuer checks. No paid provider or new infrastructure is configured here.
 
 If the live SEC ticker index cannot be retrieved, a full public catalog is
 bundled at `.github/data/sec-company-tickers.json`, with source/retrieval time,

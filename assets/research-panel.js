@@ -9,9 +9,19 @@ const output = (record, part) => record?.[part]?.result ?? record?.[part]?.previ
 const partValue = (record, part) => output(record, part)?.value;
 const ready = (record, part) => record?.[part]?.processing === 'completed';
 
-export function researchProcessingLabel(record, part) {
+const workerDelayed = (record, part, now) => record?.requestId && !record.workerAcknowledged &&
+  record.phase !== 'restored' && ['not_started','queued','processing'].includes(record?.[part]?.processing) &&
+  Number.isFinite(Date.parse(record.requestedAt)) && now - Date.parse(record.requestedAt) >= 45 * 60 * 1000;
+
+export function researchWaitReason(record, part, now = Date.now()) {
+  return workerDelayed(record, part, now)
+    ? 'The background worker has not picked up this request yet. Any previous result remains visible while it waits.' : '';
+}
+
+export function researchProcessingLabel(record, part, now = Date.now()) {
   const state = record?.[part]?.processing;
   if (!record?.requestId) return 'Not started';
+  if (workerDelayed(record, part, now)) return 'Worker delayed';
   if (state === 'not_started' && !record.workerAcknowledged) return 'Requested';
   if (['queued', 'processing'].includes(state) && !record.workerAcknowledged) return 'Requested';
   return ({not_started:'Requested', queued:'Queued', processing:'Processing',
@@ -74,7 +84,7 @@ export function createResearchComponents(React) {
     const currentComparison = ready(record, part) && comparison?.status !== 'pending' && reference &&
       (comparison?.snapshotId ?? null) === (reference.snapshotId ?? null) &&
       (comparison?.referenceAsOf ?? null) === (reference.asOf ?? null);
-    const detail = [record?.[part]?.reason, currentComparison ? comparison?.reason : null].filter(Boolean).join(' ');
+    const detail = [record?.[part]?.reason, researchWaitReason(record,part), currentComparison ? comparison?.reason : null].filter(Boolean).join(' ');
     const error = currentComparison && numeric(comparison?.errorPct) ? `Difference ${comparison.errorPct.toFixed(1)}%.` : '';
     const supportMatches = currentComparison && numeric(comparison?.matchedCount) ? `${comparison.matchedCount}/${comparison.referenceCount} supports matched; ${comparison.missingCount ?? 0} missing, ${comparison.extraCount ?? 0} extra.` : '';
     return h('div', {className:'research-part-status'},

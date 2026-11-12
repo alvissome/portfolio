@@ -194,9 +194,14 @@ test('a deliberate method-family override is recorded, persists across retries a
   assert.equal(chosen.methodFamilySource,'user');
   const retry=buildResearchRequest(security,{previous:chosen,requestId:'retry',now:clock});
   assert.equal(retry.methodFamily,'reit');
-  const automatic=buildResearchRequest({...security,methodFamilyOverride:'auto'},{previous:chosen,requestId:'automatic',now:clock});
-  assert.equal(automatic.methodFamily,null);
-  assert.equal(automatic.methodFamilySource,'auto');
+  const automatic=buildResearchRequest({...security,methodFamilyOverride:'auto'},{previous:{...chosen,reference:base.reference},requestId:'automatic',now:clock});
+  assert.equal(automatic.methodFamily,'bank','Auto clears the user override and restores known reference classification');
+  assert.equal(automatic.methodFamilySource,'reference');
+  const unknown=buildResearchRequest({...security,methodFamilyOverride:'auto'},{previous:{...chosen,reference:undefined},requestId:'unknown-auto',now:clock});
+  assert.equal(unknown.methodFamily,null,'without a known classification Auto delegates to the public provider');
+  assert.equal(unknown.methodFamilySource,'auto');
+  const reit=buildResearchRequest({...security,methodFamilyOverride:'auto'},{previous:{...chosen,reference:{methodFamily:'reit'}},requestId:'reit-auto',now:clock});
+  assert.equal(reit.methodFamily,'reit');
 });
 
 test('a complete market-scoped snapshot does not infer no coverage for an unresolved outside-market listing',()=>{

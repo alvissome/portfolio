@@ -5,11 +5,13 @@ import {mkdir, writeFile, rename} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {SEC_CATALOG_SOURCE, validateSecTickerCatalog} from './sec-ticker-catalog.mjs';
+import {buildSecUserAgent, secContactConfigurationMessage, GENERIC_RESEARCH_USER_AGENT} from './research-http.mjs';
 
 export async function refreshSecTickerCatalog({fetch = globalThis.fetch,
-  directory = new URL('../data/', import.meta.url), now = () => new Date()} = {}) {
+  directory = new URL('../data/', import.meta.url), now = () => new Date(),
+  secUserAgent = GENERIC_RESEARCH_USER_AGENT} = {}) {
   const response = await fetch(SEC_CATALOG_SOURCE, {redirect:'error', signal:AbortSignal.timeout(25000),
-    headers:{'User-Agent':'PersonalPortfolioResearch https://github.com/alvissome/portfolio'}});
+    headers:{'User-Agent':secUserAgent}});
   if (!response.ok) throw new Error(`SEC_CATALOG_HTTP_${response.status}`);
   const raw = Buffer.from(await response.arrayBuffer());
   if (raw.length > 5 * 1024 * 1024) throw new Error('SEC_CATALOG_SIZE_INVALID');
@@ -28,8 +30,10 @@ export async function refreshSecTickerCatalog({fetch = globalThis.fetch,
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  refreshSecTickerCatalog().then(metadata=>console.log(JSON.stringify(metadata))).catch(error=>{
-    console.error(/^SEC_CATALOG_[A-Z0-9_]+$/.test(error?.message||'') ? error.message : 'SEC_CATALOG_REFRESH_FAILED');
+  Promise.resolve().then(()=>refreshSecTickerCatalog({secUserAgent:buildSecUserAgent(process.env.SEC_CONTACT_EMAIL)}))
+    .then(metadata=>console.log(JSON.stringify(metadata))).catch(error=>{
+    console.error(secContactConfigurationMessage(error) ||
+      (/^SEC_CATALOG_[A-Z0-9_]+$/.test(error?.message||'') ? error.message : 'SEC_CATALOG_REFRESH_FAILED'));
     process.exitCode=1;
   });
 }

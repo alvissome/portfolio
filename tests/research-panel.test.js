@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {combinedHolding} from '../assets/account-portfolio.js';
-import {createResearchComponents,researchProcessingLabel,researchComparisonLabel} from '../assets/research-panel.js';
+import {createResearchComponents,researchProcessingLabel,researchComparisonLabel,researchWaitReason} from '../assets/research-panel.js';
 import {mergeResolvedWatchlistNames} from '../assets/research-client.js';
 import {planTrackInWatchlist, VALIDATION_STATES} from '../assets/research-core.js';
 
@@ -339,4 +339,21 @@ test('a pending calculation or a new reference cannot display stale comparison r
   tree=render(current);
   assert.ok(content(tree).includes('Current comparable result.'));
   assert.ok(nodes(tree,'span').some(item=>String(item.props.title??'').includes('33.0%')));
+});
+
+test('an old unacknowledged request reports worker delay without claiming calculation has started',()=>{
+  const now=Date.parse('2026-11-12T10:00:00Z');
+  const base={requestId:'waiting',workerAcknowledged:false,phase:'requested',requestedAt:'2026-11-12T09:20:00Z',iv:{processing:'not_started'}};
+  assert.equal(researchProcessingLabel(base,'iv',now),'Requested');
+  assert.equal(researchWaitReason(base,'iv',now),'');
+  const older={...base,requestedAt:'2026-11-12T09:10:00Z'};
+  assert.equal(researchProcessingLabel(older,'iv',now),'Worker delayed');
+  assert.match(researchWaitReason(older,'iv',now),/background worker has not picked up/);
+  assert.match(researchWaitReason(older,'iv',now),/previous result remains visible/);
+  assert.equal(researchProcessingLabel({...older,workerAcknowledged:true,iv:{processing:'processing'}},'iv',now),'Processing');
+  assert.equal(researchWaitReason({...older,workerAcknowledged:true},'iv',now),'');
+  assert.equal(researchProcessingLabel({...older,iv:{processing:'completed'}},'iv',now),'Completed');
+  assert.equal(researchProcessingLabel({...older,iv:{processing:'unavailable'}},'iv',now),'Data unavailable');
+  assert.equal(researchProcessingLabel({...older,phase:'restored',iv:{processing:'blocked'}},'iv',now),'Request blocked');
+  assert.equal(researchWaitReason({...older,phase:'restored'},'iv',now),'');
 });
