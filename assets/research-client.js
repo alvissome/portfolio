@@ -47,7 +47,7 @@ export function buildResearchRequest(security, {previous, now = new Date().toISO
     methodFamily: family,
     methodFamilySource: override !== undefined ? override === 'auto' ? 'auto' : 'user'
       : previous?.methodFamilySource === 'user' ? 'user' : previous?.reference?.methodFamily ? 'reference' : 'auto',
-    comparison: {iv: {status: 'pending'}, supports: {status: 'pending'}}};
+    comparison: {iv: {status: 'pending', reason: null}, supports: {status: 'pending', reason: null}}};
   for (const part of PARTS) record[part] = {
     processing: 'not_started', validation: 'experimental', result: null,
     previousResult: previous?.[part]?.result ?? previous?.[part]?.previousResult ?? null,
@@ -266,7 +266,7 @@ export function createResearchController({load, write, now = () => new Date().to
       previousReferences.set(symbol, state.records[symbol]?.reference);
       imports.set(symbol, reference);
       const current = state.records[symbol] ?? {securityId: symbol, symbol};
-      const comparison = {iv: {status:'pending'}, supports: {status:'pending'}};
+      const comparison = {iv: {status:'pending',reason:null}, supports: {status:'pending',reason:null}};
       nextRecords[symbol] = {...current, reference, comparison};
       patchRecords[symbol] = {securityId:symbol, symbol, reference, comparison};
     }
@@ -280,7 +280,7 @@ export function createResearchController({load, write, now = () => new Date().to
       const rollback = {...state.records};
       for (const [symbol, previousReference] of previousReferences) {
         imports.delete(symbol);
-        const restored = {...rollback[symbol], comparison:{iv:{status:'pending'},supports:{status:'pending'}}};
+        const restored = {...rollback[symbol], comparison:{iv:{status:'pending',reason:null},supports:{status:'pending',reason:null}}};
         if (previousReference === undefined) delete restored.reference;
         else restored.reference = previousReference;
         rollback[symbol] = restored;

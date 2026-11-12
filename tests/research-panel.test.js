@@ -316,3 +316,27 @@ test('pasted-reference validation errors use the same status path and keep text 
   assert.ok(content(tree).includes('Reference imported: 2026-11-04'));
   assert.ok(!content(tree).includes('Invalid reference JSON.'));
 });
+
+test('a pending calculation or a new reference cannot display stale comparison reasons or metrics',()=>{
+  const runtime=host();
+  const oldComparison={status:'different',snapshotId:'old',referenceAsOf:'2026-10-20',
+    reason:'No reference snapshot has been loaded.',errorPct:33,matchedCount:1,referenceCount:4,missingCount:3,extraCount:2};
+  const base={securityId:'EXAMPLE',symbol:'EXAMPLE',requestId:'retry',workerAcknowledged:false,
+    reference:{present:true,snapshotId:'new',asOf:'2026-11-03',iv:{value:20},supports:[18,16]},
+    iv:{processing:'not_started',result:null},supports:{processing:'not_started',result:null},
+    comparison:{iv:{...oldComparison,status:'pending'},supports:{...oldComparison,status:'pending'}}};
+  const render=record=>runtime.render(runtime.components.ResearchPanel,{scope:'watchlist',watchlist:[{symbol:'EXAMPLE'}],research:{records:{EXAMPLE:record}}});
+  let tree=render(base);
+  assert.ok(!content(tree).includes(oldComparison.reason));
+  assert.ok(nodes(tree,'span').every(item=>!String(item.props.title??'').includes('33.0%')));
+  const completed={...base,workerAcknowledged:true,iv:{processing:'completed',result:{value:20}},supports:{processing:'completed',result:{value:[18,16]}},
+    comparison:{iv:oldComparison,supports:oldComparison}};
+  tree=render(completed);
+  assert.ok(!content(tree).includes(oldComparison.reason),'completion cannot revive comparison details from another snapshot');
+  assert.ok(nodes(tree,'span').every(item=>!String(item.props.title??'').includes('supports matched')));
+  const current={...completed,comparison:{iv:{...oldComparison,snapshotId:'new',referenceAsOf:'2026-11-03',reason:'Current comparable result.'},
+    supports:{...oldComparison,snapshotId:'new',referenceAsOf:'2026-11-03',reason:'Current comparable supports.'}}};
+  tree=render(current);
+  assert.ok(content(tree).includes('Current comparable result.'));
+  assert.ok(nodes(tree,'span').some(item=>String(item.props.title??'').includes('33.0%')));
+});

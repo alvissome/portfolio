@@ -103,7 +103,12 @@ export function calculateIV(data, request = {}, asOf = new Date().toISOString().
   if (!currency || !facts.financialCurrency || currency !== facts.financialCurrency) {
     return unavailable('Financial-statement and listing currencies are not verified as identical; an explicit FX/listing mapping is required.', 'currency_mapping_required');
   }
-  if (facts.listingSharesVerified !== true) return unavailable('Share or ADR denominator is not verified for this listing.', 'share_mapping_required');
+  if (facts.listingSharesVerified !== true) {
+    const reason = typeof facts.listingSharesReason === 'string' ? facts.listingSharesReason.slice(0, 180) : '';
+    const diagnostics = [...new Set((data.warnings || []).filter(code => /^SEC_[A-Z0-9_]{1,80}$/.test(code)))].slice(0, 5);
+    return unavailable(['Share or ADR denominator is not verified for this listing.', reason,
+      diagnostics.length ? `Provider diagnostics: ${diagnostics.join(', ')}.` : ''].filter(Boolean).join(' '), 'share_mapping_required');
+  }
   const annual = (facts.annual || []).filter(row => row.end <= asOf).sort((a, b) => a.end.localeCompare(b.end));
   const current = facts.ttm || {};
   const share = current.shares;

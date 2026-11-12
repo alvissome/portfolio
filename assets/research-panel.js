@@ -70,9 +70,13 @@ export function createResearchComponents(React) {
     const result = output(record, part);
     const label = researchComparisonLabel(record, part);
     const comparison = record?.comparison?.[part];
-    const detail = [record?.[part]?.reason, comparison?.reason].filter(Boolean).join(' ');
-    const error = numeric(comparison?.errorPct) ? `Difference ${comparison.errorPct.toFixed(1)}%.` : '';
-    const supportMatches = numeric(comparison?.matchedCount) ? `${comparison.matchedCount}/${comparison.referenceCount} supports matched; ${comparison.missingCount ?? 0} missing, ${comparison.extraCount ?? 0} extra.` : '';
+    const reference = record?.reference;
+    const currentComparison = ready(record, part) && comparison?.status !== 'pending' && reference &&
+      (comparison?.snapshotId ?? null) === (reference.snapshotId ?? null) &&
+      (comparison?.referenceAsOf ?? null) === (reference.asOf ?? null);
+    const detail = [record?.[part]?.reason, currentComparison ? comparison?.reason : null].filter(Boolean).join(' ');
+    const error = currentComparison && numeric(comparison?.errorPct) ? `Difference ${comparison.errorPct.toFixed(1)}%.` : '';
+    const supportMatches = currentComparison && numeric(comparison?.matchedCount) ? `${comparison.matchedCount}/${comparison.referenceCount} supports matched; ${comparison.missingCount ?? 0} missing, ${comparison.extraCount ?? 0} extra.` : '';
     return h('div', {className:'research-part-status'},
       h('span', {className:'research-status'}, researchProcessingLabel(record, part)),
       h('span', {className:`research-comparison research-${label.tone}`, title:[detail,error,supportMatches].filter(Boolean).join(' ')}, label.text),

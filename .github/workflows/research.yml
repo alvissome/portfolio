@@ -9,6 +9,8 @@ on:
       - .github/scripts/research-cli.js
       - assets/research-core.js
       - assets/research-*
+      - .github/data/sec-company-tickers*
+      - .github/scripts/sec-ticker-catalog.mjs
       - .github/workflows/research.yml
   schedule:
     - cron: '7,22,37,52 * * * *'

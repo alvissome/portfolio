@@ -1,0 +1,7 @@
+{
+  "sourceURL": "https://www.sec.gov/files/company_tickers.json",
+  "retrievedAt": "2026-11-12T07:08:47.672344Z",
+  "sha256": "391effc6a807ae1752c9d2c351dbecab8f15aa1c59b035a9a28f7955a94feb0f",
+  "recordCount": 10405,
+  "catalogFile": "sec-company-tickers.json"
+}

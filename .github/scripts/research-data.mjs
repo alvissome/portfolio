@@ -2,6 +2,7 @@
  * No credentials or user portfolio values are logged. A provider failure is a
  * safe code, never a response body or URL (which could contain an API key).
  */
+import {loadBundledSecTickerCatalog, SEC_CATALOG_MAX_AGE_DAYS} from './sec-ticker-catalog.mjs';
 const DAY = 86400000;
 const METRICS = {
   cfo: 'OperatingCashFlow', capex: 'CapitalExpenditure', netIncome: 'NetIncome',
@@ -238,23 +239,41 @@ export function parseSecCompanyFacts(payload, {now = new Date(), asOf, priceCurr
     warnings: ['SEC_STANDARD_TAGS_ONLY', 'SEC_DEBT_FIELD_MAY_BE_UNAVAILABLE', 'NO_ANALYST_CONSENSUS']};
 }
 
-async function secTicker(symbol, fetchImpl, now, secUserAgent) {
+async function secTicker(symbol, fetchImpl, now, secUserAgent, loadSecCatalog) {
   if (/\.(?:SI|HK|L)$/i.test(symbol)) return {entry:null,warning:'SEC_NO_EXACT_US_LISTING'};
   let cache = tickerCaches.get(fetchImpl);
-  if (!cache || +new Date(now) - cache.fetchedAt > DAY) {
+  const retrieved = Date.parse(cache?.catalogProvenance?.retrievedAt);
+  const fallbackExpired = cache?.catalogProvenance && (!Number.isFinite(retrieved) ||
+    retrieved > +new Date(now) || +new Date(now) - retrieved > SEC_CATALOG_MAX_AGE_DAYS * DAY);
+  if (!cache || +new Date(now) - cache.fetchedAt > DAY || fallbackExpired) {
     const r = await safeJSON(fetchImpl, 'https://www.sec.gov/files/company_tickers.json', 'SEC_TICKERS', {'User-Agent': secUserAgent});
-    cache = {fetchedAt: +new Date(now), data: r.data, error: r.code}; tickerCaches.set(fetchImpl, cache);
+    cache = {fetchedAt: +new Date(now), data: r.data, error: r.code};
+    // Only an index retrieval failure may use the dated full public catalog.
+    // This never replaces the current data.sec.gov issuer/annual-form checks.
+    if (!r.data && r.code) {
+      try {
+        const fallback = await loadSecCatalog({now});
+        cache.data = fallback.data;
+        cache.catalogProvenance = {...fallback.provenance, fallbackFor: r.code};
+        cache.fallbackCode = 'SEC_TICKERS_CATALOG_FALLBACK';
+      } catch (error) {
+        cache.fallbackCode = /^SEC_CATALOG_[A-Z_]+$/.test(error?.message || '')
+          ? error.message : 'SEC_CATALOG_UNAVAILABLE';
+      }
+    }
+    tickerCaches.set(fetchImpl, cache);
   }
   const entry = Object.values(cache.data ?? {}).find(r => r.ticker === symbol.toUpperCase());
-  return {entry,warning:entry?null:cache.error || 'SEC_NO_EXACT_TICKER'};
+  return {entry,warning:cache.error || (entry?null:'SEC_NO_EXACT_TICKER'),
+    warnings:cache.fallbackCode?[cache.fallbackCode]:[],catalogProvenance:cache.catalogProvenance || null};
 }
-async function secFallback(symbol, fetchImpl, now, asOf, priceCurrency, secUserAgent) {
-  const {entry,warning}=await secTicker(symbol,fetchImpl,now,secUserAgent);
-  if(!entry)return{fundamentals:null,name:null,warning};
+async function secFallback(symbol, fetchImpl, now, asOf, priceCurrency, secUserAgent, loadSecCatalog) {
+  const {entry,warning,warnings}=await secTicker(symbol,fetchImpl,now,secUserAgent,loadSecCatalog);
+  if(!entry)return{fundamentals:null,name:null,warning,warnings};
   const cik = String(entry.cik_str).padStart(10, '0');
   const r = await safeJSON(fetchImpl, `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`, 'SEC_FACTS', {'User-Agent': secUserAgent});
   return {fundamentals: r.data ? parseSecCompanyFacts(r.data, {now, asOf, priceCurrency}) : null,
-    name: entry.title || r.data?.entityName || null, warning: r.code};
+    name: entry.title || r.data?.entityName || null, warning: r.code || warning,warnings};
 }
 
 /** Exact SEC issuer linkage is used for share-basis classification, not as an
@@ -287,10 +306,10 @@ export function classifyListingShares(instrument,fundamentals,submissions,{now=n
   return{...base,methodFamily,listingSharesVerified:true,listingSharesProvenance:'Exact SEC ticker/issuer match with 10-K annual reporting at cutoff; provider ordinary shares outstanding (no ADR conversion)',listingSharesReason:null};
 }
 
-async function listingBasis(instrument,fundamentals,fetchImpl,now,asOf,secUserAgent) {
+async function listingBasis(instrument,fundamentals,fetchImpl,now,asOf,secUserAgent,loadSecCatalog) {
   if(/\.(?:SI|HK|L)$/i.test(instrument.symbol)||instrument.type!=='EQUITY')return classifyListingShares(instrument,fundamentals,null,{now,asOf});
-  const {entry,warning}=await secTicker(instrument.symbol,fetchImpl,now,secUserAgent);
-  if(!entry)return{...classifyListingShares(instrument,fundamentals,null,{now,asOf}),warning};
+  const {entry,warning,warnings,catalogProvenance}=await secTicker(instrument.symbol,fetchImpl,now,secUserAgent,loadSecCatalog);
+  if(!entry)return{...classifyListingShares(instrument,fundamentals,null,{now,asOf}),warning,warnings,catalogProvenance};
   const cik=String(entry.cik_str).padStart(10,'0');
   let caches=submissionCaches.get(fetchImpl);
   if(!caches){caches=new Map();submissionCaches.set(fetchImpl,caches);}
@@ -299,7 +318,8 @@ async function listingBasis(instrument,fundamentals,fetchImpl,now,asOf,secUserAg
     const r=await safeJSON(fetchImpl,`https://data.sec.gov/submissions/CIK${cik}.json`,'SEC_SUBMISSIONS',{'User-Agent':secUserAgent});
     cache={fetchedAt:+new Date(now),...r};caches.set(cik,cache);
   }
-  return{...classifyListingShares(instrument,fundamentals,cache.data,{now,asOf}),warning:cache.code,
+  return{...classifyListingShares(instrument,fundamentals,cache.data,{now,asOf}),warning:cache.code || warning,
+    warnings:[...(warnings || []),...(warning && cache.code?[warning]:[])],catalogProvenance,
     issuer:cache.data?{cik,sic:cache.data.sic||null,sicDescription:cache.data.sicDescription||null}:null};
 }
 
@@ -337,7 +357,8 @@ export function parseTwelveDataHistory(payload, symbol, {now = new Date(), asOf}
  * fail independently. No aliasing between ADRs and overseas listings occurs.
  */
 export async function fetchResearchData(symbol, {fetch:fetchImpl = globalThis.fetch, now = new Date(),
-  asOf, twelveDataKey = null, secUserAgent = 'PersonalPortfolioResearch https://github.com/alvissome/portfolio'} = {}) {
+  asOf, twelveDataKey = null, secUserAgent = 'PersonalPortfolioResearch https://github.com/alvissome/portfolio',
+  loadSecCatalog = loadBundledSecTickerCatalog} = {}) {
   validateSymbol(symbol);
   const warnings = [];
   const cutoffMs = cutoffTime(now,asOf);
@@ -364,18 +385,21 @@ export async function fetchResearchData(symbol, {fetch:fetchImpl = globalThis.fe
   if(facts.code)warnings.push(facts.code);
   let secName = null;
   if(!fundamentals || !fundamentals.annual.some(row => finite(row.cfo) || finite(row.netIncome))){
-    const sec=await secFallback(symbol,fetchImpl,now,asOf,history?.instrument.currency,secUserAgent);
+    const sec=await secFallback(symbol,fetchImpl,now,asOf,history?.instrument.currency,secUserAgent,loadSecCatalog);
     fundamentals=sec.fundamentals || fundamentals;secName=sec.name;
     if(sec.warning)warnings.push(sec.warning);
+    warnings.push(...(sec.warnings || []));
   }
   if(!history)warnings.push('HISTORY_UNAVAILABLE');
   if(!fundamentals)warnings.push('FUNDAMENTALS_UNAVAILABLE');
   const instrument=history?.instrument || {symbol,name:null,currency:null,type:null,exchange:null};
   instrument.name ||= secName;
-  const basis=await listingBasis(instrument,fundamentals,fetchImpl,now,asOf,secUserAgent);
+  const basis=await listingBasis(instrument,fundamentals,fetchImpl,now,asOf,secUserAgent,loadSecCatalog);
   instrument.methodFamily=basis.methodFamily;
   if(basis.issuer)instrument.issuer=basis.issuer;
   if(basis.warning)warnings.push(basis.warning);
+  warnings.push(...(basis.warnings || []));
+  if(basis.catalogProvenance)instrument.issuerCatalog=basis.catalogProvenance;
   if(fundamentals){
     fundamentals.dividendPerShareTTM=history?.dividendPerShareTTM ?? null;
     fundamentals.listingSharesVerified=basis.listingSharesVerified;

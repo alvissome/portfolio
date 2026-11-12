@@ -72,6 +72,7 @@ test('a retry keeps its previous result visible but resets current comparison an
   assert.equal(next.iv.result,null);
   assert.equal(next.iv.previousResult.value,20);
   assert.equal(next.comparison.iv.status,'pending');
+  assert.equal(next.comparison.iv.reason,null,'a retry clears any old comparison explanation during nested merges');
   assert.equal(next.methodFamily,'bank');
   assert.equal(Object.hasOwn(next,'reference'),false);
 });
@@ -137,6 +138,7 @@ test('private import patches only reference fields and metadata before guarded r
   assert.equal(metadata.dates[0],'2026-11-03');
   const referenceWrite=store.writes.find(patch=>patch.researchBySecurity?.EXAMPLE?.reference);
   assert.deepEqual(Object.keys(referenceWrite.researchBySecurity.EXAMPLE).sort(),['comparison','reference','securityId','symbol']);
+  assert.equal(referenceWrite.researchBySecurity.EXAMPLE.comparison.supports.reason,null,'a reference import clears the prior comparison explanation');
   const last=store.writes.at(-1).researchBySecurity.EXAMPLE;
   assert.equal(last.iv.previousResult.value,21);
   assert.equal(store.get().researchBySecurity.EXAMPLE.reference.iv.value,20);

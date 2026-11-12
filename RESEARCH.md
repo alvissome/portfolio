@@ -202,6 +202,21 @@ An existing optional Twelve Data key is a fallback, not a guarantee of market
 coverage. Missing inputs end with a specific reason rather than placeholder
 zeros. No reference IV or support price enters the independent calculator.
 
+If the live SEC ticker index cannot be retrieved, a full public catalog is
+bundled at `.github/data/sec-company-tickers.json`, with source/retrieval time,
+record count and SHA-256 in its companion `.meta.json`. It is a lookup fallback
+only, not a holdings selection or cached share-verification flag. Current
+`data.sec.gov` submissions must still confirm the exact ticker and 10-K basis;
+current ordinary-share and currency checks remain required. The original
+provider failure and catalog provenance remain in private research diagnostics.
+The fallback rejects malformed, checksum-invalid, future-dated or older-than-
+45-day snapshots. Refresh monthly with
+`node .github/scripts/update-sec-ticker-catalog.mjs`, review the full public
+catalog/metadata pair and commit both. If that one official download or current
+issuer submissions is denied, stop rather than switching routes or weakening
+verification. Expiry recovery is a fresh reviewed catalog; a missing current
+issuer proof continues to show IV unavailable.
+
 When analyst assumptions cannot be reproduced, the historical-growth DCF/DNI
 fallback is explicitly experimental and shows its growth, discount and share
 inputs. Bank/REIT alternatives retain method labels. Unverified FX/ADR/share
