@@ -68,10 +68,11 @@ function score(pred,ref){
 }
 for(const user of await db.collection('users').listDocuments()){
   const data=(await user.collection('portfolio').doc('data').get()).data();
-  const results={},totals={};let eligible=0,levels=0;
+  const universe=new Set([...Object.values(data?.holdings||{}).filter(h=>!h.exited),...Object.values(data?.watchlist||{})].map(r=>r.ticker||r.symbol));
+  const confidence={mid:0,low:0,high:0},results={},totals={};let eligible=0,levels=0,bestHits=0,anyFull=0;
   for(const [symbol,record] of Object.entries(data?.researchBySecurity||{})){
     const ref=resolveReference(record,data.researchReferenceSnapshotMeta)||record.reference;
-    if(symbol==='NKE'||!['2026-11-03','2026-11-04'].includes(ref?.asOf)||!ref.supports?.length)continue;
+    if(!universe.has(symbol)||symbol==='NKE'||!['2026-11-03','2026-11-04'].includes(ref?.asOf)||!ref.supports?.length)continue;
     eligible++;
     const input=await fetchResearchData(symbol,{asOf:ref.asOf,secUserAgent,twelveDataKey:process.env.TWELVE_DATA_KEY});
     if(input.bars.length<252||input.history?.asOf!==ref.asOf||!input.history.adjustmentVintageVerified||input.instrument.currency!==ref.currency)continue;
@@ -83,8 +84,13 @@ for(const user of await db.collection('users').listDocuments()){
       const t=totals[name]??={hits:0,full:0,predictions:0};
       t.hits+=hits;t.full+=Number(full);t.predictions+=pred.length;
     }
-    results[symbol]={asOf:ref.asOf,fits};
+    const best=Math.max(...Object.values(fits).map(s=>s.hits));
+    bestHits+=best;
+    if(Object.values(fits).some(s=>s.full))anyFull++;
+    const rating=best/ref.supports.length>=.6?'mid':'low';
+    confidence[rating]++;
+    results[symbol]={asOf:ref.asOf,fits,bestNovemberFit:rating};
   }
-  if(eligible)await user.collection('researchStudies').doc('november-2026-v1').set({results,totals,eligible,levels});
-  console.log('STUDY',JSON.stringify({eligible,evaluated:Object.keys(results).length,levels,totals}));
+  if(eligible)await user.collection('researchStudies').doc('november-2026-personal-v1').set({results,totals,eligible,levels});
+  console.log('STUDY',JSON.stringify({eligible,evaluated:Object.keys(results).length,levels,totals,bestHits,anyFull,confidence}));
 }
