@@ -108,7 +108,8 @@ export function createResearchComponents(React) {
       h('span', {className:`research-comparison research-${label.tone}`, title:[detail,error,supportMatches].filter(Boolean).join(' ')}, label.text),
       result?.asOf ? h('small', null, `${ready(record,part) ? 'As of' : 'Previous result'} ${date(result.asOf)}`) : null,
       part==='supports'?h('small',{title:assessed?assessment.reason:'Confidence needs a backdated case assessment. It is separate from latest numerical comparison.'},`Backdated confidence: ${confidence}`):null,
-      detail ? h('small', {className:'research-reason'}, detail) : null);
+      detail ? h('details', {className:'research-details research-reason'},
+        h('summary', null, 'Details'), h('small', null, detail)) : null);
   }
 
   function ResearchDetails({record}) {
