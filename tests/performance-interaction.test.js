@@ -151,5 +151,5 @@ test('performance summary shows five metrics in a single row',async()=>{
   assert.match(css,/grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
   assert.match(panel,/performance-core\.js\?v=twr-basis-20261106/);
   assert.match(bundle,/performance-panel\.js\?v=twr-basis-20261106/);
-  assert.match(bundle,/dashboard-backup\.js\?v=research-backup-20261112/);
+  assert.match(bundle,/dashboard-backup\.js\?v=strategy-categories-20261113/);
 });
