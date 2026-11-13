@@ -53,7 +53,7 @@ function levelEditor(row,key,sources) {
   const manual=sources[key]==="Manual";
   const value=row[key];
   const numericSupport=key!=="iv" && String(value??"").trim()!=="" && Number.isFinite(Number(value));
-  const displayValue=numericSupport ? String(Math.round(Number(value))) : value;
+  const displayValue=numericSupport ? Number(value).toFixed(Math.abs(Number(value)) < 100 ? 2 : 0) : value;
   return m.jsxs("div",{title:manual?"Manual override. Clear the value to follow research.":sources[key]||"No research value",children:[
     m.jsx(Fs,{value,displayValue,onChange:value=>w(row.id,{[key]:value.trim()}),align:"right"}),
     manual?m.jsx("button",{type:"button",className:"block text-[9px] text-gray-500",title:"Clear override and follow research","aria-label":"Use auto "+key+" for "+row.symbol,onClick:()=>w(row.id,{[key]:""}),children:"Manual ↺"}):m.jsx("small",{className:"block text-[9px] text-gray-500",children:sources[key]})
