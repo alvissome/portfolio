@@ -18,6 +18,7 @@
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import fetch from 'node-fetch';
+import {resolveWatchlistLevels} from '../../assets/watchlist-levels.js';
 import { createHmac } from 'node:crypto';
 
 // ─── 1. Init Firebase Admin ────────────────────────────────────────────────
@@ -334,15 +335,16 @@ async function processUser({ uid, ref, data }) {
   // ── 5c. Auto-reset alertState for recovered symbols ──────────────────────
   //   For ALL rows (not just alerted ones): if price > support → reset to "untriggered"
 
-  const alertRows = updatedWatchlist.filter(row =>
+  const alertRows = updatedWatchlist.map(row => resolveWatchlistLevels(row, data.researchBySecurity?.[row.symbol]).row).filter(row =>
     row.notifEnabled === true &&
     row.alertLevel &&
     row[row.alertLevel.toLowerCase()]
   );
 
   let finalWatchlist = updatedWatchlist.map(row => {
-    if (!row.alertLevel || !row[row.alertLevel.toLowerCase()]) return row;
-    const supportValue = parseFloat(row[row.alertLevel.toLowerCase()]);
+    if (!row.alertLevel) return row;
+    const effective = resolveWatchlistLevels(row, data.researchBySecurity?.[row.symbol]).row;
+    const supportValue = parseFloat(effective[row.alertLevel.toLowerCase()]);
     if (isNaN(supportValue) || supportValue <= 0) return row;
 
     const priceRes = priceResults[row.symbol];
@@ -449,10 +451,30 @@ async function processUser({ uid, ref, data }) {
     totalCount,
   };
 
-  await ref.set({
-    watchlist:      finalWatchlist,
-    lastDailySync,
-  }, { merge: true });
+  // A user may edit or reorder rows while the worker retrieves quotes.
+  const updates = new Map(finalWatchlist.map(row => [row.id, row]));
+  const original = new Map(watchlist.map(row => [row.id, row]));
+  await db.runTransaction(async transaction => {
+    const latest = (await transaction.get(ref)).data();
+    if (!latest) return;
+    const rows = (latest.watchlist || []).map(row => {
+      const update = updates.get(row.id);
+      const before = original.get(row.id);
+      if (!update || update.symbol !== row.symbol) return row;
+      const next = {...row};
+      for (const key of ['close','priceSource','priceCurrency','priceTimestamp','priceStale']) {
+        if (update[key] !== undefined && row[key] === before[key]) next[key] = update[key];
+      }
+      const threshold = (item, records) => resolveWatchlistLevels(item, records?.[item.symbol]).row[item.alertLevel?.toLowerCase()];
+      if (row.alertLevel === before.alertLevel && row.notifEnabled === before.notifEnabled &&
+          threshold(row, latest.researchBySecurity) === threshold(before, data.researchBySecurity) &&
+          row.alertState === before.alertState && row.lastAlertSent === before.lastAlertSent) {
+        for (const key of ['alertState','lastAlertSent']) if (update[key] !== undefined) next[key] = update[key];
+      }
+      return next;
+    });
+    transaction.update(ref, {watchlist: rows, lastDailySync});
+  });
 
   console.log(`  User ${uid}: Firestore updated — ${succeededCount}/${totalCount} prices written, status=${syncStatus}`);
   if (failedSymbols.length > 0) {
@@ -551,7 +573,7 @@ async function main() {
     if (mode === 'dry-run') {
       let watched = 0, enabled = 0, fresh = 0, stale = 0;
       for (const {data} of users) {
-        const rows = data.watchlist || [];
+        const rows = (data.watchlist || []).map(row => resolveWatchlistLevels(row, data.researchBySecurity?.[row.symbol]).row);
         watched += rows.length;
         enabled += rows.filter(r => r.notifEnabled === true && /^S[1-5]$/.test(r.alertLevel || '') &&
           Number.isFinite(Number(r[r.alertLevel.toLowerCase()])) && Number(r[r.alertLevel.toLowerCase()]) > 0).length;
