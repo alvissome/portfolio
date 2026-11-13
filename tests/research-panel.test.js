@@ -46,7 +46,7 @@ function nodes(tree, type) {
   if (!tree || typeof tree !== 'object') return [];
   return [...(tree.type === type ? [tree] : []), ...tree.children.flatMap(child => nodes(child, type))];
 }
-function trackButton(tree) {return nodes(tree, 'button').find(button => ['Track in watchlist', 'Tracked'].includes(content(button)));}
+function trackCheckbox(tree) {return nodes(tree, 'input').find(input => input.props.type === 'checkbox');}
 function content(tree) {
   if (tree == null) return '';
   return typeof tree === 'object' ? tree.children.map(content).join(' ') : String(tree);
@@ -91,20 +91,20 @@ test('research view deduplicates account positions and never exposes manual leve
   assert.equal(nodes(tree, 'td').filter(cell => content(cell) === '—').length, 6);
 });
 
-test('track button uses existing add callback once even on repeated clicks before a rerender', () => {
+test('track checkbox uses existing add callback once even on repeated changes before a rerender', () => {
   const runtime = host();
   const additions = [];
   const props = {holdings: [holding], watchlist: [], onTrack: row => additions.push(row)};
   let tree = runtime.render(runtime.components.ResearchPanel, props);
-  const button = trackButton(tree);
-  button.props.onClick();
-  button.props.onClick();
+  const button = trackCheckbox(tree);
+  button.props.onChange({target:{checked:true}});
+  button.props.onChange({target:{checked:true}});
   assert.equal(additions.length, 1);
   assert.equal(additions[0].name, 'Example Company');
   assert.equal(additions[0].symbol, 'EXAMPLE');
   tree = runtime.render(runtime.components.ResearchPanel, props);
-  assert.equal(trackButton(tree).props.disabled, true);
-  assert.equal(content(trackButton(tree)), 'Tracked');
+  assert.equal(trackCheckbox(tree).props.disabled, true);
+  assert.equal(trackCheckbox(tree).props.checked, true);
 });
 
 test('already tracked holding never calls add or patches existing notes and alerts', () => {
@@ -115,9 +115,9 @@ test('already tracked holding never calls add or patches existing notes and aler
   const tree = runtime.render(runtime.components.ResearchPanel, {
     holdings: [holding], watchlist: [existing], onTrack: () => additions++,
   });
-  const button = trackButton(tree);
+  const button = trackCheckbox(tree);
   assert.equal(button.props.disabled, true);
-  button.props.onClick();
+  button.props.onChange({target:{checked:true}});
   assert.equal(additions, 0);
   assert.deepEqual(existing, before);
 });
@@ -127,18 +127,18 @@ test('parent watchlist owns tracking after add acknowledgement and permits later
   const additions = [];
   let props = {holdings: [holding], watchlist: [], onTrack: row => additions.push(row)};
   let tree = runtime.render(runtime.components.ResearchPanel, props);
-  trackButton(tree).props.onClick();
+  trackCheckbox(tree).props.onChange({target:{checked:true}});
   assert.equal(additions.length, 1);
   // The app's real add path now publishes the row back through props.
   props = {...props, watchlist: [{...additions[0], id: 'accepted'}]};
   tree = runtime.render(runtime.components.ResearchPanel, props);
-  assert.equal(content(trackButton(tree)), 'Tracked');
+  assert.equal(trackCheckbox(tree).props.checked, true);
   // User removes that row through the independent watchlist view.
   props = {...props, watchlist: []};
   tree = runtime.render(runtime.components.ResearchPanel, props);
-  assert.equal(content(trackButton(tree)), 'Track in watchlist');
-  assert.equal(trackButton(tree).props.disabled, false);
-  trackButton(tree).props.onClick();
+  assert.equal(trackCheckbox(tree).props.checked, false);
+  assert.equal(trackCheckbox(tree).props.disabled, false);
+  trackCheckbox(tree).props.onChange({target:{checked:true}});
   assert.equal(additions.length, 2);
 });
 
