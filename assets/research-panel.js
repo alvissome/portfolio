@@ -232,6 +232,10 @@ export function createResearchComponents(React) {
             const trackedNow = tracked.has(row.securityId) || planTrackInWatchlist(watchlist, row).kind === 'existing';
             const iv = fromAk?record?.reference?.iv:output(record,'iv');
             const supports = fromAk?record?.reference?.supports:partValue(record,'supports');
+            const validClose = numeric(metrics.close) && metrics.close > 0;
+            const levels = Array.from({length:5}, (_, i) => supports?.[i]);
+            const nextSupport = Math.max(...levels.filter(value => numeric(value) && value > 0 && value <= metrics.close));
+            const nextIndex = levels.indexOf(nextSupport);
             const akStatus=part=>h('div',{className:'research-part-status'},h('span',null,record?.reference?.present===false?'No benchmark':record?.reference?.present!==true?'Reference not loaded':
               part==='supports'&&!record.reference.supports?.length?'No published SL':part==='iv'&&!numeric(record.reference.iv?.value)?'No published IV':'AK sheet'),
               record?.reference?.asOf?h('small',null,`Sheet ${date(record.reference.asOf)} · ${record.reference.label??record.reference.source}`):null);
@@ -244,7 +248,14 @@ export function createResearchComponents(React) {
               h('td', {key:'iv',className:'research-number'}, price(iv?.value), iv?.method ? h('small', null, iv.method) : null,
                 iv?.variants?.length > 1 ? h('small', null, 'Multiple methods — see details') : null),
               h('td', {key:'iv-status'},fromAk?akStatus('iv'):h(PartStatus,{record,part:'iv'})),
-              ...['sl1','sl2','sl3','sl4','sl5'].map((key,index) => h('td', {key,className:'research-number'}, price(supports?.[index]))),
+              ...levels.map((value,index) => {
+                const comparable = validClose && numeric(value) && value > 0;
+                const breached = comparable && value > metrics.close;
+                const next = comparable && index === nextIndex;
+                const color = breached ? ' bg-orange-100 text-red-600 font-semibold' : next ? ' bg-green-50 text-green-700 font-semibold' : '';
+                const title = breached ? 'Support above current close' : next ? 'Nearest support at or below current close' : undefined;
+                return h('td', {key:'sl'+(index+1),className:'research-number'+color,title}, price(value));
+              }),
               h('td', {key:'sl-status'},fromAk?akStatus('supports'):h(PartStatus,{record,part:'supports'})),
               h('td', {key:'research'}, h('select',{'aria-label':`IV method family for ${row.symbol}`,className:'research-method-select',
                 value:record?.methodFamilySource === 'user' ? record.methodFamily : 'auto', disabled:!research?.request,
