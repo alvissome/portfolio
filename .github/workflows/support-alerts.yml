@@ -7,7 +7,7 @@ on:
       - .github/scripts/**
       - .github/workflows/support-alerts.yml
   schedule:
-    - cron: "0 0 * * 1-5" # 8am Singapore, Monday–Friday
+    - cron: "0 0 * * 1-6" # 8am Singapore, Monday–Saturday; Saturday includes Friday US close
   workflow_dispatch:
     inputs:
       mode:
