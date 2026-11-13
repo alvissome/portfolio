@@ -274,8 +274,10 @@ export function createResearchComponents(React) {
                   h('button',{type:'button',className:'research-track',onClick:()=>{try{const plan=planAkLevelCopy(watchlist,row.symbol,record.reference,{instrument:record.instrument});onApplyAkLevels(plan.id,plan.patch);setCopyPreview(null);setError('');}catch(e){setError(e.message);}}},'Apply AK levels'),
                   h('button',{type:'button',className:'research-track',onClick:()=>setCopyPreview(null)},'Cancel')):null),
             ];
-            if (scope === 'holdings') cells.push(h('td', {key:'track'}, h('button', {type:'button',className:'research-track',
-              disabled:trackedNow || typeof onTrack !== 'function', onClick:()=>track(row)}, trackedNow ? 'Tracked' : 'Track in watchlist')));
+            if (scope === 'holdings') cells.push(h('td', {key:'track'}, h('input', {type:'checkbox',
+              'aria-label':`Track ${row.symbol} in watchlist`, title:trackedNow ? 'Tracked in watchlist' : 'Track in watchlist',
+              checked:trackedNow, disabled:trackedNow || typeof onTrack !== 'function',
+              onChange:event=>{if(event.target.checked) track(row);}})));
             return h('tr',{key:row.securityId},...cells);
           })))) : h('p', {className:'research-empty'}, scope === 'holdings' ? 'No active holdings to show.' : 'Add a symbol in the Watchlist view to include it here.'),
       h('p', {className:'research-footnote'}, 'Generated IV and support levels are experimental. Missing output stays blank; no generated levels are activated as alerts automatically. ',
