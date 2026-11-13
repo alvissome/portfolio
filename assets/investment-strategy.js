@@ -1,6 +1,6 @@
 // Share purchase previews only. No orders, notifications or brokerage access.
-export const CORE_COMPANIES = Object.freeze(['GOOGL','META','AMZN','MSFT','NVDA','SPGI']);
-export const RULE_VERSION = '2026-11-13';
+import {STRATEGY_CATEGORIES} from './strategy-categories.js';
+export const RULE_VERSION = '2026-11-13-three-categories';
 const value = (n, label) => {
   if(n === null || n === undefined || String(n).trim() === '' || !Number.isFinite(Number(n))) throw Error('Missing or invalid '+label+'.');
   return Number(n);
@@ -32,27 +32,49 @@ export function strategyFunding(state,settings={}) {
   if(base<=0)throw Error('The strategy portfolio base must be positive.');
   return {invested,broker,bank,committed,liabilities,pending,base,available:Math.max(0,committed-liabilities-pending),byCompany,confirmed:settings.confirmed===true&&settings.basisSignature===fundingSignature(state)};
 }
-export function purchaseSchedule(symbol,levels) {
+export function purchaseSchedule(category,levels,selectivePercents) {
+  if(!Object.hasOwn(STRATEGY_CATEGORIES,category))throw Error('Choose a buying category in Holdings or Watchlist first.');
   if(!Array.isArray(levels)||!levels.length||levels.length>5)throw Error('Approve one to five support levels.');
   const sorted=levels.map(l=>({key:l.key,price:positive(l.price,'support')}));
   if(new Set(sorted.map(l=>l.key)).size!==sorted.length||sorted.some((l,i)=>!/^s[1-5]$/.test(l.key)||(i>0&&l.price>=sorted[i-1].price)))throw Error('Supports must have unique S1–S5 keys and descend in price.');
-  if(CORE_COMPANIES.includes(symbol))return sorted.map(l=>({...l,fraction:1/sorted.length}));
-  if(sorted.length<3)throw Error('Other companies need at least three approved supports.');
-  return sorted.slice(-3).map((l,i)=>({...l,portfolioPct:[2.5,2.5,5][i]}));
+  if(category==='anchor')return sorted.map(l=>({...l,fraction:1/sorted.length}));
+  const count=category==='core'?3:2;
+  if(sorted.length<count)throw Error(category+' needs at least '+count+' approved supports.');
+  let percents=[2.5,2.5,5];
+  if(category==='selective'){
+    if(!Array.isArray(selectivePercents)||selectivePercents.length!==2)throw Error('Choose 2–4% for each Selective buy before approval.');
+    percents=selectivePercents.map(p=>positive(p,'Selective buy percentage'));
+    if(percents.some(p=>p<2||p>4))throw Error('Each Selective buy must be 2–4%.');
+  }
+  return sorted.slice(-count).map((l,i)=>({...l,portfolioPct:percents[i]}));
 }
-export function createPurchasePlan({symbol,levels,base,ceilingPct,addBudget,iv,currency,reviewedAt,id}) {
+export function createPurchasePlan({symbol,category,selectivePercents,levels,base,ceilingPct,addBudget,iv,currency,reviewedAt,id}) {
   if(!/^[A-Za-z0-9^][A-Za-z0-9.^=_-]{0,39}$/.test(symbol))throw Error('Invalid ticker.');
   if(!id)throw Error('A permanent plan ID is required.');
   if(/^CSPX(?:\.L)?$/.test(symbol))throw Error('CSPX remains review-only until its entry trigger and amount are defined.');
-  const core=CORE_COMPANIES.includes(symbol),ceiling=positive(ceilingPct,'company ceiling');
-  if(ceiling>100||(core&&ceiling>10))throw Error('Core ceilings cannot exceed 10%; other ceilings cannot exceed 100%.');
+  const anchor=category==='anchor',ceiling=positive(ceilingPct,'company ceiling');
+  if(ceiling>100||(anchor&&ceiling>10))throw Error('Anchor ceilings cannot exceed 10%; other ceilings cannot exceed 100%.');
   const budgetBase=positive(base,'portfolio base');
-  const schedule=purchaseSchedule(symbol,levels);
-  const budget=core?nonnegative(addBudget,'intended addition budget'):null;
+  const schedule=purchaseSchedule(category,levels,selectivePercents);
+  const budget=anchor?nonnegative(addBudget,'intended addition budget'):null;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(reviewedAt)||!Number.isFinite(Date.parse(reviewedAt)))throw Error('Enter the thesis and IV review date.');
   if(!currency)throw Error('Confirm the trading currency.');
-  return {id,symbol,ruleVersion:RULE_VERSION,bucket:core?'core':'other',ceilingPct:ceiling,baseAtApproval:budgetBase,currency,iv:positive(iv,'IV'),reviewedAt,
-    stages:schedule.map((l,i)=>({id:id+'-'+l.key,key:l.key,price:l.price,budget:cents(core?budget*l.fraction:budgetBase*l.portfolioPct/100),spent:0,completed:false,final:i===schedule.length-1}))};
+  return {id,symbol,ruleVersion:RULE_VERSION,category,...(category==='selective'?{selectivePercents:selectivePercents.map(Number)}:{}),ceilingPct:ceiling,baseAtApproval:budgetBase,currency,iv:positive(iv,'IV'),reviewedAt,
+    stages:schedule.map((l,i)=>({id:id+'-'+l.key,key:l.key,price:l.price,budget:cents(anchor?budget*l.fraction:budgetBase*l.portfolioPct/100),spent:0,completed:false,final:i===schedule.length-1}))};
+}
+export function reviewPurchasePlan(previous,fresh) {
+  if(!previous)return fresh;
+  if(previous.symbol!==fresh.symbol||previous.id!==fresh.id)throw Error('Plan identity cannot change during review.');
+  const oldByKey=new Map([...(previous.archivedStages||[]),...previous.stages].map(s=>[s.key,s]));
+  const sameSchedule=previous.category===fresh.category&&previous.ruleVersion===fresh.ruleVersion&&previous.stages.length===fresh.stages.length&&previous.stages.every((s,i)=>s.key===fresh.stages[i].key)&&JSON.stringify(previous.selectivePercents)===JSON.stringify(fresh.selectivePercents);
+  const stages=fresh.stages.map(s=>{
+    const old=oldByKey.get(s.key);
+    if(!old)return s;
+    return {...s,id:old.id,spent:old.spent,completed:old.completed,...(old.fillDate?{fillDate:old.fillDate}:{}),...(sameSchedule?{budget:old.budget}:{})};
+  });
+  const activeKeys=new Set(stages.map(s=>s.key));
+  return {...fresh,...(sameSchedule?{baseAtApproval:previous.baseAtApproval}:{}),stages,
+    archivedStages:[...oldByKey.values()].filter(s=>!activeKeys.has(s.key))};
 }
 export function recordStageFill(plan,stageId,{spent,completed,date}) {
   const stage=plan.stages.find(s=>s.id===stageId);
@@ -62,9 +84,10 @@ export function recordStageFill(plan,stageId,{spent,completed,date}) {
   if(amount<stage.spent||stage.completed&&!completed)throw Error('Recorded spend and completed stages cannot be reset.');
   return {...plan,stages:plan.stages.map(s=>s.id===stageId?{...s,spent:amount,completed:completed===true,fillDate:date}:s)};
 }
-export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,feeReserve=0,lotSize=1,priceStale=false,levelsChanged=false}={}) {
+export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,feeReserve=0,lotSize=1,priceStale=false,levelsChanged=false,category}={}) {
   const pending=reasons=>({status:'review',amount:null,reasons});
   const reasons=[];
+  if(!Object.hasOwn(STRATEGY_CATEGORIES,category)||plan.category!==category||plan.ruleVersion!==RULE_VERSION)reasons.push('Buying category changed or is unassigned; review this plan.');
   if(!funding.confirmed)reasons.push('Confirm committed cash, liabilities and pending orders.');
   if(priceStale)reasons.push('Sync the current quote.');
   if(levelsChanged)reasons.push('Support levels changed; review this saved plan.');

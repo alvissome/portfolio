@@ -1,3 +1,4 @@
+import {normalizeStrategyCategories} from '../assets/strategy-categories.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -79,7 +80,7 @@ const bundle=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.ur
 const normalize=o=>JSON.parse(JSON.stringify(o));
 test('production storage serializer round-trips all accounts, BDiv and import metadata',()=>{
  const start=bundle.indexOf('function MR('),end=bundle.indexOf('async function JT(',start);
- const context={holdingKey,In:{cash:{},emailSettings:{}}};
+ const context={holdingKey,normalizeStrategyCategories,In:{cash:{},emailSettings:{}}};
  runInNewContext(bundle.slice(start,end)+';this.save=BR;this.load=UR;',context);
  const s={...migrated(),emailSettings:{},fxRates:{SGD:1},portfolioTypes:['Dividend'],accountTypes:['Cash','Retirement - SRS','Retirement - CPF']};
  const saved=context.save(s);assert.equal(Object.keys(saved.holdings).length,3);assert.equal(Object.keys(saved.classifications).length,3);

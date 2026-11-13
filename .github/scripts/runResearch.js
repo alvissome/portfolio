@@ -17,6 +17,18 @@ export function canClaimResearchJob(claimed, startedAt, now = Date.now()) {
     now - startedAt < RESEARCH_CLAIM_WINDOW_MS;
 }
 
+// Recover old terminal SEC access failures once after contact setup.
+// The marker prevents repeated retries if SEC still rejects this runner.
+export function prepareSecRecovery(record, contactConfigured) {
+  if (!contactConfigured || record?.secContactRecovery === 'contact-v1' ||
+      record?.phase !== 'finished' || record?.iv?.result) return record;
+  const diagnostics = [record.iv?.reason, ...(record.dataWarnings || [])].join(' ');
+  if (!/SEC_(?:SUBMISSIONS|TICKERS|FACTS)_HTTP_403/.test(diagnostics)) return record;
+  return {...record, secContactRecovery:'contact-v1', phase:'requested',
+    workerAcknowledged:false, leaseToken:null, leaseUntil:null,
+    iv:{...record.iv,processing:'not_started'}};
+}
+
 export function claimRecord(current, now, leaseToken) {
   if (!needsProcessing(current, now)) return null;
   return {...current, workerAcknowledged: true, leaseToken,
@@ -67,7 +79,7 @@ async function main() {
     const snap = await ref.get();
     if (!snap.exists) continue;
     counters.portfolios++;
-    const requests = prioritizeRequests(Object.entries(snap.data().researchBySecurity || {}).filter(([,record]) => needsProcessing(record)));
+    const requests = prioritizeRequests(Object.entries(snap.data().researchBySecurity || {}).filter(([,record]) => needsProcessing(prepareSecRecovery(record, !!process.env.SEC_CONTACT_EMAIL))));
     counters.pending += requests.length;
     for (const [symbol, observed] of requests) {
       if (!canClaimResearchJob(counters.claimed, runStartedAt)) break;
@@ -82,7 +94,8 @@ async function main() {
         if (!sameRequest(current, observed)) return null;
         if (!canClaimResearchJob(counters.claimed, runStartedAt)) return null;
         const reference = resolveReference(current, data.researchReferenceSnapshotMeta);
-        const record = claimRecord({...current, ...(reference ? {reference} : {})}, Date.now(), leaseToken);
+        const retry = prepareSecRecovery(current, !!process.env.SEC_CONTACT_EMAIL);
+        const record = claimRecord({...retry, ...(reference ? {reference} : {})}, Date.now(), leaseToken);
         if (!record) return null;
         transaction.update(ref, new FieldPath('researchBySecurity', symbol), record);
         return record;

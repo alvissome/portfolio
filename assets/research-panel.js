@@ -1,3 +1,4 @@
+import {createStrategyCategorySelect} from './strategy-categories.js';
 import {prioritizeUniverse, planTrackInWatchlist} from './research-core.js';
 import {createAkSheetControls} from './ak-sheet-controls.js';
 import {planAkLevelCopy} from './ak-sheet-sources.js';
@@ -68,6 +69,7 @@ export function researchComparisonLabel(record, part) {
 export function createResearchComponents(React) {
   const h = React.createElement;
   const AkSheetControls=createAkSheetControls(React);
+  const StrategyCategorySelect=createStrategyCategorySelect(React);
 
   function ResearchViewSwitch({research, onChange, defaultLabel = 'Positions', label = 'Table view'}) {
     return h('div', {className: 'research-view-switch', role: 'group', 'aria-label': label},
@@ -108,7 +110,8 @@ export function createResearchComponents(React) {
       h('span', {className:`research-comparison research-${label.tone}`, title:[detail,error,supportMatches].filter(Boolean).join(' ')}, label.text),
       result?.asOf ? h('small', null, `${ready(record,part) ? 'As of' : 'Previous result'} ${date(result.asOf)}`) : null,
       part==='supports'?h('small',{title:assessed?assessment.reason:'Confidence needs a backdated case assessment. It is separate from latest numerical comparison.'},`Backdated confidence: ${confidence}`):null,
-      detail ? h('small', {className:'research-reason'}, detail) : null);
+      detail ? h('details', {className:'research-details research-reason'},
+        h('summary', null, 'Details'), h('small', null, detail)) : null);
   }
 
   function ResearchDetails({record}) {
@@ -133,7 +136,7 @@ export function createResearchComponents(React) {
   }
 
   function ResearchPanel({holdings = [], watchlist = [], scope = 'holdings',
-    onTrack,onApplyAkLevels, getHoldingMetrics, privacyMode = false, research}) {
+    onTrack,onApplyAkLevels, getHoldingMetrics, privacyMode = false, research,strategyCategories,onStrategyCategoryChange}) {
     const pending = React.useRef(new Map());
     const [tracked, setTracked] = React.useState(() => new Set());
     const [error, setError] = React.useState('');
@@ -191,7 +194,7 @@ export function createResearchComponents(React) {
       } catch (problem) {setError(problem?.message || 'Reference import failed.');}
       finally {event.target.value = '';}
     };
-    const headings = ['Symbol / Name', 'Avg Price', 'BValue (SGD)', 'Close', fromAk?'AK IV':'Independent IV', fromAk?'IV source / date':'IV status',
+    const headings = ['Symbol / Name', 'Buying category', 'Avg Price', 'BValue (SGD)', 'Close', fromAk?'AK IV':'Independent IV', fromAk?'IV source / date':'IV status',
       'SL1', 'SL2', 'SL3', 'SL4', 'SL5', 'SL status', 'Research'];
     if (scope === 'holdings') headings.push('Watchlist');
 
@@ -242,6 +245,7 @@ export function createResearchComponents(React) {
             const cells = [
               h('td', {key:'symbol',className:'research-symbol'}, row.symbol,
                 name && name !== row.symbol ? h('small', null, name) : null),
+              h('td', {key:'category'}, h(StrategyCategorySelect,{symbol:row.symbol,categories:strategyCategories,onChange:onStrategyCategoryChange})),
               h('td', {key:'avg',className:'research-number'}, price(metrics.avgPrice)),
               h('td', {key:'bvalue',className:'research-number'}, numeric(metrics.bValue) ? privacyMode ? 'S$•••' : `S$${price(metrics.bValue)}` : '—'),
               h('td', {key:'close',className:'research-number'}, price(metrics.close)),
