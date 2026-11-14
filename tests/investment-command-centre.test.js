@@ -82,9 +82,9 @@ test('dates use Singapore today even when the ISO timestamp is the previous UTC 
 test('cards use actual entry levels, SGD suggestions and current/projected allocation, with safe text escaping',()=>{
  const s=state(),c=config(s),row=model(s,c).rows[0];row.name='<script>alert(1)</script>';
  const html=renderOpportunityCard(row,{show:n=>'S$'+n,today});
- assert.ok(html.includes('USD 100.00'));assert.ok(html.includes('Allocation / ceiling'));assert.ok(html.includes('projected allocation'));
- assert.ok(html.includes('S$2000'));assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));
- const full=renderCommandCentre(model(s,c),{show:n=>n==null?'—':'S$'+n,today});assert.ok(full.includes('Needs attention'));assert.ok(full.includes('My decisions'));
+ assert.ok(html.includes('US$100.00'));assert.ok(html.includes('Allocation / ceiling'));assert.ok(html.includes('projected allocation'));
+ assert.ok(html.includes('US$1,538.46')); assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));
+ const full=renderCommandCentre(model(s,c),{show:n=>n==null?'—':'S$'+n,today});assert.ok(full.includes('Plan/data checks'));assert.ok(full.includes('My decisions'));
 });
 test('all command decisions, reservations and archived plans survive dashboard backup restore',()=>{
  const s=state();let c=config(s);c=action(c,model(s,c).rows[0],'ordered',{amount:500});
@@ -111,7 +111,7 @@ test('an inactive company remains absent from active cards even while its saved 
 
 test('compact cards combine weights, omit repeated base and include the following support',()=>{
  const s=state(),c=config(s),m=model(s,c),row=m.rows[0];assert.equal(row.support.key,'s3');assert.equal(row.followingSupport.key,'s4');assert.equal(row.followingSupport.price,90);
- const html=renderOpportunityCard(row,{show:String,today});assert.match(html,/Allocation \/ ceiling/);assert.match(html,/Following support/);assert.match(html,/USD 90.00/);assert.doesNotMatch(html,/Portfolio base/);
+ const html=renderOpportunityCard(row,{show:String,today});assert.match(html,/Allocation \/ ceiling/);assert.match(html,/Following support/);assert.match(html,/US\$90.00/);assert.doesNotMatch(html,/Portfolio base/);
  const filtered=renderCommandCentre(m,{show:String,today,filter:'all',categoryFilter:'core'});assert.match(filtered,/data-opportunity="BBB"/);assert.doesNotMatch(filtered,/data-opportunity="AAA"/);
  const sorted=renderCommandCentre(m,{show:String,today,filter:'all',categorySort:'desc'});assert.ok(sorted.indexOf('data-opportunity="BBB"')<sorted.indexOf('data-opportunity="AAA"'));
  s.holdings=[{ticker:'J69U',exited:true,accountType:'Cash',shares:0}];s.watchlist=[];s.strategyCategories={J69U:'anchor'};const inactive=model(s,c);assert.ok(!inactive.rows.some(r=>r.symbol==='J69U'));assert.equal(inactive.inactiveCategories[0].category,'selective');

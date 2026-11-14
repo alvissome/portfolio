@@ -255,7 +255,7 @@ export function createResearchComponents(React) {
             const cells = [
               h('td', {key:'symbol',className:'research-symbol'}, row.symbol,
                 name && name !== row.symbol ? h('small', null, name) : null),
-              h('td', {key:'avg',className:'research-number'}, price(metrics.avgPrice)),
+              h('td', {key:'avg',className:'research-number'}, privacyMode?'•••':price(metrics.avgPrice)),
               h('td', {key:'close',className:'research-number'}, price(metrics.close)),
               h('td', {key:'iv',className:'research-number'}, price(iv?.value), iv?.method ? h('small', null, iv.method) : null,
                 iv?.variants?.length > 1 ? h('small', null, 'Multiple methods — see details') : null),
