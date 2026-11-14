@@ -1,4 +1,4 @@
-import {categoryFor} from './strategy-categories.js';
+import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
 import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js';
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
@@ -72,7 +72,8 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
   const archivedPlans=Object.values(config.plans||{}).filter(p=>!active.has(p.symbol));
   const history=decisions.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')||(b.sequence||0)-(a.sequence||0)).map(d=>({...d,active:active.has(d.symbol),contextCurrent:rows.some(r=>r.symbol===d.symbol&&r.context===d.context)}));
   const visible=rows.filter(r=>!['dismissed','deferred'].includes(r.status));
-  return {rows,visible,history,archivedPlans,funding,fundingError,reserved,
+  const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol,category])=>({symbol,category}));
+  return {rows,visible,history,archivedPlans,inactiveCategories,funding,fundingError,reserved,
     stats:{attention:visible.filter(r=>r.status==='review'||r.concentration).length,opportunities:visible.filter(r=>r.status==='eligible').length,
       pendingOrders:decisions.filter(d=>d.status==='ordered').length,decisions:decisions.length},
     totalSuggested:visible.filter(r=>r.status==='eligible').reduce((n,r)=>n+r.result.amount,0)};

@@ -97,3 +97,14 @@ test('a stale holding quote blocks portfolio sizing, even when the target watchl
  const s=state(),c=config(s);s.priceCache.AAA.timestamp=now-5*86400000;
  const m=model(s,c);assert.equal(m.funding,null);assert.match(m.fundingError,/current holding prices/);assert.equal(m.rows.find(r=>r.symbol==='BBB').result.amount,null);
 });
+
+test('inactive Anchor selections can be cleared without deleting their plans or fills',()=>{
+ const s=state();s.strategyCategories.OLD='anchor';const c=config(s),m=model(s,c);
+ assert.deepEqual(m.inactiveCategories,[{symbol:'OLD',category:'anchor'}]);
+ const html=renderCommandCentre(m,{show:n=>'S$'+n,today,filter:'decisions'});assert.ok(html.includes('data-clear-category="OLD"'));assert.ok(html.includes('Unassign OLD'));
+ assert.deepEqual(c.plans.AAA.stages,plan().stages);
+});
+test('an inactive company remains absent from active cards even while its saved category is retained',()=>{
+ const s=state(),c=config(s);s.watchlist=s.watchlist.filter(w=>w.symbol!=='BBB');const m=model(s,c);
+ assert.equal(m.inactiveCategories.find(r=>r.symbol==='BBB').category,'core');assert.ok(m.archivedPlans.some(p=>p.symbol==='BBB'));assert.ok(!m.rows.some(r=>r.symbol==='BBB'));
+});

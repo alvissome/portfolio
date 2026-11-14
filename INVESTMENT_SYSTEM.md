@@ -67,7 +67,7 @@ The Command Centre derives its active universe from **current cash holdings plus
 | Change only quote price or reorder rows | Refresh valuations/eligibility; preserve a decision while the same entry stage and investment inputs still apply. |
 | Remove/reclassify a company with a pending order | Keep the reservation and order visible in My decisions until explicit cancellation or final-fill recording. |
 
-The written Notion page is a reference. Changing it does not silently reinterpret the configured strategy. A rule change requires an implementation/configuration update and approval; each affected saved plan must then be reviewed. Categories are maintained in the dashboard's shared ticker map.
+The written Notion page is a reference. Changing it does not silently reinterpret the configured strategy. A rule change requires an implementation/configuration update and approval; each affected saved plan must then be reviewed. Categories are maintained in the dashboard's shared ticker map. My decisions also exposes retained categories for inactive tickers; explicitly unassigning one frees an Anchor slot without deleting its plan or fills.
 
 ### Interface and decisions
 
@@ -87,4 +87,4 @@ All command configuration, decisions and reservations remain in `settings.invest
 
 The rest of the dashboard keeps its existing storage path. A performance-history update can legitimately invalidate an old Command Centre save version; reloading resolves it without overwriting unrelated data. No decisions are silently pruned. A 300 KB command-settings guard stops further additions with an export/recovery message before unbounded journal growth.
 
-Validation: 250 Node tests pass, including quarterly replacement, remove/re-add, changed rules and levels, defer expiry, shared reservations, settlement into archived stages, Singapore dates, backup recovery and cloud version conflicts. A separate DOM interaction harness verifies mounted cards, order recording, cash reservation, final fill, quarter revisions, privacy masking and cleanup. The remote browser could not reach the local development server; visual layout and live signed-in cloud persistence remain unverified before deployment. This iteration is prepared as a draft for deployment approval.
+Validation: 252 Node tests pass, including quarterly replacement, remove/re-add, changed rules and levels, defer expiry, shared reservations, settlement into archived stages, Singapore dates, backup recovery and cloud version conflicts. A separate DOM interaction harness verifies mounted cards, order recording, cash reservation, final fill, quarter revisions, privacy masking and cleanup. The remote browser could not reach the local development server; visual layout and live signed-in cloud persistence remain unverified before deployment. This iteration is prepared as a draft for deployment approval.

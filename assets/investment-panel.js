@@ -6,15 +6,15 @@ export {resolvedCompany} from './investment-command-centre.js';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
-  return function InvestmentPanel({uid,state,research,storage}){
+  return function InvestmentPanel({uid,state,research,storage,onCategoryChange}){
     const root=React.useRef(null),controller=React.useRef(null);
-    React.useEffect(()=>{controller.current=mountInvestmentPanel(root.current,{state,research,storage});return()=>controller.current?.destroy();},[uid]);
-    React.useEffect(()=>controller.current?.update(state,research),[state,research]);
+    React.useEffect(()=>{controller.current=mountInvestmentPanel(root.current,{state,research,storage,onCategoryChange});return()=>controller.current?.destroy();},[uid]);
+    React.useEffect(()=>controller.current?.update(state,research,onCategoryChange),[state,research,onCategoryChange]);
     return jsx.jsx('section',{ref:root,className:'pf-panel investment-panel','aria-label':'Investment Command Centre'});
   };
 }
-export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage}){
-  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities';
+export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange}){
+  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',categoryChange=onCategoryChange;
   const show=n=>state.privacyMode?'S$•••':n==null?'—':'S$'+new Intl.NumberFormat('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
   const field=(name,label,value='',attrs='')=>`<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
   async function reload(){
@@ -96,6 +96,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       notice='Stage fill saved. Import updated holdings and broker cash, then confirm funding before using another preview.';
     }));
     root.querySelector('[data-reload-command]').onclick=()=>reload();
+    root.querySelectorAll('[data-clear-category]').forEach(button=>{button.disabled=!categoryChange;button.onclick=()=>categoryChange?.(button.dataset.clearCategory,'');});
     root.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{filter=button.dataset.commandFilter;render();});
     root.querySelectorAll('[data-review-plan]').forEach(button=>button.onclick=()=>{
       const details=root.querySelector('[data-section="plan"]');details.open=true;selector.value=button.dataset.reviewPlan;showLevels();details.scrollIntoView?.({behavior:'smooth',block:'start'});
@@ -126,5 +127,5 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
   }
   render();
   reload();
-  return {update(next,nextResearch){state=next;research=nextResearch;render();},destroy(){alive=false;root.innerHTML='';}};
+  return {update(next,nextResearch,nextCategoryChange=categoryChange){state=next;research=nextResearch;categoryChange=nextCategoryChange;render();},destroy(){alive=false;root.innerHTML='';}};
 }
