@@ -6,7 +6,7 @@ import {createDashboardBackup,readDashboardBackup} from '../assets/dashboard-bac
 const levels=[120,110,100,90,80].map((price,i)=>({key:'s'+(i+1),price}));
 const state={holdings:[{ticker:'GOOGL',accountType:'Cash',shares:100,currency:'USD'},{ticker:'GOOGL',accountType:'Retirement - SRS',shares:999,currency:'USD'}],priceCache:{GOOGL:{close:100}},fxRates:{USD:1.3},cash:{brokers:20000,growth:30000,dividend:5000,srs:999999,cpfIs:999999},watchlist:[]};
 const fund=()=>({...strategyFunding(state,{confirmed:true,basisSignature:fundingSignature(state)}),base:500000,available:100000,byCompany:{GOOGL:0}});
-const plan=(symbol='GOOGL',category=symbol==='GOOGL'?'anchor':'core',selectivePercents)=>createPurchasePlan({symbol,category,selectivePercents,levels,base:500000,ceilingPct:10,addBudget:50000,iv:150,currency:'USD',reviewedAt:'2026-11-13',id:'plan1'});
+const plan=(symbol='GOOGL',category=symbol==='GOOGL'?'anchor':'core',selectivePercents)=>createPurchasePlan({symbol,category,selectivePercents,levels,base:500000,ceilingPct:({anchor:10,core:6,selective:4}[category]),addBudget:50000,iv:150,currency:'USD',reviewedAt:'2026-11-13',id:'plan1'});
 const preview=(p=plan(),f=fund(),o={})=>previewPurchase(p,f,{close:95,fx:1.3,iv:150,category:p.category,today:'2026-11-13',feeReserve:50,...o});
 test('funding uses current cash portfolio only, counts bank once, liabilities once, pending cash only',()=>{
  const f=strategyFunding(state,{liabilities:1000,pending:2000});
@@ -17,8 +17,8 @@ test('funding uses current cash portfolio only, counts bank once, liabilities on
 test('Anchor plans split their intended addition budget equally across approved supports',()=>{
  assert.deepEqual(purchaseSchedule('anchor',levels).map(x=>x.fraction),[.2,.2,.2,.2,.2]);
  assert.deepEqual(plan().stages.map(s=>s.budget),[10000,10000,10000,10000,10000]);
- assert.deepEqual(purchaseSchedule('core',levels).map(l=>[l.key,l.portfolioPct]),[['s3',2.5],['s4',2.5],['s5',5]]);
- assert.deepEqual(plan('XYZ').stages.map(s=>s.budget),[12500,12500,25000]);
+ assert.deepEqual(purchaseSchedule('core',levels).map(l=>[l.key,l.portfolioPct]),[['s3',1.5],['s4',1.5],['s5',3]]);
+ assert.deepEqual(plan('XYZ').stages.map(s=>s.budget),[7500,7500,15000]);
 });
 test('reject missing ceilings, invalid supports, missing IV and invalid company identity',()=>{
  assert.throws(()=>createPurchasePlan({...plan(),levels,base:500000,ceilingPct:''}),/ceiling/);
@@ -58,7 +58,7 @@ test('units round down by lot after fees and SGD conversion; cash is a shared po
  const r=preview(plan(),{...fund(),available:2000},{lotSize:10});
  assert.equal(r.units,10);assert.ok(r.estimatedSpend+50<=r.amount);
  assert.equal(r.projectedWeight,r.estimatedSpend/500000*100);
- assert.equal(preview(plan(),fund(),{feeReserve:20000}).units,0);
+ assert.equal(preview(plan(),fund(),{feeReserve:20000}).units,preview().units); // Legacy reserve is ignored.
  assert.throws(()=>preview(plan(),fund(),{lotSize:1.5}),/whole/);
 });
 test('existing manual levels override generated levels; conflicting duplicate rows stop preview',()=>{
@@ -88,11 +88,11 @@ test('CSPX stays review-only until an explicit ETF rule is defined',()=>{
 
 test('Core and Selective have separate schedules independent of ticker names',()=>{
  assert.deepEqual(purchaseSchedule('selective',levels,[2,4]).map(s=>[s.key,s.portfolioPct]),[['s4',2],['s5',4]]);
- assert.deepEqual(plan('GOOGL','core').stages.map(s=>s.budget),[12500,12500,25000]);
+ assert.deepEqual(plan('GOOGL','core').stages.map(s=>s.budget),[7500,7500,15000]);
  assert.deepEqual(plan('NEW','anchor').stages.map(s=>s.budget),[10000,10000,10000,10000,10000]);
  assert.deepEqual(plan('NEW','selective',[2,3]).stages.map(s=>s.budget),[10000,15000]);
  assert.throws(()=>purchaseSchedule('',levels),/category/);
- assert.throws(()=>purchaseSchedule('selective',levels),/2–4/);
+ assert.deepEqual(purchaseSchedule('selective',levels).map(s=>s.portfolioPct),[4,4]);
  assert.throws(()=>purchaseSchedule('selective',levels,[1,4]),/2–4/);
  assert.throws(()=>purchaseSchedule('selective',levels,[2,5]),/2–4/);
  assert.throws(()=>purchaseSchedule('selective',levels.slice(0,1),[2,3]),/2 approved/);

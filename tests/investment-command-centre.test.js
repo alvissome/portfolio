@@ -7,7 +7,7 @@ import {createDashboardBackup,readDashboardBackup} from '../assets/dashboard-bac
 const today='2026-11-14',now=Date.parse('2026-11-14T02:00:00Z'),iso=new Date(now).toISOString();
 const levels=[120,110,100,90,80].map((price,i)=>({key:'s'+(i+1),price}));
 const state=()=>({strategyCategories:{AAA:'anchor',BBB:'core'},holdings:[{ticker:'AAA',name:'Alpha',accountType:'Cash',shares:5,currency:'USD'},{ticker:'RET',accountType:'Retirement - SRS',shares:999,currency:'USD'}],watchlist:[{symbol:'AAA',name:'Alpha',priceCurrency:'USD',iv:'150',s1:'120',s2:'110',s3:'100',s4:'90',s5:'80'},{symbol:'BBB',name:'Beta',priceCurrency:'USD',iv:'150',s1:'120',s2:'110',s3:'100',s4:'90',s5:'80'}],priceCache:{AAA:{close:95,timestamp:now},BBB:{close:95,timestamp:now}},fxRates:{USD:1.3},cash:{brokers:50000,growth:50000,dividend:0,srs:999999,cpfIs:999999}});
-const plan=(symbol='AAA',category='anchor')=>({...createPurchasePlan({symbol,category,levels,base:100000,ceilingPct:10,addBudget:10000,iv:150,currency:'USD',reviewedAt:today,id:'plan-'+symbol}),feeReserve:20,lotSize:1});
+const plan=(symbol='AAA',category='anchor')=>({...createPurchasePlan({symbol,category,levels,base:100000,ceilingPct:category==='core'?6:10,addBudget:10000,iv:150,currency:'USD',reviewedAt:today,id:'plan-'+symbol}),feeReserve:20,lotSize:1});
 const config=s=>({plans:{AAA:plan(),BBB:plan('BBB','core')},funding:{confirmed:true,basisSignature:fundingSignature(s),pending:0,liabilities:0},decisions:{}});
 const model=(s,c)=>buildCommandCentre(s,{},c,{today,now});
 const action=(c,row,kind,extra={})=>addDecision(c,row,{kind,id:kind+'-'+(Object.keys(c.decisions).length+1),now:iso,today,...extra});
@@ -47,7 +47,7 @@ test('recorded orders reserve shared cash once and recalculate later opportuniti
  const first=model(s,c),a=first.rows[0];assert.equal(a.result.amount,2000); // Saved stage budget is smallest.
  c=action(c,a,'ordered',{amount:2000});assert.equal(reservedCash(c),2000);
  const second=model(s,c);assert.equal(second.funding.available,1000);assert.equal(second.rows[0].status,'ordered');
- const b=second.rows.find(r=>r.symbol==='BBB');assert.equal(b.result.amount,Math.min(b.result.limits.ceiling,1000,2500));
+ const b=second.rows.find(r=>r.symbol==='BBB');assert.equal(b.result.amount,Math.min(b.result.limits.ceiling,1000,1500));
  assert.throws(()=>action(c,second.rows[0],'ordered',{amount:1}),/pending order/);
  assert.throws(()=>action(c,b,'ordered',{amount:9999}),/fit/);
 });
@@ -69,7 +69,7 @@ test('a filled order updates actual spend atomically, closes reservation, and in
 test('an order can reconcile to its original stage even after a category change archives that stage',()=>{
  const s=state();s.priceCache.AAA.close=115;let c=config(s);const row=model(s,c).rows[0];assert.equal(row.result.stage.key,'s1');
  c=action(c,row,'ordered',{amount:500});const id=Object.keys(c.decisions)[0];
- const selective={...createPurchasePlan({symbol:'AAA',category:'selective',selectivePercents:[2,3],levels,base:100000,ceilingPct:10,iv:150,currency:'USD',reviewedAt:today,id:'plan-AAA'}),feeReserve:20,lotSize:1};
+ const selective={...createPurchasePlan({symbol:'AAA',category:'selective',selectivePercents:[2,3],levels,base:100000,ceilingPct:4,iv:150,currency:'USD',reviewedAt:today,id:'plan-AAA'}),feeReserve:20,lotSize:1};
  c={...c,plans:{...c.plans,AAA:reviewPurchasePlan(c.plans.AAA,selective)}};
  c=settleOrder(c,id,{kind:'filled',spent:490,completed:true,date:today,now:iso,today});
  assert.equal(c.plans.AAA.archivedStages.find(s=>s.key==='s1').spent,490);assert.equal(c.plans.AAA.archivedStages.find(s=>s.key==='s1').completed,true);

@@ -92,3 +92,34 @@ test('research views omit Category while keeping Track in watchlist',()=>{
  const cells=all(tree,n=>typeof n.type==='function'&&n.type.name==='StrategyCategorySelect');
  assert.equal(cells.length,0);assert.ok(headings.some(n=>n.props.children.includes('Watchlist')));
 });
+
+test('production category handler saves immediately in order; normal autosave cannot overwrite it',async()=>{
+ const cloud={settings:{strategyCategories:{AAA:'core'},other:'keep'}};
+ const state={strategyCategories:{AAA:'core'}},writes=[],statuses=[],alerts=[];
+ const context={ne:{useRef:value=>({current:value})},d:state,n:{uid:'test-user'},chooseStrategyCategory,
+  w:patch=>Object.assign(state,patch),u:status=>statuses.push(status),qT:uid=>uid,alert:text=>alerts.push(text),
+  RR:async(ref,data,options)=>{writes.push({ref,data:clone(data),options});for(const path of options.mergeFields){if(path==='settings.strategyCategories')cloud.settings.strategyCategories=clone(data.settings.strategyCategories);else if(path.startsWith('settings.'))cloud.settings[path.slice(9)]=data.settings[path.slice(9)];else cloud[path]=data[path];}},
+  OR:v=>v,CR:()=>123,BR:v=>({holdings:[],settings:{strategyCategories:v.strategyCategories,other:'updated'}})};
+ const start=bundle.indexOf('const categorySaveQueue='),end=bundle.indexOf(';return f?',start);
+ runInNewContext(bundle.slice(start,end+1)+';this.choose=updateStrategyCategory;this.pending=()=>categorySaveQueue.current;',context);
+ context.choose('AAA','selective');context.choose('BBB','core');
+ assert.equal(writes.length,0,'network calls queue without a two-second timer');
+ await context.pending();assert.equal(writes.length,2);assert.deepEqual(cloud.settings.strategyCategories,{AAA:'selective',BBB:'core'});
+ const a=bundle.indexOf('async function pd('),b=bundle.indexOf('function zR(',a);
+ runInNewContext(bundle.slice(a,b)+';this.autosave=pd;',context);
+ await context.autosave('test-user',{strategyCategories:{AAA:'anchor'}});
+ assert.deepEqual(cloud.settings.strategyCategories,{AAA:'selective',BBB:'core'});
+ assert.equal(cloud.settings.other,'updated');assert.equal(statuses.at(-1),'saved');assert.deepEqual(alerts,[]);
+ const decodeStart=bundle.indexOf('function UR('),decodeEnd=bundle.indexOf('function BR(',decodeStart);
+ context.In={emailSettings:{},columnVisibility:{}};context.normalizeStrategyCategories=normalizeStrategyCategories;context.normalizeResearchColumnSettings=normalizeResearchColumnSettings;
+ runInNewContext(bundle.slice(decodeStart,decodeEnd)+';this.reload=UR;',context);
+ assert.deepEqual(clone(context.reload(cloud).strategyCategories),{AAA:'selective',BBB:'core'});
+});
+test('failed category writes surface an error and the queue can save a retry',async()=>{
+ let fail=true;const alerts=[],statuses=[],saved=[];
+ const context={ne:{useRef:value=>({current:value})},d:{strategyCategories:{}},n:{uid:'test-user'},chooseStrategyCategory,w:()=>{},u:s=>statuses.push(s),qT:()=>null,alert:s=>alerts.push(s),RR:async(_,data)=>{if(fail)throw Error('permission denied');saved.push(clone(data));}};
+ const start=bundle.indexOf('const categorySaveQueue='),end=bundle.indexOf(';return f?',start);
+ runInNewContext(bundle.slice(start,end+1)+';this.choose=updateStrategyCategory;this.pending=()=>categorySaveQueue.current;',context);
+ context.choose('AAA','core');await context.pending();assert.equal(statuses.at(-1),'error');assert.match(alerts[0],/not saved/);
+ fail=false;context.choose('AAA','selective');await context.pending();assert.equal(saved[0].settings.strategyCategories.AAA,'selective');assert.equal(statuses.at(-1),'saved');
+});

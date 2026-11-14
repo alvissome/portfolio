@@ -1,6 +1,6 @@
 import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
-import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js';
+import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=plan-review-20261114';
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
 const date=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value));
 const positive=n=>Number.isFinite(Number(n))&&Number(n)>0;
@@ -11,7 +11,7 @@ export function resolvedCompany(state,research,symbol){
   const holding=(state.holdings||[]).find(h=>h.ticker===symbol&&h.accountType==='Cash'&&!h.exited);
   const row=rows[0]||{symbol};
   const resolved=resolveWatchlistLevels(row,record).row;
-  return {symbol,name:row.name||holding?.name||record?.instrument?.name||symbol,category:categoryFor(state.strategyCategories,symbol),
+  return {symbol,shares:(state.holdings||[]).filter(h=>h.ticker===symbol&&h.accountType==='Cash'&&!h.exited).reduce((n,h)=>n+Number(h.shares||0),0),name:row.name||holding?.name||record?.instrument?.name||symbol,category:categoryFor(state.strategyCategories,symbol),
     currency:row.priceCurrency||holding?.currency||record?.instrument?.currency||'',lotSize:row.lotSize??holding?.lotSize??record?.instrument?.lotSize??null,iv:Number(resolved.iv),
     levels:['s1','s2','s3','s4','s5'].filter(k=>Number(resolved[k])>0).map(key=>({key,price:Number(resolved[key])})),quote:state.priceCache?.[symbol]};
 }
@@ -33,7 +33,8 @@ function expectedLevels(company){
 export function buildCommandCentre(state,research,config,{today,now=Date.now()}={}){
   if(!date(today))throw Error('A valid Singapore date is required.');
   const universe=currentUniverse(state),active=new Set(universe.map(r=>r.symbol)),decisions=Object.values(config.decisions||{});
-  let funding=null,fundingError='',reserved=0;
+  let funding=null,displayFunding=null,fundingError='',reserved=0;
+  try{displayFunding=strategyFunding(state,{...config.funding,pending:Number(config.funding?.pending||0)+reservedCash(config)},{displayOnly:true});}catch(e){fundingError=e.message;}
   try{
     reserved=reservedCash(config);
     for(const h of state.holdings||[])if(h.accountType==='Cash'&&!h.exited){const timestamp=Number(state.priceCache?.[h.ticker]?.timestamp);if(!(timestamp>0)||now-timestamp>4*86400000)throw Error('Sync current holding prices for '+h.ticker+' before sizing the portfolio.');}
@@ -49,8 +50,8 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
       const levelsChanged=!!plan&&(levels.length!==plan.stages.length||plan.stages.some((s,i)=>levels[i]?.key!==s.key||levels[i]?.price!==s.price)||company.currency!==plan.currency);
       result=!plan?{status:'review',amount:null,reasons:[company.category?'Approve this company’s purchase plan.':'Choose Anchor, Core or Selective in Holdings or Watchlist.']}
         :!funding?{status:'review',amount:null,reasons:[fundingError]}
-        :previewPurchase(plan,funding,{close:company.quote?.close,priceStale:stale,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],iv:company.iv,category:company.category,today,feeReserve:plan.feeReserve,lotSize:plan.lotSize,levelsChanged});
-      if(result.status==='eligible'&&(!(result.amount>0)||!(result.units>0)))result={...result,status:'review',amount:null,reasons:[result.amount>0?'The budget cannot fund one tradable lot after fees.':'No purchase capacity remains under the company ceiling or available cash.']};
+        :previewPurchase(plan,funding,{close:company.quote?.close,priceStale:stale,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],iv:company.iv,category:company.category,today,lotSize:plan.lotSize,oddLots:plan.oddLots,rounding:plan.rounding,levelsChanged});
+      if(result.status==='eligible'&&(!(result.amount>0)||!(result.units>0)))result={...result,status:'review',amount:null,reasons:[result.amount>0?'The budget cannot fund one tradable lot. Enable odd lots only if your broker supports them.':'No purchase capacity remains under the company ceiling or available cash.']};
     }catch(e){result={status:'review',amount:null,reasons:[e.message]};}
     const levels=expectedLevels(company),eligible=levels.filter(l=>company.quote?.close>0&&company.quote.close<=l.price).at(-1);
     const next=plan?.stages?.find(s=>!s.completed&&s.spent<s.budget);
@@ -64,16 +65,19 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     let status=orders.length?'ordered':result.status;
     if(!orders.length&&decision?.status==='dismissed')status='dismissed';
     if(!orders.length&&decision?.status==='deferred'&&decision.until>today)status='deferred';
-    const currentWeight=funding?(funding.byCompany[item.symbol]||0)/funding.base*100:null;
+    const holdings=(state.holdings||[]).filter(h=>!h.exited&&h.accountType==='Cash'&&h.ticker===item.symbol);
+    const shares=holdings.reduce((n,h)=>n+Number(h.shares||0),0);
+    const currentHolding=displayFunding?(Object.hasOwn(displayFunding.byCompany,item.symbol)?displayFunding.byCompany[item.symbol]:0):null;
+    const currentWeight=displayFunding?.complete&&currentHolding!==null?currentHolding/displayFunding.base*100:null;
     const concentration=!!plan&&currentWeight!==null&&currentWeight>plan.ceilingPct;
-    return {...item,...company,plan,result,context,decision,orders,status,support,currentWeight,concentration,priceMet:!!eligible,history,
+    return {...item,...company,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,orders,status,support,currentWeight,valuationPending:!!fundingError,currentHolding,shares,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
       changedDecision:history.some(d=>d.context!==context&&['deferred','dismissed','reviewed'].includes(d.status))};
   });
   const archivedPlans=Object.values(config.plans||{}).filter(p=>!active.has(p.symbol));
   const history=decisions.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')||(b.sequence||0)-(a.sequence||0)).map(d=>({...d,active:active.has(d.symbol),contextCurrent:rows.some(r=>r.symbol===d.symbol&&r.context===d.context)}));
   const visible=rows.filter(r=>!['dismissed','deferred'].includes(r.status));
   const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol,category])=>({symbol,category}));
-  return {rows,visible,history,archivedPlans,inactiveCategories,funding,fundingError,reserved,
+  return {rows,visible,history,archivedPlans,inactiveCategories,funding,displayFunding,fundingError,reserved,
     stats:{attention:visible.filter(r=>r.status==='review'||r.concentration).length,opportunities:visible.filter(r=>r.status==='eligible').length,
       pendingOrders:decisions.filter(d=>d.status==='ordered').length,decisions:decisions.length},
     totalSuggested:visible.filter(r=>r.status==='eligible').reduce((n,r)=>n+r.result.amount,0)};
@@ -92,7 +96,7 @@ export function addDecision(config,row,{kind,id,now,until,amount,note='',today=S
   if(kind==='ordered'){
     if(row.status!=='eligible'||!positive(amount)||Number(amount)>row.result.amount)throw Error('The pending order must fit the currently eligible purchase amount.');
     record.reserved=Number(amount);record.originalReserved=Number(amount);
-    record.unitEstimate=row.result.units;record.entryLimit=row.result.maxEntry;record.currency=row.currency;
+    record.unitEstimate=Math.floor(Number(amount)/(row.result.maxEntry*(row.currency==='SGD'?1:row.fx)*row.result.lot))*row.result.lot;record.entryLimit=row.result.maxEntry;record.currency=row.currency;
   }
   return {...config,decisionSequence:sequence,decisions:{...config.decisions,[id]:record}};
 }

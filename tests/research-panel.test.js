@@ -432,5 +432,5 @@ test('research controls place source and sync on the left, settings and maintena
  const groups=nodes(tree,'div');
  const left=groups.find(n=>n.props.className==='research-toolbar-primary'),right=groups.find(n=>n.props.className==='research-toolbar-secondary');
  assert.ok(content(left).includes('Displayed levels'));assert.ok(content(left).includes('Sync AK sheets'));assert.ok(!content(left).includes('AK sheet settings'));
- assert.ok(content(right).includes('AK sheet settings'));assert.ok(content(right).includes('Refresh status'));assert.ok(content(right).includes('Last sheet check'));
+ assert.ok(content(right).includes('AK sheet settings'));assert.ok(content(right).includes('Refresh status'));assert.ok(content(left).includes('Last sheet check'));assert.ok(!content(right).includes('Last sheet check'));
 });

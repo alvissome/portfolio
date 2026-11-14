@@ -10,7 +10,7 @@ test('Anchor draft prefills rule ceiling and editable maximum room, without inve
  const draft=planDraft(company,null,funding);
  assert.equal(draft.ceiling,10);assert.equal(draft.room,7000);assert.equal(draft.addBudget,7000);
  assert.deepEqual(draft.stages.map(s=>s.budget),[1400,1400,1400,1400,1400]);
- assert.equal(draft.feeReserve,null);assert.equal(draft.lotSize,1);assert.match(draft.budgetSource,/not a compulsory target/);
+ assert.equal(draft.feeReserve,0);assert.equal(draft.lotSize,1);assert.match(draft.budgetSource,/not a compulsory target/);
 });
 test('Anchor ceiling room cannot become a purchase budget above the current ceiling',()=>{
  const draft=planDraft(company,null,{...funding,byCompany:{EXAMPLE:60000}});assert.equal(draft.room,0);assert.equal(draft.addBudget,0);
@@ -21,15 +21,15 @@ test('saved Anchor budgets and execution values prefill exactly, including expli
  assert.equal(draft.addBudget,4000);assert.equal(draft.ceiling,10);assert.equal(draft.feeReserve,0);
  assert.deepEqual(draft.stages.map(s=>s.budget),[800,800,800,800,800]);assert.ok(draft.stages.every(s=>s.frozen));
 });
-test('Core schedule prefills from game plan but requires a company-specific ceiling',()=>{
+test('Core ceiling and 1.5/1.5/3 schedule prefill from the revised game plan',()=>{
  const draft=planDraft({...company,category:'core'},null,funding);
- assert.equal(draft.ceiling,null);assert.deepEqual(draft.stages.map(s=>s.portfolioPct),[2.5,2.5,5]);assert.deepEqual(draft.stages.map(s=>s.budget),[12500,12500,25000]);
- assert.ok(draft.missing.some(s=>s.includes('company-specific')));
+ assert.equal(draft.ceiling,6);assert.deepEqual(draft.stages.map(s=>s.portfolioPct),[1.5,1.5,3]);assert.deepEqual(draft.stages.map(s=>s.budget),[7500,7500,15000]);
+ assert.ok(!draft.missing.some(s=>s.includes('company-specific')));
 });
 test('Selective shows the two deepest levels and the genuine 2–4% choice without selecting a percentage',()=>{
  const draft=planDraft({...company,category:'selective'},null,funding);
- assert.deepEqual(draft.stages.map(s=>s.key),['s4','s5']);assert.deepEqual(draft.selectivePercents,[null,null]);assert.deepEqual(draft.stages.map(s=>s.budget),[null,null]);
- const chosen=planDraft({...company,category:'selective'},null,funding,{ceiling:6,selectivePercents:[2,4],feeReserve:50});
+ assert.deepEqual(draft.stages.map(s=>s.key),['s4','s5']);assert.deepEqual(draft.selectivePercents,[4,4]);assert.deepEqual(draft.stages.map(s=>s.budget),[20000,20000]);
+ const chosen=planDraft({...company,category:'selective'},null,funding,{ceiling:4,selectivePercents:[2,4]});
  assert.deepEqual(chosen.stages.map(s=>s.budget),[10000,20000]);assert.ok(!chosen.missing.some(s=>s.includes('percentage')));
 });
 test('unknown non-US lot sizes stay blank; saved or listing-specific sizes are reused',()=>{
