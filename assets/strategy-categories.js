@@ -28,7 +28,7 @@ export function chooseStrategyCategory(categories,symbol,category){
 export function createStrategyCategorySelect(React){
   const h=React.createElement;
   return function StrategyCategorySelect({symbol,categories,onChange}){
-    return h('select',{'aria-label':'Buying category for '+symbol,value:categoryFor(categories,symbol),
+    return h('select',{'aria-label':'Category for '+symbol,value:categoryFor(categories,symbol),
       title:'Shared by ticker across holdings and watchlist',disabled:!onChange,
       className:'strategy-category-select',onChange:e=>onChange?.(symbol,e.target.value),
       onClick:e=>e.stopPropagation(),onMouseDown:e=>e.stopPropagation(),onDragStart:e=>e.preventDefault()},

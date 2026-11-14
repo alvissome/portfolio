@@ -1,3 +1,4 @@
+import {normalizeResearchColumnSettings} from '../assets/research-columns.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -40,7 +41,7 @@ test('at most six Anchors, safe keys, and only the three supported categories',(
 });
 test('production cloud serializer round-trips categories without placing them in per-account rows',()=>{
  const start=bundle.indexOf('function MR('),end=bundle.indexOf('async function JT(',start);
- const context={holdingKey,normalizeStrategyCategories,In:{cash:{},emailSettings:{}}};
+ const context={holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
  runInNewContext(bundle.slice(start,end)+';this.save=BR;this.load=UR;',context);
  const state={accountImportVersion:1,strategyCategories:{GOOGL:'selective'},holdings:[{ticker:'GOOGL',accountType:'Cash',shares:1}],watchlist:[{symbol:'GOOGL'}],cash:{},emailSettings:{}};
  const saved=context.save(state);
@@ -59,7 +60,7 @@ test('category selections and explicit Unassigned survive dashboard-wide backup 
 test('shared category selector renders all choices and sends the ticker and selected category',()=>{
  let event;const Select=createStrategyCategorySelect(React);
  const tree=Select({symbol:'XYZ',categories:{XYZ:'core'},onChange:(...args)=>event=args});
- assert.equal(tree.type,'select');assert.equal(tree.props.value,'core');assert.equal(tree.props['aria-label'],'Buying category for XYZ');
+ assert.equal(tree.type,'select');assert.equal(tree.props.value,'core');assert.equal(tree.props['aria-label'],'Category for XYZ');
  assert.deepEqual(tree.props.children.map(c=>c.props.value),['','anchor','core','selective']);
  tree.props.onChange({target:{value:'selective'}});assert.deepEqual(event,['XYZ','selective']);
 });
@@ -77,17 +78,17 @@ test('both production position tables include working shared category cells besi
  const watch=renderProductionTable('RN',{...common,watchlist:[{id:'x',symbol:'GOOGL',alertConfig:{},s1:'90'}]});
  const holdings=renderProductionTable('NN',common);
  for(const tree of [watch,holdings]){
-  assert.ok(all(tree,n=>n.type==='th'&&n.props.children==='Buying category').length);
+  assert.ok(all(tree,n=>n.type==='th'&&n.props.children==='Category').length);
   const cells=all(tree,n=>typeof n.type==='function'&&n.type.name==='StrategyCategorySelect');
   assert.equal(cells.length,1);
   const select=cells[0].type(cells[0].props);assert.equal(select.props.value,'core');
   select.props.onChange({target:{value:'selective'}});assert.deepEqual(change,['GOOGL','selective']);
  }
 });
-test('research views also expose shared category without interfering with Track in watchlist',()=>{
+test('research views omit Category while keeping Track in watchlist',()=>{
  const {ResearchPanel}=createResearchComponents(React);
  const tree=ResearchPanel({holdings:[{ticker:'XYZ'}],watchlist:[],strategyCategories:{XYZ:'selective'},onStrategyCategoryChange:()=>{}});
- const headings=all(tree,n=>n.type==='th');assert.ok(headings.some(n=>n.props.children.includes('Buying category')));
+ const headings=all(tree,n=>n.type==='th');assert.ok(!headings.some(n=>n.props.children.includes('Category')));
  const cells=all(tree,n=>typeof n.type==='function'&&n.type.name==='StrategyCategorySelect');
- assert.equal(cells.length,1);assert.equal(cells[0].type(cells[0].props).props.value,'selective');
+ assert.equal(cells.length,0);assert.ok(headings.some(n=>n.props.children.includes('Watchlist')));
 });

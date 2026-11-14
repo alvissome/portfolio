@@ -2,7 +2,7 @@ import {AK_SOURCES,previousAkRows,akSourceDefaults} from './ak-sheet-sources.js'
 
 export function createAkSheetControls(React){
   const h=React.createElement;
-  return function AkSheetControls({research,onSynced}){
+  return function AkSheetControls({research,onSynced,renderLayout}){
     const [urls,setUrls]=React.useState(()=>({...akSourceDefaults(research.referenceMeta),...research.sheetSources}));
     const [dirty,setDirty]=React.useState(false),[message,setMessage]=React.useState(''),[error,setError]=React.useState('');
     const [saving,setSaving]=React.useState(false);
@@ -14,11 +14,10 @@ export function createAkSheetControls(React){
       setDirty(false);
     }catch(e){setError(e?.message||'Sheet sync failed. Previous values remain.');}finally{setSaving(false);}};
     const old=previousAkRows(research.records);
-    return h('div',{className:'ak-sheet-controls'},
-      h('div',{className:'research-controls'},
+    const sync=h('div',{className:'research-controls'},
         h('button',{type:'button',className:'research-track',disabled:busy||!research.hydrated||!Object.values(urls).some(Boolean),onClick:()=>run(true)},busy?'Syncing AK sheets…':'Sync AK sheets'),
-        h('small',null,'Refreshes the AK view. Active watchlist levels and alerts are kept.')),
-      h('details',{className:'research-details'},h('summary',null,'AK sheet settings'),
+        h('small',null,'Refreshes the AK view. Active watchlist levels and alerts are kept.'));
+    const settings=h('details',{className:'research-details'},h('summary',null,'AK sheet settings'),
         h('p',null,'Use the embedded Google Sheets links. Replace a link here when AK changes a sheet. Subscription passwords are not stored.'),
         ...AK_SOURCES.map(source=>{
           const status=research.sheetSyncStatus?.sources?.[source.key];
@@ -32,9 +31,10 @@ export function createAkSheetControls(React){
             status?.message?h('small',{style:{display:'block'}},status.message):null,
             h('a',{href:source.portal,target:'_blank',rel:'noopener noreferrer',style:{fontSize:'11px',marginLeft:'8px'}},'Open UIP page'));
         }),
-        h('button',{type:'button',className:'research-track',disabled:busy||!research.hydrated,onClick:()=>run(false)},'Save sheet links')),
-      research.sheetSyncStatus?.checkedAt?h('small',null,`Last sheet check: ${new Date(research.sheetSyncStatus.checkedAt).toLocaleString('en-SG',{timeZone:'Asia/Singapore',timeZoneName:'short'})}`):null,
-      message?h('p',{role:'status',style:{fontSize:'11px'}},message):null,
+        h('button',{type:'button',className:'research-track',disabled:busy||!research.hydrated,onClick:()=>run(false)},'Save sheet links'));
+    const checked=research.sheetSyncStatus?.checkedAt?h('small',null,`Last sheet check: ${new Date(research.sheetSyncStatus.checkedAt).toLocaleString('en-SG',{timeZone:'Asia/Singapore',timeZoneName:'short'})}`):null;
+    const messages=h('div',null,message?h('p',{role:'status',style:{fontSize:'11px'}},message):null,
       error?h('p',{role:'alert',className:'research-error'},error):null);
+    return renderLayout?renderLayout({sync,settings,checked,messages}):h('div',{className:'ak-sheet-controls'},sync,settings,checked,messages);
   };
 }
