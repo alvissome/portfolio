@@ -1,3 +1,4 @@
+import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=support-allocation-20261114';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
 import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=compact-price-20261114';
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=compact-price-20261114';
@@ -94,7 +95,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       root.querySelector('[data-native-estimate]').textContent=sized.spend==null?'—':money(sized.units*sized.entry,company.currency);
       root.querySelector('[data-sgd-estimate]').textContent=company.currency==='SGD'||sized.spend==null?'':'≈ '+money(sized.spend,'SGD');
       root.querySelector('[data-plan-feedback]').textContent=[...sized.issues,...(draft.missing.length?draft.missing:[])].join(' ');
-      root.querySelector('[data-plan-prefill]').innerHTML=`<dl class="ic-plan-facts"><div><dt>Portfolio base</dt><dd>${show(draft.base)}</dd></div><div><dt>Current holding · ${quantityText(company.shares)} shares</dt><dd>${show(draft.holding)}</dd></div><div><dt>Room below ceiling</dt><dd>${show(draft.room)}</dd></div><div><dt>IV</dt><dd>${esc(money(company.iv,company.currency))}</dd></div></dl><p class="ic-meta">${esc(draft.budgetSource)}. Remaining stage allowance and shared cash cap the quantity.</p>`;
+      root.querySelector('[data-plan-prefill]').innerHTML=`<dl class="ic-plan-facts"><div><dt>Portfolio base</dt><dd>${show(draft.base)}</dd></div><div><dt>Current holding · ${quantityText(company.shares)} shares</dt><dd>${show(draft.holding)}</dd></div><div><dt>Room below ceiling</dt><dd>${show(draft.room)}</dd></div><div><dt>IV</dt><dd>${esc(money(company.iv,company.currency))}</dd></div></dl><p class="ic-meta">${esc(draft.budgetSource)}. Remaining stage allowance and shared cash cap the quantity.</p>${renderPlanBreakdown(draft,company,funding,sized)}`;
       return sized;
     };
     const showLevels=()=>{
