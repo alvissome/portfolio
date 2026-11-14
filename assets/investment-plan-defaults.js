@@ -1,4 +1,4 @@
-import {purchaseSchedule,RULE_VERSION} from './investment-strategy.js?v=compact-price-20261114';
+import {purchaseSchedule,RULE_VERSION} from './investment-strategy.js?v=cc-cash-budget-20261114';
 const number=value=>value===null||value===undefined||String(value).trim()===''||!Number.isFinite(Number(value))?null:Number(value);
 const cents=n=>Math.floor((n+1e-9)*100)/100;
 const choose=(overrides,key,fallback)=>Object.hasOwn(overrides,key)?overrides[key]:fallback;
@@ -7,7 +7,7 @@ export function planDraft(company,saved,funding,overrides={}){
  const base=funding?.complete===false?null:number(funding?.base),holding=funding?(Object.hasOwn(funding.byCompany||{},company.symbol)?number(funding.byCompany[company.symbol]):0):null;
  const savedCeiling=number(saved?.ceilingPct);
  const ceiling=number(choose(overrides,'ceiling',savedCeiling!==null&&savedCeiling<=({anchor:10,core:6,selective:4}[category]??0)?savedCeiling:({anchor:10,core:6,selective:4}[category]??null)));
- const room=base!==null&&ceiling!==null&&holding!==null?cents(Math.max(0,base*ceiling/100-holding)):null;
+ const room=base!==null&&ceiling!==null&&holding!==null?cents(Math.max(0,base*ceiling/100-holding-(funding?.unreconciledByCompany?.[company.symbol]||0))):null;
  const savedBudget=anchor&&saved?.category==='anchor'?cents(saved.stages.reduce((n,s)=>n+s.budget,0)):null;
  const addBudget=number(choose(overrides,'addBudget',anchor?savedBudget??room:null));
  const selectivePercents=choose(overrides,'selectivePercents',saved?.category==='selective'&&saved.ruleVersion===RULE_VERSION?saved.selectivePercents:[4,4])?.map(number)||[null,null];

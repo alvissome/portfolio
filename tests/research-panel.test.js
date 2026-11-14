@@ -180,7 +180,7 @@ test('product validation states distinguish provisional/experimental and not app
 test('compiled Holdings integration keeps Research across accounts despite remembered Positions filters', () => {
   const bundle = readFileSync(new URL('../assets/index-CUEh86Kk.js', import.meta.url), 'utf8');
   const start = bundle.indexOf('function NN(');
-  const end = bundle.indexOf('async function ', start);
+  const end = bundle.indexOf('function ON(', start);
   assert.ok(start >= 0 && end > start, 'Holdings component extraction boundary');
   const states = [true, false, false, 'Growth', 'Cash'];
   let hook = 0;

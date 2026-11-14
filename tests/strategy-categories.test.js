@@ -66,7 +66,7 @@ test('shared category selector renders all choices and sends the ticker and sele
 });
 function renderProductionTable(name,props,states=[]){
  let hook=0;const testReact={...React,useState:initial=>[hook<states.length?states[hook++]:(hook++,typeof initial==='function'?initial():initial),()=>{}]};
- const start=bundle.indexOf('function '+name+'('),end=bundle.indexOf(name==='RN'?'function NN(':'async function',start+1);
+ const start=bundle.indexOf('function '+name+'('),end=bundle.indexOf(name==='RN'?'function NN(':'function ON(',start+1);
  const defaults={ne:testReact,m:jsx,selectCategoryRows,categoryRank,CategoryControls:createCategoryControls(React),combinedHolding,holdingKey,resolveWatchlistLevels,StrategyCategorySelect:createStrategyCategorySelect(React),ResearchBadge:()=>null,
   ResearchPanel:()=>null,ResearchViewSwitch:()=>null,Dt:(h,p)=>h.shares*(p[h.ticker]?.close||0),mh:()=>0,cp:()=>0,hp:()=>null,uh:()=>0,Qt:n=>String(n),A0:n=>String(n),k0:n=>String(n),Fs:()=>null};
  const context=new Proxy(defaults,{get:(target,key)=>key in target?target[key]:key in globalThis?globalThis[key]:()=>null});

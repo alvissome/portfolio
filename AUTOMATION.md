@@ -1,11 +1,9 @@
-# Alerts and reports
+# Personal portfolio data workers
 
-The dashboard's Alerts link opens a public guide. Current run status and private delivery records are available only in the signed-in automation accounts. No connection keys or private resource identifiers belong in this guide.
+Legacy watchlist email/support alerts and their manual/scheduled workflows have been retired at the owner’s request. The dashboard Alerts guide/link, per-ticker notification/email/cooldown controls, test-email sender and email-alert Settings tabs are removed. Existing inactive cloud settings/secrets are not used or altered.
 
-- Support-level settings are edited in the portfolio watchlist. Scheduled checks use daily closing prices and suppress repeated alerts until recovery, subject to the configured cooldown.
-- Peak-drop monitoring compares the last validated daily close against a rolling 365-calendar-day peak.
-- Monthly reports are sent on the 10th using the last available close on or before the 9th. The rolling peak ends at that cutoff, excluding later prices. Change since the prior month's 9th excludes dividends, fees and FX effects.
-- Daily alerts remain silent when no condition triggers; failures notify where the sending service is available. Monthly reports are sent even when no threshold is breached.
-- The old DCA spreadsheet is retained for reference; scheduled collection and sending from its runner are retired.
+CC owns the Watchlist/Research view and shared price refresh. Data settings retain the existing Twelve Data key. AK sheet sync and reference settings remain in Research. Research calculation and performance-snapshot workflows remain independent and unchanged.
 
-`monthlyReportRenderer.js` preserves the generic HTML renderer and price-validation logic. It is a source reference for the automation, not a standalone scheduled job. Do not commit private configurations, account resource identifiers, keys, webhook endpoints or portfolio exports.
+`monthlyReportRenderer.js` remains a generic reference renderer, not a scheduled job. No external Boost workspace, shared Dive Deals resource, secret or credential was accessed or modified. This change retires the repository’s legacy alert senders; it does not silently alter separately hosted automations.
+
+CC cash-use records are private planning deductions in the existing investment settings. They never post portfolio cash-ledger transactions or mutate StocksCafe holdings/cash balances. StocksCafe remains authoritative after imports.
