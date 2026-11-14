@@ -219,8 +219,8 @@ export function createResearchComponents(React) {
         research.referenceMeta ? h('small', null, `Reference dates: ${(research.referenceMeta.dates ?? []).join(', ')}`) : null,
         importMessage ? h('span', {role:'status'}, importMessage) : null) : null;
     const layout=parts=>h('div',{className:'research-toolbar-grid'},
-      h('div',{className:'research-toolbar-primary'},levelControl,parts?.sync),
-      h('div',{className:'research-toolbar-secondary'},parts?.settings,parts?.checked,maintenance),parts?.messages);
+      h('div',{className:'research-toolbar-primary'},levelControl,parts?.sync,parts?.checked),
+      h('div',{className:'research-toolbar-secondary'},parts?.settings,maintenance),parts?.messages);
     const toolbar=scope==='watchlist'&&research?.syncAkSheets?h(AkSheetControls,{research,onSynced:()=>setLevelSource('ak'),renderLayout:layout}):layout();
 
 

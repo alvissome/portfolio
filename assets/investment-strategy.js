@@ -1,6 +1,6 @@
 // Share purchase previews only. No orders, notifications or brokerage access.
 import {STRATEGY_CATEGORIES} from './strategy-categories.js';
-export const RULE_VERSION = '2026-11-13-three-categories';
+export const RULE_VERSION = '2026-11-14-ceilings-dynamic-selective';
 const value = (n, label) => {
   if(n === null || n === undefined || String(n).trim() === '' || !Number.isFinite(Number(n))) throw Error('Missing or invalid '+label+'.');
   return Number(n);
@@ -11,17 +11,21 @@ const cents = n => Math.floor((n+1e-9)*100)/100;
 export function fundingSignature(state) {
   return JSON.stringify({cash:state.cash,holdings:(state.holdings||[]).filter(h=>h.accountType==='Cash'&&!h.exited).map(h=>[h.ticker,h.shares,h.currency]).sort((a,b)=>a[0].localeCompare(b[0]))});
 }
-export function strategyFunding(state,settings={}) {
+export function strategyFunding(state,settings={}, {displayOnly=false}={}) {
   let invested=0;
-  const byCompany={};
+  const byCompany={},issues=[];
   for(const h of state.holdings||[]) {
     if(h.exited||h.accountType!=='Cash')continue;
     const quote=state.priceCache?.[h.ticker];
-    if(quote?.priceStale)throw Error('Sync stale prices for '+h.ticker+'.');
-    const close=positive(quote?.close,h.ticker+' close');
-    const fx=h.currency==='SGD'?1:positive(state.fxRates?.[h.currency],h.currency+' FX');
-    const amount=nonnegative(h.shares,h.ticker+' quantity')*close*fx;
-    byCompany[h.ticker]=(byCompany[h.ticker]||0)+amount;invested+=amount;
+    try{
+      if(quote?.priceStale){if(!displayOnly)throw Error('Sync stale prices for '+h.ticker+'.');issues.push('Stale price: '+h.ticker);}
+      const close=positive(quote?.close??h.lastClose,h.ticker+' close');
+      const fx=h.currency==='SGD'?1:positive(state.fxRates?.[h.currency],h.currency+' FX');
+      const amount=nonnegative(h.shares,h.ticker+' quantity')*close*fx;
+      if(byCompany[h.ticker]!==null)byCompany[h.ticker]=(byCompany[h.ticker]||0)+amount;
+      invested+=amount;
+    }catch(e){if(!displayOnly)throw e;issues.push(e.message);byCompany[h.ticker]=null;}
+
   }
   const broker=nonnegative(state.cash?.brokers,'broker cash');
   const bank=nonnegative(state.cash?.growth,'bank growth cash')+nonnegative(state.cash?.dividend,'bank dividend cash');
@@ -30,7 +34,7 @@ export function strategyFunding(state,settings={}) {
   const committed=broker+bank;
   const base=invested+committed-liabilities;
   if(base<=0)throw Error('The strategy portfolio base must be positive.');
-  return {invested,broker,bank,committed,liabilities,pending,base,available:Math.max(0,committed-liabilities-pending),byCompany,confirmed:settings.confirmed===true&&settings.basisSignature===fundingSignature(state)};
+  return {issues,complete:!Object.values(byCompany).some(v=>v===null),invested,broker,bank,committed,liabilities,pending,base,available:Math.max(0,committed-liabilities-pending),byCompany,confirmed:settings.confirmed===true&&settings.basisSignature===fundingSignature(state)};
 }
 export function purchaseSchedule(category,levels,selectivePercents) {
   if(!Object.hasOwn(STRATEGY_CATEGORIES,category))throw Error('Choose a buying category in Holdings or Watchlist first.');
@@ -40,9 +44,10 @@ export function purchaseSchedule(category,levels,selectivePercents) {
   if(category==='anchor')return sorted.map(l=>({...l,fraction:1/sorted.length}));
   const count=category==='core'?3:2;
   if(sorted.length<count)throw Error(category+' needs at least '+count+' approved supports.');
-  let percents=[2.5,2.5,5];
+  let percents=[1.5,1.5,3];
   if(category==='selective'){
-    if(!Array.isArray(selectivePercents)||selectivePercents.length!==2)throw Error('Choose 2–4% for each Selective buy before approval.');
+    if(selectivePercents===undefined)selectivePercents=[4,4];
+    if(!Array.isArray(selectivePercents)||selectivePercents.length!==2)throw Error('Choose 2–4% for each Selective buy.');
     percents=selectivePercents.map(p=>positive(p,'Selective buy percentage'));
     if(percents.some(p=>p<2||p>4))throw Error('Each Selective buy must be 2–4%.');
   }
@@ -52,14 +57,14 @@ export function createPurchasePlan({symbol,category,selectivePercents,levels,bas
   if(!/^[A-Za-z0-9^][A-Za-z0-9.^=_-]{0,39}$/.test(symbol))throw Error('Invalid ticker.');
   if(!id)throw Error('A permanent plan ID is required.');
   if(/^CSPX(?:\.L)?$/.test(symbol))throw Error('CSPX remains review-only until its entry trigger and amount are defined.');
-  const anchor=category==='anchor',ceiling=positive(ceilingPct,'company ceiling');
-  if(ceiling>100||(anchor&&ceiling>10))throw Error('Anchor ceilings cannot exceed 10%; other ceilings cannot exceed 100%.');
+  const anchor=category==='anchor',cap={anchor:10,core:6,selective:4}[category],ceiling=positive(ceilingPct,'company ceiling');
+  if(!cap||ceiling>cap)throw Error('Company ceiling cannot exceed the game plan: Anchor 10%, Core 6%, Selective 4%.');
   const budgetBase=positive(base,'portfolio base');
   const schedule=purchaseSchedule(category,levels,selectivePercents);
   const budget=anchor?nonnegative(addBudget,'intended addition budget'):null;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(reviewedAt)||!Number.isFinite(Date.parse(reviewedAt)))throw Error('Enter the thesis and IV review date.');
   if(!currency)throw Error('Confirm the trading currency.');
-  return {id,symbol,ruleVersion:RULE_VERSION,category,...(category==='selective'?{selectivePercents:selectivePercents.map(Number)}:{}),ceilingPct:ceiling,baseAtApproval:budgetBase,currency,iv:positive(iv,'IV'),reviewedAt,
+  return {id,symbol,ruleVersion:RULE_VERSION,category,...(category==='selective'?{selectivePercents:(selectivePercents??[4,4]).map(Number)}:{}),ceilingPct:ceiling,baseAtApproval:budgetBase,currency,iv:positive(iv,'IV'),reviewedAt,
     stages:schedule.map((l,i)=>({id:id+'-'+l.key,key:l.key,price:l.price,budget:cents(anchor?budget*l.fraction:budgetBase*l.portfolioPct/100),spent:0,completed:false,final:i===schedule.length-1}))};
 }
 export function reviewPurchasePlan(previous,fresh) {
@@ -84,7 +89,7 @@ export function recordStageFill(plan,stageId,{spent,completed,date}) {
   if(amount<stage.spent||stage.completed&&!completed)throw Error('Recorded spend and completed stages cannot be reset.');
   return {...plan,stages:plan.stages.map(s=>s.id===stageId?{...s,spent:amount,completed:completed===true,fillDate:date}:s)};
 }
-export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,feeReserve=0,lotSize=1,priceStale=false,levelsChanged=false,category}={}) {
+export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSize=1,oddLots=false,rounding='down',priceStale=false,levelsChanged=false,category}={}) {
   const pending=reasons=>({status:'review',amount:null,reasons});
   const reasons=[];
   if(!Object.hasOwn(STRATEGY_CATEGORIES,category)||plan.category!==category||plan.ruleVersion!==RULE_VERSION)reasons.push('Buying category changed or is unassigned; review this plan.');
@@ -104,12 +109,16 @@ export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,feeRe
   const holding=funding.byCompany[plan.symbol]||0;
   const limits={stage:Math.max(0,stage.budget-stage.spent),ceiling:Math.max(0,funding.base*plan.ceilingPct/100-holding),cash:funding.available};
   const amount=cents(Math.min(...Object.values(limits)));
-  const reserve=nonnegative(feeReserve,'fees and FX reserve'),lot=positive(lotSize,'lot size');
+  const lot=positive(oddLots?1:lotSize,'lot size');
   if(!Number.isInteger(lot))throw Error('Lot size must be a whole number.');
   // The IV comparison is strict: an executable limit may not equal IV.
   const maxEntry=Math.min(stage.price,iv);
-  const units=Math.floor(Math.max(0,amount-reserve)/(maxEntry*fx*lot))*lot;
-  return {status:'eligible',stage,amount,portfolioPct:amount/funding.base*100,limits,limitedBy:Object.keys(limits).filter(k=>Math.abs(limits[k]-amount)<.011),maxEntry,strictIV:maxEntry===iv,units,
+  const rawUnits=amount/(maxEntry*fx);
+  // Round up only within all approved budgets and shared cash. Never breach a cap.
+  const nearest=rounding==='nearest'?Math.round(rawUnits/lot)*lot:Math.floor(rawUnits/lot)*lot;
+  const units=nearest*maxEntry*fx<=amount+1e-9?nearest:Math.floor(rawUnits/lot)*lot;
+  const minimumAmount=plan.category==='selective'?Math.min(amount,Math.max(0,funding.base*.02-stage.spent)):amount;
+  return {status:'eligible',stage,amount,minimumAmount,rawUnits,lot,portfolioPct:amount/funding.base*100,limits,limitedBy:Object.keys(limits).filter(k=>Math.abs(limits[k]-amount)<.011),maxEntry,strictIV:maxEntry===iv,units,
     estimatedSpend:units*maxEntry*fx,projectedWeight:(holding+units*maxEntry*fx)/funding.base*100,
-    reasons:['At or below '+stage.key.toUpperCase()+'. Review before placing an order.',...(stage.final?['Recheck the thesis and IV before the final buy.']:[])]};
+    reasons:[...(plan.category==='selective'?['Reassess spending against uncommitted cash and competing opportunities. Choose a smaller amount or skip; the 4% company ceiling applies.']:[]),'At or below '+stage.key.toUpperCase()+'. Review before placing an order.',...(stage.final?['Recheck the thesis and IV before the final buy.']:[])]};
 }

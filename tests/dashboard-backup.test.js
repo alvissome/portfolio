@@ -177,12 +177,12 @@ test('the compiled restore includes research atomically only when present in the
 test('the existing restore action quiesces research before committing and resumes it only on failure',async()=>{
   const bundle=readFileSync(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8');
   const start=bundle.indexOf('I=async()=>{',bundle.indexOf('function MN('));
-  const end=bundle.indexOf('};return f?',start);
+  const end=bundle.indexOf('};const updateResearchColumns=',start);
   assert.ok(start>=0&&end>start);
   const action=bundle.slice(start+'I=async()=>'.length,end+1);
   const events=[];
   let fail=false;
-  const context={r:{kind:'dashboard'},n:{uid:'private-test-user'},restoring:{current:false},
+  const context={r:{kind:'dashboard'},n:{uid:'private-test-user'},restoring:{current:false},categorySaveQueue:{current:Promise.resolve()},
     setRestoreBusy:value=>events.push(`busy:${value}`),
     research:{pause:async()=>events.push('quiesced'),resume:async()=>events.push('resumed')},
     restoreDashboardBackup:async()=>{events.push('committed');if(fail)throw Error('fixture failure');},

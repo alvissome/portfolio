@@ -2,22 +2,22 @@
 
 Personal environment: `alvissome/portfolio`, existing GitHub Pages frontend and existing signed-in Firebase project. No new hosting, credentials, public endpoints or paid services. No Dive Deals infrastructure is accessed.
 
-## Rules captured on 13 November 2026
+## Rules checked on 14 November 2026
 
 Source: https://app.notion.com/p/93744bdaa1b54851bf51e01edd17d87a and the user's subsequent clarification.
 
 - **Anchor:** up to six selected companies. Equal nibbles across every approved support; only the intended additional budget is split for existing holdings. Normal purchase ceiling is 10% per company.
-- **Core:** 2.5% + 2.5% + up to 5% of the strategy base at the deepest three approved supports.
-- **Selective:** two buys at the deepest two approved supports, with each percentage explicitly chosen from 2–4% before approval.
-- Core and Selective each require an explicit company ceiling; neither is implicitly classified by ticker or given a 10% ceiling.
+- **Core:** 1.5% + 1.5% + up to 3% of the strategy base at the deepest three approved supports; 6% company ceiling.
+- **Selective:** deepest two approved supports, with a dynamic 2–4% spending range reassessed against uncommitted cash and competing opportunities; 4% company ceiling overrides this range and permits smaller buys. Deferring or skipping is allowed.
+- Ceilings prefill from the game plan: Anchor 10%, Core 6%, Selective 4%. Lower company-specific ceilings are allowed.
 - Suggested spend is capped by the saved stage's unused budget, current room below the company's ceiling, and available committed cash after liabilities and pending orders.
 - Stage budgets freeze in SGD at approval. Monthly reviews update IV and support prices but retain permanent stage IDs, budgets and actual fills. A category or ladder change requires explicit plan review. Approval creates the revised schedule, keeps all actual fills, and archives stages no longer in the active schedule. Restoring a stage restores its previous fill status instead of reopening a completed buy.
 - Completed stages cannot be reset. Actual cumulative spend cannot be reduced through this interface. Correcting an erroneous fill needs a separately reviewed correction rather than silently restoring purchasing capacity.
 - All values are previews requiring user review and execution. Being below a support is not evidence of a fresh crossing; this panel does not emit alerts.
 
-Category membership is selected through the **Buying category** column in Holdings or Watchlist, including their research views. Both use the same ticker-level map, so changing a category in either place updates the other, including after Track in watchlist. Unassigned tickers produce no purchase plan. Categories determine buying schedules independently of the allocation buckets.
+Category membership is selected through the **Category** column in Holdings or Watchlist. Research views omit this column. Both use the same ticker-level map, so changing a category in either place updates the other, including after Track in watchlist. Unassigned tickers produce no purchase plan. Categories determine buying schedules independently of the allocation buckets.
 
-Existing portfolios without the new field are seeded once with GOOGL, META, AMZN, MSFT, NVDA and SPGI as Anchor, reflecting the previously selected six. Users can change these choices in the dashboard. Explicit empty selections remain empty across reloads and imports. Selecting a seventh Anchor is rejected without replacing an existing selection. The Notion page is not used to maintain membership and was not edited.
+Existing portfolios without the new field are seeded once with GOOGL, META, AMZN, MSFT, NVDA and SPGI as Anchor, reflecting the previously selected six. Users can change these choices in the dashboard. Explicit empty selections remain empty across reloads and imports. Selecting a seventh Anchor is rejected without replacing an existing selection. The Notion game plan does not maintain category membership.
 
 ## Funding
 
@@ -31,7 +31,7 @@ Retirement is lump-sum investing, deferred at the user's request. Existing SRS/C
 
 - Pure calculations: `assets/investment-strategy.js`.
 - UI: `assets/investment-panel.js` and `.css`, inserted beside the existing performance panel through the established compiled-dashboard extension pattern.
-- Shared category map: `users/{uid}/portfolio/data`, field `settings.strategyCategories`, serialized through the existing portfolio save path. It is independent of account-specific rows and imports, and is included in the existing dashboard-wide state backup.
+- Shared category map: `users/{uid}/portfolio/data`, field `settings.strategyCategories`, written immediately through a queued, category-only cloud update. It is independent of account-specific rows and imports, and is included in the existing dashboard-wide state backup.
 - Saved configuration, plans and fills: `users/{uid}/portfolio/performance`, field `settings.investmentStrategy`. Writes replace only this field; unrelated history/settings are preserved. Authentication must match the UID before saving.
 - Dashboard-wide backup already exports the performance document, including this settings field. Restore includes it and reloads the frontend. Unit coverage verifies the round trip.
 - No broker secrets or Telegram tokens are used. No orders, emails or Telegram messages are sent by the panel.
@@ -49,7 +49,7 @@ Multiple previews share a cash pool. Each is individually capped; aggregate over
 
 ## Validation
 
-Run `npm test` and `node --check assets/index-CUEh86Kk.js`. All 232 tests pass. Coverage includes rendered production table category cells and callbacks, category serialization, tracking inheritance, backup recovery, all three schedules, cash separation, ceiling/cash/stage caps, deepest eligible stage selection, fill persistence, monthly review gates, unit rounding, manual level precedence, funding invalidation and dashboard backup recovery.
+Run `npm test` and `node --check assets/index-CUEh86Kk.js`. The initial release had 232 passing tests. Coverage includes rendered production table category cells and callbacks, category serialization, tracking inheritance, backup recovery, all three schedules, cash separation, ceiling/cash/stage caps, deepest eligible stage selection, fill persistence, monthly review gates, unit rounding, manual level precedence, funding invalidation and dashboard backup recovery.
 
 A browser interaction harness was attempted locally. Chromium could not launch because this execution environment denies its singleton socket. Live signed-in Firebase writes and visual browser interaction are therefore not verified; the PR remains a draft until deployment approval. Component rendering and interaction callbacks are exercised using the actual production functions in the test harness, but this does not replace signed-in browser verification.
 
@@ -103,4 +103,18 @@ Opportunity cards use three columns above 1100 px, two columns from 701–1100 p
 
 The setup form now opens on a current Anchor by default, retains the selected ticker across Command Centre updates, and displays rule/data provenance. It prefills category, current IV/supports, portfolio base, current holding, stage budgets and saved execution inputs. New Anchor plans draft the maximum remaining room under the normal 10% ceiling, with an explicit explanation that this is editable and not a target or approval. Existing approved Anchor and other frozen stage budgets stay unchanged.
 
-Core's 2.5% + 2.5% + up to 5% schedule is shown automatically. Selective shows the deepest two supports but does not choose its undefined 2–4% percentages. Genuine missing choices are listed: company-specific Core/Selective ceilings, exact Selective buy percentages, fee/FX reserve and any unverified listing lot size. Whole-share US listings can draft a one-share lot; other listings reuse an explicit saved/metadata lot or request confirmation. Missing valuation data remains unknown, not zero. The user must still confirm business/IV review and approve the plan; drafts do not place orders or silently save plans.
+Core's 1.5% + 1.5% + up to 3% schedule is shown automatically. Selective uses the deepest two supports, with a maximum stage allowance of 4% and a live 2–4% spending range capped by company room and shared cash; actual spending is chosen when recording an order. Fee/FX reserve has been removed. Unverified non-US board lots still require listing confirmation, unless the user explicitly confirms odd-lot whole-share buying. Whole-share US listings can draft a one-share lot; other listings reuse an explicit saved/metadata lot or request confirmation. Missing valuation data remains unknown, not zero. The user must still confirm business/IV review and approve the plan; drafts do not place orders or silently save plans.
+
+## Plan review and persistence fixes (14 November 2026)
+
+- Active rule version: `2026-11-14-ceilings-dynamic-selective`. Older plans require review. Review preserves stage IDs, cumulative spend and completion while applying revised stage budgets and ceilings. No completed stage reopens.
+- Category changes enter the cloud write queue immediately, using only `settings.strategyCategories`. Normal portfolio autosave uses individual settings field masks and excludes this map, so an older delayed autosave cannot overwrite a category selection. Failures show the existing save error indicator plus an explicit alert; selecting again retries. The same stored map is loaded by both tables. Backup restore still includes the full map.
+- Known holdings, quantities, cash and portfolio base remain visible when stale prices block executable sizing. Missing valuation components are shown as an incomplete known subtotal; unknown company values and full base/weights are not fabricated.
+- Share quantities derive from capped stage spend divided by the entry limit and FX rate. Round down to the confirmed board lot, or whole shares if the broker supports odd lots. Neither rounding nor odd lots may exceed stage allowance, company ceiling or shared cash. No fee reserve is deducted, including from legacy plans. This does not infer an exchange board lot from the investor’s current holding quantity.
+- Plan remarks persist with the approved plan and a separate dated `plan-reviewed` snapshot in My decisions. Updating remarks never edits older reviews or reserves cash. Unsaved setup edits survive background quote/research refreshes. A snapshot includes thesis/IV review date, category/ceiling, holdings, portfolio base and stage budgets.
+- The Notion Stocks Plan Review page contains a log template. My decisions provides **Copy for Notion**, with a selectable-text fallback if clipboard access is unavailable. Notion is a manual copy workflow; no Notion credentials or automatic sync were added to the public frontend.
+- Holdings Detail, count and Positions/Research/gear stay on one header row with compact narrow-screen spacing; count omits “stocks”. Last sheet check sits directly below Sync AK sheets.
+
+Deployment remains on the existing personal GitHub Pages/Firebase project. No new dependencies, services, credentials or infrastructure. Rollback: revert the source commit; saved plans/reviews remain in the existing backup and Firestore settings.
+
+Current validation: 276 Node tests pass, plus mounted DOM interaction checks for setup approval, remarks, saved review history, order reservations/final fills, quarterly changes, privacy and cleanup. Signed-in user cloud state was not modified during testing.
