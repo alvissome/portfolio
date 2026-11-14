@@ -82,7 +82,7 @@ test('research view deduplicates account positions and never exposes manual leve
   });
   assert.equal(nodes(tree, 'tbody')[0].children.length, 1);
   const text = content(tree);
-  assert.ok(text.includes('S$30.00'));
+  assert.ok(!text.includes('S$30.00'));assert.ok(!text.includes('BValue'));assert.ok(!text.includes('Category'));
   assert.ok(text.includes('15.00'));
   assert.ok(!text.includes('98765'));
   assert.ok(!text.includes('87654'));
@@ -150,7 +150,7 @@ test('watchlist research metrics update from callbacks and respect monetary priv
   let tree = runtime.render(runtime.components.ResearchPanel, props);
   assert.ok(content(tree).includes('10.00'));
   assert.ok(content(tree).includes('8.00'), 'Avg Price remains visible in privacy mode, matching existing tables');
-  assert.ok(content(tree).includes('S$•••'));
+  assert.ok(!content(tree).includes('S$•••'), 'BValue is removed entirely from research');
   assert.equal(nodes(tree, 'button').length, 1);
   assert.equal(nodes(tree, 'button')[0].props.disabled, true, 'calculation is unavailable without a service adapter');
   close = 11;
@@ -398,4 +398,39 @@ test('monthly IV arithmetic can be compared while the historical input vintage r
   assert.equal(researchComparisonLabel(record,'iv').text,'Different');
   record.comparison.iv.variants[0].status='matched';assert.equal(researchComparisonLabel(record,'iv').text,'Matches');
   record.comparison.iv.variants[0].status='method_mismatch';assert.equal(researchComparisonLabel(record,'iv').text,'Different data dates');
+});
+
+test('symbol badges show only IV and SL with colour, accessible text and hover status',()=>{
+ const runtime=host();
+ const record={requestId:'one',reference:{present:true,iv:{value:20},supports:[18]},iv:{processing:'unsupported',validation:'not_applicable'},supports:{processing:'completed'},comparison:{supports:{status:'different'}}};
+ const tree=runtime.render(runtime.components.ResearchBadge,{record,onOpen:()=>{}});
+ assert.equal(content(tree).trim(),'IV SL');
+ const chips=nodes(tree,'span');assert.match(chips[0].props.className,/research-not-applicable/);assert.equal(chips[0].props.title,'IV: Not applicable');
+ assert.match(chips[1].props.className,/research-different/);assert.equal(chips[1].props.title,'SL: Different');
+ assert.match(tree.props['aria-label'],/Not applicable.*Different/);
+ const noBenchmark=runtime.render(runtime.components.ResearchBadge,{record:{reference:{present:false}}});
+ assert.ok(nodes(noBenchmark,'span').every(n=>n.props.className.includes('research-neutral')));
+ assert.equal(content(noBenchmark).trim(),'IV SL');
+});
+test('research column settings hide matching headers and cells and never offer Category or BValue',()=>{
+ const runtime=host();let visibility={};
+ let controls=runtime.render(runtime.components.ResearchColumnSettings,{scope:'holdings',visibility,onChange:next=>visibility=next});
+ assert.ok(!content(controls).includes('BValue'));assert.ok(!content(controls).includes('Category'));
+ const labels=nodes(controls,'label'),sl1=labels.find(n=>content(n).trim()==='SL1');nodes(sl1,'input')[0].props.onChange({target:{checked:false}});
+ assert.equal(visibility.sl1,false);
+ const symbol=labels.find(n=>content(n).trim()==='Symbol / Name');assert.equal(nodes(symbol,'input')[0].props.disabled,true);
+ const props={scope:'holdings',holdings:[holding],columnVisibility:{...visibility,'iv-status':false,research:false}};
+ let tree=runtime.render(runtime.components.ResearchPanel,props);
+ const headers=nodes(tree,'th');assert.ok(!headers.some(n=>['sl1','iv-status','research','bvalue','category'].includes(n.props['data-column'])));
+ assert.equal(nodes(tree,'td').length,headers.length,'Every row remains aligned with its visible headings');
+ assert.ok(headers.some(n=>n.props['data-column']==='track'));
+ tree=runtime.render(runtime.components.ResearchPanel,{...props,scope:'watchlist',watchlist:[{symbol:'EXAMPLE'}]});
+ assert.ok(!nodes(tree,'th').some(n=>n.props['data-column']==='track'));
+});
+test('research controls place source and sync on the left, settings and maintenance on the right',()=>{
+ const runtime=host();const tree=runtime.render(runtime.components.ResearchPanel,{scope:'watchlist',watchlist:[{symbol:'EXAMPLE'}],research:{records:{},hydrated:true,syncAkSheets:async()=>({readable:4}),sheetSyncStatus:{checkedAt:'2026-11-12T12:48:13Z'},sheetSources:{},referenceMeta:{dates:['2026-11-03']}}});
+ const groups=nodes(tree,'div');
+ const left=groups.find(n=>n.props.className==='research-toolbar-primary'),right=groups.find(n=>n.props.className==='research-toolbar-secondary');
+ assert.ok(content(left).includes('Displayed levels'));assert.ok(content(left).includes('Sync AK sheets'));assert.ok(!content(left).includes('AK sheet settings'));
+ assert.ok(content(right).includes('AK sheet settings'));assert.ok(content(right).includes('Refresh status'));assert.ok(content(right).includes('Last sheet check'));
 });

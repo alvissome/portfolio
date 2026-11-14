@@ -1,6 +1,6 @@
-import {createStrategyCategorySelect} from './strategy-categories.js';
+import {researchColumns,visibleResearchColumns} from './research-columns.js';
 import {prioritizeUniverse, planTrackInWatchlist} from './research-core.js';
-import {createAkSheetControls} from './ak-sheet-controls.js';
+import {createAkSheetControls} from './ak-sheet-controls.js?v=compact-research-20261114';
 import {planAkLevelCopy} from './ak-sheet-sources.js';
 
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
@@ -33,7 +33,7 @@ export function researchProcessingLabel(record, part, now = Date.now()) {
 }
 
 export function researchComparisonLabel(record, part) {
-  if (record?.[part]?.validation === 'not_applicable') return {text:'Not applicable', tone:'neutral'};
+  if (record?.[part]?.validation === 'not_applicable') return {text:'Not applicable', tone:'not-applicable'};
   const reference = record?.reference;
   if (reference?.present === false) return {text:'No benchmark', tone:'neutral'};
   if (reference?.present !== true) return {text:'Reference not loaded', tone:'neutral'};
@@ -59,7 +59,7 @@ export function researchComparisonLabel(record, part) {
     reference_unknown:{text:'Reference not loaded',tone:'neutral'},
     awaiting_comparable_vintage:{text:'Different data dates',tone:'pending'},
     method_mismatch:{text:'Different IV methods',tone:'pending'}, currency_mismatch:{text:'Different currencies',tone:'pending'},
-    not_applicable:{text:'Not applicable',tone:'neutral'}, pending:{text:'Awaiting comparison',tone:'pending'}}[status]
+    not_applicable:{text:'Not applicable',tone:'not-applicable'}, pending:{text:'Awaiting comparison',tone:'pending'}}[status]
     ?? {text:'Awaiting comparison',tone:'pending'});
 }
 
@@ -69,7 +69,12 @@ export function researchComparisonLabel(record, part) {
 export function createResearchComponents(React) {
   const h = React.createElement;
   const AkSheetControls=createAkSheetControls(React);
-  const StrategyCategorySelect=createStrategyCategorySelect(React);
+  function ResearchColumnSettings({scope='holdings',visibility={},onChange}){
+    return h('div',{className:'research-column-settings','aria-label':scope==='holdings'?'Holdings research columns':'Watchlist research columns'},
+      ...researchColumns(scope).map(column=>h('label',{key:column.key},h('input',{type:'checkbox',checked:column.key==='symbol'||visibility[column.key]!==false,disabled:column.key==='symbol'||!onChange,
+        onChange:event=>onChange?.({...visibility,[column.key]:event.target.checked})}),column.label)),
+      h('button',{type:'button',className:'research-track',disabled:!onChange,onClick:()=>onChange?.({})},'Reset columns'));
+  }
 
   function ResearchViewSwitch({research, onChange, defaultLabel = 'Positions', label = 'Table view'}) {
     return h('div', {className: 'research-view-switch', role: 'group', 'aria-label': label},
@@ -79,13 +84,15 @@ export function createResearchComponents(React) {
         onClick: () => onChange(true)}, 'Research'));
   }
 
-  function ResearchBadge({record, onOpen}) {
-    const statuses = ['iv', 'supports'].map(part => ready(record, part)
-      ? researchComparisonLabel(record, part) : {text:researchProcessingLabel(record, part),tone:'pending'});
-    return h('button', {type:'button', className:'research-row-badge', onClick:onOpen,
-      title:'Open independent IV / support research'},
-      ...statuses.map((item, index) => h('span', {key:index, className:`research-comparison research-${item.tone}`},
-        index ? 'SL: ' : 'IV: ', item.text)));
+  function ResearchBadge({record,onOpen}){
+    const statuses=['iv','supports'].map(part=>{
+      if(record?.[part]?.validation==='not_applicable'||record?.[part]?.processing==='unsupported')return {text:'Not applicable',tone:'not-applicable'};
+      const comparison=researchComparisonLabel(record,part);
+      return ready(record,part)||comparison.text==='No benchmark'?comparison:{text:researchProcessingLabel(record,part),tone:'pending'};
+    });
+    const description=statuses.map((item,index)=>(index?'SL: ':'IV: ')+item.text).join(' · ');
+    return h('button',{type:'button',className:'research-row-badge',onClick:onOpen,title:description,'aria-label':'Open research. '+description},
+      ...statuses.map((item,index)=>h('span',{key:index,className:`research-comparison research-${item.tone}`,title:(index?'SL: ':'IV: ')+item.text},index?'SL':'IV')));
   }
 
   function PartStatus({record, part}) {
@@ -136,7 +143,7 @@ export function createResearchComponents(React) {
   }
 
   function ResearchPanel({holdings = [], watchlist = [], scope = 'holdings',
-    onTrack,onApplyAkLevels, getHoldingMetrics, privacyMode = false, research,strategyCategories,onStrategyCategoryChange}) {
+    onTrack,onApplyAkLevels, getHoldingMetrics, privacyMode = false, research,columnVisibility}) {
     const pending = React.useRef(new Map());
     const [tracked, setTracked] = React.useState(() => new Set());
     const [error, setError] = React.useState('');
@@ -194,21 +201,10 @@ export function createResearchComponents(React) {
       } catch (problem) {setError(problem?.message || 'Reference import failed.');}
       finally {event.target.value = '';}
     };
-    const headings = ['Symbol / Name', 'Buying category', 'Avg Price', 'BValue (SGD)', 'Close', fromAk?'AK IV':'Independent IV', fromAk?'IV source / date':'IV status',
-      'SL1', 'SL2', 'SL3', 'SL4', 'SL5', 'SL status', 'Research'];
-    if (scope === 'holdings') headings.push('Watchlist');
-
-    return h('div', {className:'research-panel'},
-      h('div', {className:'research-notice',role:'note'},
-        h('strong', null, fromAk?'AK sheet levels':'Independent research'),
-        h('strong', {className:'research-comparison research-different',style:{fontSize:'11px'}},fromAk?'Published monthly reference':'Experimental · validation in progress'),
-        h('span', null, research ? 'Saving a symbol requests research. Requested means it is waiting for the background worker; completed values and benchmark comparisons have separate statuses.'
-          : 'Research service is not connected.'),
-        scope === 'holdings' ? h('span', null, 'Showing all active holdings across accounts.') : null),
-      h('label',{style:{fontSize:'11px'}},'Displayed levels ',h('select',{'aria-label':'Displayed level source',value:levelSource,onChange:e=>setLevelSource(e.target.value)},
-        h('option',{value:'independent'},'Independent reconstruction'),h('option',{value:'ak'},'AK sheets'))),
-      scope==='watchlist'&&research?.syncAkSheets?h(AkSheetControls,{research,onSynced:()=>setLevelSource('ak')}):null,
-      scope === 'watchlist' && research ? h('div', {className:'research-controls'},
+    const columns=visibleResearchColumns(scope,fromAk,columnVisibility);
+    const levelControl=h('label',{style:{fontSize:'11px'}},'Displayed levels ',h('select',{'aria-label':'Displayed level source',value:levelSource,onChange:e=>setLevelSource(e.target.value)},
+        h('option',{value:'independent'},'Independent reconstruction'),h('option',{value:'ak'},'AK sheets')));
+    const maintenance=scope === 'watchlist' && research ? h('div', {className:'research-controls'},
         h('button', {type:'button',className:'research-track',onClick:()=>research.refresh?.()}, 'Refresh status'),
         h('details',{className:'research-details'},h('summary',null,'Advanced research maintenance'),
         h('label', {className:'research-import'}, importBusy ? 'Importing reference…' : 'Import reference snapshot',
@@ -221,11 +217,25 @@ export function createResearchComponents(React) {
           h('button', {type:'button',className:'research-track',disabled:importBusy || !pastedReference.trim() || !research.importSnapshot,
             onClick:()=>importReference(pastedReference,true)}, 'Import pasted reference'))),
         research.referenceMeta ? h('small', null, `Reference dates: ${(research.referenceMeta.dates ?? []).join(', ')}`) : null,
-        importMessage ? h('span', {role:'status'}, importMessage) : null) : null,
+        importMessage ? h('span', {role:'status'}, importMessage) : null) : null;
+    const layout=parts=>h('div',{className:'research-toolbar-grid'},
+      h('div',{className:'research-toolbar-primary'},levelControl,parts?.sync),
+      h('div',{className:'research-toolbar-secondary'},parts?.settings,parts?.checked,maintenance),parts?.messages);
+    const toolbar=scope==='watchlist'&&research?.syncAkSheets?h(AkSheetControls,{research,onSynced:()=>setLevelSource('ak'),renderLayout:layout}):layout();
+
+
+    return h('div', {className:'research-panel'},
+      h('div', {className:'research-notice',role:'note'},
+        h('strong', null, fromAk?'AK sheet levels':'Independent research'),
+        h('strong', {className:'research-comparison research-different',style:{fontSize:'11px'}},fromAk?'Published monthly reference':'Experimental · validation in progress'),
+        h('span', null, research ? 'Saving a symbol requests research. Requested means it is waiting for the background worker; completed values and benchmark comparisons have separate statuses.'
+          : 'Research service is not connected.'),
+        scope === 'holdings' ? h('span', null, 'Showing all active holdings across accounts.') : null),
+      toolbar,
       error || research?.error ? h('p', {className:'research-error',role:'alert'}, error || research.error) : null,
       allRows.length ? h('div', {className:'research-table-scroll'},
         h('table', {className:'research-table','aria-label':scope === 'holdings' ? 'Holdings research' : 'Watchlist research'},
-          h('thead', null, h('tr', null, ...headings.map(label => h('th', {key:label,scope:'col'}, label)))),
+          h('thead', null, h('tr', null, ...columns.map(column=>h('th',{key:column.key,scope:'col','data-column':column.key},column.label)))),
           h('tbody', null, ...allRows.map(row => {
             const record = records[row.symbol];
             const metrics = getHoldingMetrics?.(row.symbol) || {};
@@ -245,9 +255,7 @@ export function createResearchComponents(React) {
             const cells = [
               h('td', {key:'symbol',className:'research-symbol'}, row.symbol,
                 name && name !== row.symbol ? h('small', null, name) : null),
-              h('td', {key:'category'}, h(StrategyCategorySelect,{symbol:row.symbol,categories:strategyCategories,onChange:onStrategyCategoryChange})),
               h('td', {key:'avg',className:'research-number'}, price(metrics.avgPrice)),
-              h('td', {key:'bvalue',className:'research-number'}, numeric(metrics.bValue) ? privacyMode ? 'S$•••' : `S$${price(metrics.bValue)}` : '—'),
               h('td', {key:'close',className:'research-number'}, price(metrics.close)),
               h('td', {key:'iv',className:'research-number'}, price(iv?.value), iv?.method ? h('small', null, iv.method) : null,
                 iv?.variants?.length > 1 ? h('small', null, 'Multiple methods — see details') : null),
@@ -278,11 +286,12 @@ export function createResearchComponents(React) {
               'aria-label':`Track ${row.symbol} in watchlist`, title:trackedNow ? 'Tracked in watchlist' : 'Track in watchlist',
               checked:trackedNow, disabled:trackedNow || typeof onTrack !== 'function',
               onChange:event=>{if(event.target.checked) track(row);}})));
-            return h('tr',{key:row.securityId},...cells);
+            const shown=new Set(columns.map(column=>column.key));
+            return h('tr',{key:row.securityId},...cells.filter(cell=>shown.has(cell.key??cell.props?.key)));
           })))) : h('p', {className:'research-empty'}, scope === 'holdings' ? 'No active holdings to show.' : 'Add a symbol in the Watchlist view to include it here.'),
       h('p', {className:'research-footnote'}, 'Generated IV and support levels are experimental. Missing output stays blank; no generated levels are activated as alerts automatically. ',
         'IV and support comparisons are independent. A missing benchmark does not prevent calculation.'));
   }
 
-  return {ResearchPanel, ResearchViewSwitch, ResearchBadge};
+  return {ResearchPanel, ResearchViewSwitch, ResearchBadge, ResearchColumnSettings};
 }

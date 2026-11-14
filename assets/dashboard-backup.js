@@ -1,3 +1,4 @@
+import {normalizeResearchColumnSettings} from './research-columns.js';
 import {normalizeStrategyCategories} from './strategy-categories.js';
 import {ACCOUNTS,dateKey,todaySG} from './performance-core.js?v=ytd-20261105';
 import {normalizeAkSourceSettings} from './ak-sheet-sources.js';
@@ -124,6 +125,7 @@ export function readDashboardBackup(text) {
   if(!isRecord(state)||!Array.isArray(state.holdings)||!Array.isArray(state.watchlist)||!isRecord(state.cash)){
     throw Error('The backup is missing holdings, watchlist, or cash data.');
   }
+  if(Object.hasOwn(state,'researchColumnVisibility'))normalizeResearchColumnSettings(state.researchColumnVisibility);
   if(Object.hasOwn(state,'strategyCategories'))normalizeStrategyCategories(state.strategyCategories);
   if(backup._version===6)return {kind:'dashboard',state,performance:validateHistory(backup.performance)};
   if(backup._version===7)return {kind:'dashboard',state,performance:validateHistory(backup.performance),research:validateResearch(backup.research)};
