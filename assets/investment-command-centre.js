@@ -12,7 +12,7 @@ export function resolvedCompany(state,research,symbol){
   const row=rows[0]||{symbol};
   const resolved=resolveWatchlistLevels(row,record).row;
   return {symbol,name:row.name||holding?.name||record?.instrument?.name||symbol,category:categoryFor(state.strategyCategories,symbol),
-    currency:row.priceCurrency||holding?.currency||record?.instrument?.currency||'',iv:Number(resolved.iv),
+    currency:row.priceCurrency||holding?.currency||record?.instrument?.currency||'',lotSize:row.lotSize??holding?.lotSize??record?.instrument?.lotSize??null,iv:Number(resolved.iv),
     levels:['s1','s2','s3','s4','s5'].filter(k=>Number(resolved[k])>0).map(key=>({key,price:Number(resolved[key])})),quote:state.priceCache?.[symbol]};
 }
 export function currentUniverse(state){
