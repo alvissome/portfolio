@@ -1,5 +1,5 @@
 import {normalizeResearchColumnSettings} from './research-columns.js';
-import {normalizeStrategyCategories} from './strategy-categories.js';
+import {normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {ACCOUNTS,dateKey,todaySG} from './performance-core.js?v=ytd-20261105';
 import {normalizeAkSourceSettings} from './ak-sheet-sources.js';
 

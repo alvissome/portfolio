@@ -1,6 +1,6 @@
-import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js';
+import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
-import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=plan-review-20261114';
+import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=entry-sizing-20261114';
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
 const date=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value));
 const positive=n=>Number.isFinite(Number(n))&&Number(n)>0;
@@ -13,7 +13,7 @@ export function resolvedCompany(state,research,symbol){
   const resolved=resolveWatchlistLevels(row,record).row;
   return {symbol,shares:(state.holdings||[]).filter(h=>h.ticker===symbol&&h.accountType==='Cash'&&!h.exited).reduce((n,h)=>n+Number(h.shares||0),0),name:row.name||holding?.name||record?.instrument?.name||symbol,category:categoryFor(state.strategyCategories,symbol),
     currency:row.priceCurrency||holding?.currency||record?.instrument?.currency||'',lotSize:row.lotSize??holding?.lotSize??record?.instrument?.lotSize??null,iv:Number(resolved.iv),
-    levels:['s1','s2','s3','s4','s5'].filter(k=>Number(resolved[k])>0).map(key=>({key,price:Number(resolved[key])})),quote:state.priceCache?.[symbol]};
+    levels:['s1','s2','s3','s4','s5'].filter(k=>Number(resolved[k])>0).map(key=>({key,price:Number(resolved[key])})),fx:(row.priceCurrency||holding?.currency||record?.instrument?.currency)==='SGD'?1:state.fxRates?.[row.priceCurrency||holding?.currency||record?.instrument?.currency],quote:state.priceCache?.[symbol]};
 }
 export function currentUniverse(state){
   const map=new Map();
@@ -51,11 +51,12 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
       result=!plan?{status:'review',amount:null,reasons:[company.category?'Approve this company’s purchase plan.':'Choose Anchor, Core or Selective in Holdings or Watchlist.']}
         :!funding?{status:'review',amount:null,reasons:[fundingError]}
         :previewPurchase(plan,funding,{close:company.quote?.close,priceStale:stale,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],iv:company.iv,category:company.category,today,lotSize:plan.lotSize,oddLots:plan.oddLots,rounding:plan.rounding,levelsChanged});
-      if(result.status==='eligible'&&(!(result.amount>0)||!(result.units>0)))result={...result,status:'review',amount:null,reasons:[result.amount>0?'The budget cannot fund one tradable lot. Enable odd lots only if your broker supports them.':'No purchase capacity remains under the company ceiling or available cash.']};
+      if(result.status==='eligible'&&(!(result.amount>0)||!(result.units>0)))result={...result,status:'review',amount:null,reasons:[result.amount>0?'The budget cannot fund one order increment. Review the budget and share increment.':'No purchase capacity remains under the company ceiling or available cash.']};
     }catch(e){result={status:'review',amount:null,reasons:[e.message]};}
     const levels=expectedLevels(company),eligible=levels.filter(l=>company.quote?.close>0&&company.quote.close<=l.price).at(-1);
     const next=plan?.stages?.find(s=>!s.completed&&s.spent<s.budget);
     const support=result.stage||result.next||eligible||next||levels[0];
+    const supportIndex=levels.findIndex(l=>l.key===support?.key),followingSupport=supportIndex>=0?levels[supportIndex+1]??null:null;
     // Ordinary price ticks do not erase a decision. Holdings, plan/IV/SL/category
     // changes and a different eligible stage do; all earlier records remain.
     const context=JSON.stringify({symbol:item.symbol,category:company.category,levels:company.levels,iv:company.iv,currency:company.currency,
@@ -70,13 +71,13 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const currentHolding=displayFunding?(Object.hasOwn(displayFunding.byCompany,item.symbol)?displayFunding.byCompany[item.symbol]:0):null;
     const currentWeight=displayFunding?.complete&&currentHolding!==null?currentHolding/displayFunding.base*100:null;
     const concentration=!!plan&&currentWeight!==null&&currentWeight>plan.ceilingPct;
-    return {...item,...company,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,orders,status,support,currentWeight,valuationPending:!!fundingError,currentHolding,shares,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
+    return {...item,...company,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
       changedDecision:history.some(d=>d.context!==context&&['deferred','dismissed','reviewed'].includes(d.status))};
   });
   const archivedPlans=Object.values(config.plans||{}).filter(p=>!active.has(p.symbol));
   const history=decisions.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')||(b.sequence||0)-(a.sequence||0)).map(d=>({...d,active:active.has(d.symbol),contextCurrent:rows.some(r=>r.symbol===d.symbol&&r.context===d.context)}));
   const visible=rows.filter(r=>!['dismissed','deferred'].includes(r.status));
-  const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol,category])=>({symbol,category}));
+  const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol])=>({symbol,category:'selective'}));
   return {rows,visible,history,archivedPlans,inactiveCategories,funding,displayFunding,fundingError,reserved,
     stats:{attention:visible.filter(r=>r.status==='review'||r.concentration).length,opportunities:visible.filter(r=>r.status==='eligible').length,
       pendingOrders:decisions.filter(d=>d.status==='ordered').length,decisions:decisions.length},

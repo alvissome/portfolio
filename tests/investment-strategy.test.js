@@ -119,3 +119,13 @@ test('routine IV/SL review retains frozen budgets; changed Selective percentages
  assert.equal(same.baseAtApproval,previous.baseAtApproval);assert.deepEqual(same.stages.map(s=>s.budget),[10000,15000]);
  assert.deepEqual(reviewPurchasePlan(previous,plan('XYZ','selective',[4,4])).stages.map(s=>s.budget),[20000,20000]);
 });
+
+test('the selected-SL purchase budget persists through review and caps opportunity/order sizing',()=>{
+ const p=plan('XYZ','core');p.stages[0].purchaseBudget=1000;
+ const result=preview(p,fund(),{close:95});assert.equal(result.stage.key,'s3');assert.equal(result.amount,1000);
+ const filled=recordStageFill(p,p.stages[0].id,{spent:400,completed:false,date:'2026-11-13'});
+ assert.equal(preview(filled,fund(),{close:95}).amount,600);
+ const reviewed=reviewPurchasePlan(filled,plan('XYZ','core'));assert.equal(reviewed.stages[0].purchaseBudget,1000);assert.equal(reviewed.stages[0].spent,400);assert.equal(preview(reviewed,fund(),{close:95}).amount,600);
+ assert.equal(preview(reviewed,fund(),{close:79}).amount,15000);
+ const smaller=reviewPurchasePlan(p,{...plan('XYZ','core'),stages:plan('XYZ','core').stages.map(s=>({...s,budget:100}))});assert.equal(smaller.stages[0].purchaseBudget,1000);assert.equal(smaller.stages[0].budget,7500);
+});

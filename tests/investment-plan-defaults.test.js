@@ -53,3 +53,28 @@ test('desktop cards use three columns and holdings tools stay centred as one gro
  assert.match(research,/\.holdings-table-tools\{[^}]*margin-left:auto;margin-right:auto/);
  assert.match(bundle,/className:"holdings-table-tools",children:\[m.jsx\(ResearchViewSwitch/);
 });
+
+test('each category has an editable selected-SL budget with calculated shares and lots',async()=>{
+ const {entryDraft}=await import('../assets/investment-plan-defaults.js');
+ const current={...company,fx:1.3,quote:{close:95}};
+ const f={base:500000,available:100000,byCompany:{EXAMPLE:0}};
+ for(const category of ['anchor','core','selective']){
+  const draft=planDraft({...current,category},null,f);
+  const entry=entryDraft(draft,{...current,category},f);
+  assert.ok(entry.requested>0);assert.ok(entry.units>0);assert.equal(entry.lots,entry.units);assert.ok(entry.spend<=entry.amount);assert.deepEqual(entry.issues,[]);
+ }
+ const core={...current,category:'core'},draft=planDraft(core,null,f);
+ const sized=entryDraft(draft,core,f,{stageKey:'s4',budget:2400,increment:10});
+ assert.equal(sized.units,20);assert.equal(sized.lots,2);assert.equal(sized.spend,2340);assert.equal(sized.entry,90);
+ const whole=entryDraft(draft,core,f,{stageKey:'s4',budget:2400,increment:1});assert.equal(whole.units,20);
+ assert.ok(entryDraft(draft,core,f,{stageKey:'s3',budget:9000}).issues.some(s=>s.includes('exceeds')));
+ assert.equal(entryDraft(draft,core,f,{stageKey:'s3',budget:2000,increment:null}).units,null);
+});
+test('selected-SL sizing subtracts actual fills, keeps completed stages closed and respects company/cash limits',async()=>{
+ const {entryDraft}=await import('../assets/investment-plan-defaults.js');
+ const core={...company,category:'core',fx:1,quote:{close:95}},f={base:500000,available:1000,byCompany:{EXAMPLE:29500}};
+ const draft=planDraft(core,null,f);draft.stages[0].spent=7000;
+ let e=entryDraft(draft,core,f,{stageKey:'s3'});assert.equal(e.capacity,500);assert.equal(e.units,5);
+ draft.stages[0].completed=true;e=entryDraft(draft,core,f,{stageKey:'s3'});assert.equal(e.capacity,0);assert.equal(e.units,0);
+ const missing=entryDraft(planDraft(core,null,null),core,null);assert.equal(missing.amount,null);assert.equal(missing.units,null);
+});

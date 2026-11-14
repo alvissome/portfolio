@@ -35,3 +35,25 @@ export function createStrategyCategorySelect(React){
       h('option',{value:''},'Unassigned'),...Object.entries(STRATEGY_CATEGORIES).map(([value,label])=>h('option',{key:value,value},label)));
   };
 }
+export const categoryRank=category=>({anchor:0,core:1,selective:2}[category]??3);
+export function selectCategoryRows(rows,categories,symbolKey,filter='all',sort='none'){
+ const map=normalizeStrategyCategories(categories);
+ const selected=rows.filter(row=>filter==='all'||(filter==='unassigned'?!map[row[symbolKey]]:map[row[symbolKey]]===filter));
+ if(sort==='asc'||sort==='desc')selected.sort((a,b)=>{const ar=categoryRank(map[a[symbolKey]]),br=categoryRank(map[b[symbolKey]]);return ar===3||br===3?ar-br:(sort==='asc'?1:-1)*(ar-br);});
+ return selected;
+}
+export function reconcileStrategyCategories(categories,holdings=[],watchlist=[]){
+ const next=normalizeStrategyCategories(categories),active=new Set([...holdings.filter(h=>!h.exited).map(h=>h.ticker),...watchlist.map(w=>w.symbol)]);
+ for(const symbol of Object.keys(next))if(!active.has(symbol))next[symbol]='selective';
+ return next;
+}
+export function createCategoryControls(React){
+ const h=React.createElement;
+ return function CategoryControls({scope,filter='all',sort='none',onFilter,onSort}){
+  return h('div',{className:'category-controls','aria-label':scope+' category controls'},
+   h('label',null,'Category',h('select',{'aria-label':scope+' category filter',value:filter,onChange:e=>onFilter(e.target.value)},
+    ...[['all','All'],...Object.entries(STRATEGY_CATEGORIES),['unassigned','Unassigned']].map(([value,label])=>h('option',{key:value,value},label)))),
+   h('label',null,'Sort',h('select',{'aria-label':scope+' category sort',value:sort,onChange:e=>onSort(e.target.value)},
+    ...[['none','Current order'],['asc','Anchor first'],['desc','Selective first']].map(([value,label])=>h('option',{key:value,value},label)))));
+ };
+}
