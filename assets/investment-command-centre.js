@@ -1,6 +1,6 @@
 import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
-import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=entry-sizing-20261114';
+import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=compact-price-20261114';
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
 const date=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value));
 const positive=n=>Number.isFinite(Number(n))&&Number(n)>0;
@@ -53,7 +53,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
         :previewPurchase(plan,funding,{close:company.quote?.close,priceStale:stale,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],iv:company.iv,category:company.category,today,lotSize:plan.lotSize,oddLots:plan.oddLots,rounding:plan.rounding,levelsChanged});
       if(result.status==='eligible'&&(!(result.amount>0)||!(result.units>0)))result={...result,status:'review',amount:null,reasons:[result.amount>0?'The budget cannot fund one order increment. Review the budget and share increment.':'No purchase capacity remains under the company ceiling or available cash.']};
     }catch(e){result={status:'review',amount:null,reasons:[e.message]};}
-    const levels=expectedLevels(company),eligible=levels.filter(l=>company.quote?.close>0&&company.quote.close<=l.price).at(-1);
+    const levels=expectedLevels(company),eligible=levels.filter(l=>company.quote?.close>0&&company.quote.close<=Math.min(l.price,plan?.stages?.find(s=>s.key===l.key)?.entryPrice??l.price)).at(-1);
     const next=plan?.stages?.find(s=>!s.completed&&s.spent<s.budget);
     const support=result.stage||result.next||eligible||next||levels[0];
     const supportIndex=levels.findIndex(l=>l.key===support?.key),followingSupport=supportIndex>=0?levels[supportIndex+1]??null:null;
@@ -97,7 +97,7 @@ export function addDecision(config,row,{kind,id,now,until,amount,note='',today=S
   if(kind==='ordered'){
     if(row.status!=='eligible'||!positive(amount)||Number(amount)>row.result.amount)throw Error('The pending order must fit the currently eligible purchase amount.');
     record.reserved=Number(amount);record.originalReserved=Number(amount);
-    record.unitEstimate=Math.floor(Number(amount)/(row.result.maxEntry*(row.currency==='SGD'?1:row.fx)*row.result.lot))*row.result.lot;record.entryLimit=row.result.maxEntry;record.currency=row.currency;
+    record.unitEstimate=Math.floor(Number(amount)/(row.result.maxEntry*(row.currency==='SGD'?1:row.fx)*row.result.lot)+1e-10)*row.result.lot;record.entryLimit=row.result.maxEntry;record.currency=row.currency;
   }
   return {...config,decisionSequence:sequence,decisions:{...config.decisions,[id]:record}};
 }

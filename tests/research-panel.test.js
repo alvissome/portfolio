@@ -150,7 +150,7 @@ test('watchlist research metrics update from callbacks and respect monetary priv
     getHoldingMetrics: () => ({close, avgPrice: 8, bValue: close * 2})};
   let tree = runtime.render(runtime.components.ResearchPanel, props);
   assert.ok(content(tree).includes('10.00'));
-  assert.ok(content(tree).includes('8.00'), 'Avg Price remains visible in privacy mode, matching existing tables');
+  assert.ok(!content(tree).includes('8.00'), 'Private average purchase price is hidden while public quotes remain visible');
   assert.ok(!content(tree).includes('S$•••'), 'BValue is removed entirely from research');
   assert.equal(nodes(tree, 'button').length, 1);
   assert.equal(nodes(tree, 'button')[0].props.disabled, true, 'calculation is unavailable without a service adapter');

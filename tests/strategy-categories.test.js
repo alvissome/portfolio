@@ -159,3 +159,12 @@ test('both production tables filter by category and watchlist filtering disables
  }
  assert.ok(all(watch,n=>n.type==='tr'&&n.props.draggable===false).length);
 });
+
+test('privacy masks account quantities, average costs and notes while keeping public closes',()=>{
+ const holdings=[{ticker:'XYZ',accountType:'Cash',portfolioType:'Growth',shares:123456,currency:'USD',average_cost:543.21}],prices={XYZ:{close:95}};
+ const common={holdings,prices,fxRate:1.3,fxRates:{USD:1.3},cash:{},privacyMode:true,portfolioTypes:['Growth'],accountTypes:['Cash'],columnVisibility:{shares:true,avgPrice:true,close:true,notes:true},strategyCategories:{XYZ:'core'}};
+ for(const tree of [renderProductionTable('NN',common),renderProductionTable('RN',{...common,watchlist:[{id:'row',symbol:'XYZ',notes:'PRIVATE NOTE',alertConfig:{}}]})]){
+  const json=JSON.stringify(tree,(key,value)=>typeof value==='function'?undefined:value);
+  assert.ok(!json.includes('543.21'));assert.ok(!json.includes('123,456'));assert.ok(!json.includes('PRIVATE NOTE'));assert.ok(json.includes('95.00'));
+ }
+});

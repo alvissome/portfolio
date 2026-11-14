@@ -75,7 +75,7 @@ export function reviewPurchasePlan(previous,fresh) {
   const stages=fresh.stages.map(s=>{
     const old=oldByKey.get(s.key);
     if(!old)return s;
-    return {...s,id:old.id,spent:old.spent,completed:old.completed,...(old.purchaseBudget!=null?{purchaseBudget:sameSchedule?old.purchaseBudget:Math.min(s.budget,old.purchaseBudget)}:{}),...(old.fillDate?{fillDate:old.fillDate}:{}),...(sameSchedule?{budget:old.budget}:{})};
+    return {...s,id:old.id,spent:old.spent,completed:old.completed,...(old.entryPrice!=null?{entryPrice:old.entryPrice}:{}),...(old.purchaseQuantity!=null?{purchaseQuantity:old.purchaseQuantity}:{}),...(old.purchaseBudget!=null?{purchaseBudget:sameSchedule?old.purchaseBudget:Math.min(s.budget,old.purchaseBudget)}:{}),...(old.fillDate?{fillDate:old.fillDate}:{}),...(sameSchedule?{budget:old.budget}:{})};
   });
   const activeKeys=new Set(stages.map(s=>s.key));
   return {...fresh,...(sameSchedule?{baseAtApproval:previous.baseAtApproval}:{}),stages,
@@ -104,7 +104,7 @@ export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSi
   if(reasons.length)return pending(reasons);
   if(close>=iv)return {status:'paused',amount:0,reasons:['Price is at or above reviewed IV.']};
   const unused=plan.stages.filter(s=>!s.completed&&s.spent<s.budget);
-  const stage=unused.filter(s=>close<=s.price).at(-1);
+  const stage=unused.filter(s=>close<=Math.min(s.price,s.entryPrice??s.price)).at(-1);
   if(!stage)return {status:'hold',amount:0,next:unused[0],reasons:['No unused support is currently eligible.']};
   const holding=funding.byCompany[plan.symbol]||0;
   const limits={stage:Math.max(0,Math.min(stage.budget,stage.purchaseBudget??stage.budget)-stage.spent),ceiling:Math.max(0,funding.base*plan.ceilingPct/100-holding),cash:funding.available};
@@ -112,11 +112,12 @@ export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSi
   const lot=positive(oddLots?1:lotSize,'lot size');
   if(!Number.isInteger(lot))throw Error('Lot size must be a whole number.');
   // The IV comparison is strict: an executable limit may not equal IV.
-  const maxEntry=Math.min(stage.price,iv);
+  const maxEntry=Math.min(stage.price,stage.entryPrice??stage.price,iv);
   const rawUnits=amount/(maxEntry*fx);
   // Round up only within all approved budgets and shared cash. Never breach a cap.
-  const nearest=rounding==='nearest'?Math.round(rawUnits/lot)*lot:Math.floor(rawUnits/lot)*lot;
-  const units=nearest*maxEntry*fx<=amount+1e-9?nearest:Math.floor(rawUnits/lot)*lot;
+  const nearest=rounding==='nearest'?Math.round(rawUnits/lot)*lot:Math.floor(rawUnits/lot+1e-10)*lot;
+  const budgetUnits=nearest*maxEntry*fx<=amount+1e-9?nearest:Math.floor(rawUnits/lot+1e-10)*lot;
+  const units=stage.purchaseQuantity==null?budgetUnits:Math.min(budgetUnits,Math.floor(Math.max(0,stage.purchaseQuantity)/lot)*lot);
   const minimumAmount=plan.category==='selective'?Math.min(amount,Math.max(0,funding.base*.02-stage.spent)):amount;
   return {status:'eligible',stage,amount,minimumAmount,rawUnits,lot,portfolioPct:amount/funding.base*100,limits,limitedBy:Object.keys(limits).filter(k=>Math.abs(limits[k]-amount)<.011),maxEntry,strictIV:maxEntry===iv,units,
     estimatedSpend:units*maxEntry*fx,projectedWeight:(holding+units*maxEntry*fx)/funding.base*100,
