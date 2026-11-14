@@ -1,8 +1,8 @@
 {
-  "name": "portfolio-alerts",
+  "name": "personal-portfolio-workers",
   "version": "1.0.0",
-  "description": "GitHub Actions daily watchlist alert checker",
-  "main": "checkAlerts.js",
+  "description": "Personal portfolio research and performance workers",
+  "main": "runResearch.js",
   "type": "module",
   "dependencies": {
     "firebase-admin": "^12.0.0",

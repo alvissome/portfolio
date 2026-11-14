@@ -1,6 +1,7 @@
+import {cashAllowance,recordCashUse} from './cc-cash-allowance.js?v=cc-cash-budget-20261114';
 import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
-import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=compact-price-20261114';
+import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=cc-cash-budget-20261114';
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
 const date=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value));
 const positive=n=>Number.isFinite(Number(n))&&Number(n)>0;
@@ -33,13 +34,17 @@ function expectedLevels(company){
 export function buildCommandCentre(state,research,config,{today,now=Date.now()}={}){
   if(!date(today))throw Error('A valid Singapore date is required.');
   const universe=currentUniverse(state),active=new Set(universe.map(r=>r.symbol)),decisions=Object.values(config.decisions||{});
-  let funding=null,displayFunding=null,fundingError='',reserved=0;
+  let funding=null,displayFunding=null,fundingError='',reserved=0,allowance={spent:0,byCompany:{},entries:[],needsReconciliation:false};
+  try{allowance=cashAllowance(config,state);}catch(e){fundingError=e.message;}
   try{displayFunding=strategyFunding(state,{...config.funding,pending:Number(config.funding?.pending||0)+reservedCash(config)},{displayOnly:true});}catch(e){fundingError=e.message;}
   try{
     reserved=reservedCash(config);
     for(const h of state.holdings||[])if(h.accountType==='Cash'&&!h.exited){const timestamp=Number(state.priceCache?.[h.ticker]?.timestamp);if(!(timestamp>0)||now-timestamp>4*86400000)throw Error('Sync current holding prices for '+h.ticker+' before sizing the portfolio.');}
     funding=strategyFunding(state,{...config.funding,pending:Number(config.funding?.pending||0)+reserved});
   }catch(e){fundingError=e.message;}
+  for(const value of [funding,displayFunding])if(value){value.available=Math.max(0,value.available-allowance.spent);value.unreconciledByCompany=allowance.byCompany;if(allowance.needsReconciliation||allowance.legacyReviewRequired||fundingError)value.confirmed=false;}
+  if(allowance.needsReconciliation)fundingError='New StocksCafe cash import: review which CC spending is already included before using another purchase preview.';
+  if(allowance.legacyReviewRequired)fundingError='Review your opening CC cash allowance: earlier fill history has not been charged automatically. Include any unimported earlier spend in Other unavailable cash.';
   const rows=universe.map(item=>{
     const plan=config.plans?.[item.symbol];let company={symbol:item.symbol,name:item.symbol,levels:[]},result;
     const orders=decisions.filter(d=>d.symbol===item.symbol&&d.status==='ordered');
@@ -71,14 +76,14 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const currentHolding=displayFunding?(Object.hasOwn(displayFunding.byCompany,item.symbol)?displayFunding.byCompany[item.symbol]:0):null;
     const currentWeight=displayFunding?.complete&&currentHolding!==null?currentHolding/displayFunding.base*100:null;
     const concentration=!!plan&&currentWeight!==null&&currentWeight>plan.ceilingPct;
-    return {...item,...company,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
+    return {...item,...company,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
       changedDecision:history.some(d=>d.context!==context&&['deferred','dismissed','reviewed'].includes(d.status))};
   });
   const archivedPlans=Object.values(config.plans||{}).filter(p=>!active.has(p.symbol));
   const history=decisions.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')||(b.sequence||0)-(a.sequence||0)).map(d=>({...d,active:active.has(d.symbol),contextCurrent:rows.some(r=>r.symbol===d.symbol&&r.context===d.context)}));
   const visible=rows.filter(r=>!['dismissed','deferred'].includes(r.status));
   const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol])=>({symbol,category:'selective'}));
-  return {rows,visible,history,archivedPlans,inactiveCategories,funding,displayFunding,fundingError,reserved,
+  return {rows,visible,history,archivedPlans,inactiveCategories,funding,displayFunding,fundingError,reserved,allowance,
     stats:{attention:visible.filter(r=>r.status==='review'||r.concentration).length,opportunities:visible.filter(r=>r.status==='eligible').length,
       pendingOrders:decisions.filter(d=>d.status==='ordered').length,decisions:decisions.length},
     totalSuggested:visible.filter(r=>r.status==='eligible').reduce((n,r)=>n+r.result.amount,0)};
@@ -101,7 +106,7 @@ export function addDecision(config,row,{kind,id,now,until,amount,note='',today=S
   }
   return {...config,decisionSequence:sequence,decisions:{...config.decisions,[id]:record}};
 }
-export function settleOrder(config,id,{kind,spent,completed=false,date:fillDate,now,today=String(now||'').slice(0,10)}={}){
+export function settleOrder(config,id,{kind,spent,completed=false,date:fillDate,now,today=String(now||'').slice(0,10),cashBasis,cashId}={}){
   const order=config.decisions?.[id];if(!order||order.status!=='ordered')throw Error('This pending order has already been reconciled.');
   if(!['cancelled','filled'].includes(kind))throw Error('Choose cancel or record final fill.');
   const next={...order,status:kind,reserved:0,updatedAt:now};
@@ -113,8 +118,9 @@ export function settleOrder(config,id,{kind,spent,completed=false,date:fillDate,
     if(!stage)throw Error('The original purchase stage must be recovered before recording this fill.');
     const updated=recordStageFill({...plan,stages:[stage]},stage.id,{spent:stage.spent+Number(spent),completed:stage.completed||completed,date:fillDate}).stages[0];
     const changed={...plan,...(active?{stages:plan.stages.map(s=>s.id===stage.id?updated:s)}:{archivedStages:plan.archivedStages.map(s=>s.id===stage.id?updated:s)})};
-    plans={...plans,[order.symbol]:changed};funding={...funding,confirmed:false};
+    plans={...plans,[order.symbol]:changed};funding=cashBasis?funding:{...funding,confirmed:false};
     next.actualSpend=Number(spent);next.fillDate=fillDate;next.stageCompleted=updated.completed;
   }
-  return {...config,plans,funding,decisions:{...config.decisions,[id]:next}};
+  const settled={...config,plans,funding,decisions:{...config.decisions,[id]:next}};
+  return kind==='filled'&&cashBasis?recordCashUse(settled,{id:cashId,symbol:order.symbol,amount:Number(spent),date:fillDate,now,basis:cashBasis,stageId:order.stageId,orderId:id}):settled;
 }

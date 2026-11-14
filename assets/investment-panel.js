@@ -1,24 +1,25 @@
-import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=support-allocation-20261114';
+import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=cc-cash-budget-20261114';
+import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=cc-cash-budget-20261114';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
 import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=compact-price-20261114';
-import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=compact-price-20261114';
+import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=cc-cash-budget-20261114';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
-import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=compact-price-20261114';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=compact-price-20261114';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=compact-price-20261114';
-export {resolvedCompany} from './investment-command-centre.js?v=compact-price-20261114';
+import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=cc-cash-budget-20261114';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=cc-cash-budget-20261114';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=cc-cash-budget-20261114';
+export {resolvedCompany} from './investment-command-centre.js?v=cc-cash-budget-20261114';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
-  return function InvestmentPanel({uid,state,research,storage,onCategoryChange}){
-    const root=React.useRef(null),controller=React.useRef(null);
-    React.useEffect(()=>{controller.current=mountInvestmentPanel(root.current,{state,research,storage,onCategoryChange});return()=>controller.current?.destroy();},[uid]);
-    React.useEffect(()=>controller.current?.update(state,research,onCategoryChange),[state,research,onCategoryChange]);
-    return jsx.jsx('section',{ref:root,className:'pf-panel investment-panel','aria-label':'Investment Command Centre'});
+  return function InvestmentPanel({uid,state,research,storage,onCategoryChange,watchlistPanel,onRefresh}){
+    const root=React.useRef(null),controller=React.useRef(null),[view,setView]=React.useState('opportunities');
+    React.useEffect(()=>{controller.current=mountInvestmentPanel(root.current,{state,research,storage,onCategoryChange,onViewChange:setView,onRefresh});return()=>controller.current?.destroy();},[uid]);
+    React.useEffect(()=>controller.current?.update(state,research,onCategoryChange,onRefresh),[state,research,onCategoryChange,onRefresh]);
+    return jsx.jsxs('section',{className:'ic-cc-shell','aria-label':'Investment Command Centre',children:[jsx.jsx('div',{ref:root,className:'pf-panel investment-panel'}),view==='watchlist'&&!state.privacyMode&&jsx.jsx('div',{className:'ic-watchlist-host',children:watchlistPanel})]});
   };
 }
-export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange}){
-  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',categoryFilter='all',categorySort='none',categoryChange=onCategoryChange,selectedSymbol='',draftEdits={};
+export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange,onViewChange=()=>{},onRefresh}){
+  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',categoryFilter='all',categorySort='none',categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false;
   const show=n=>state.privacyMode?'S$•••':n==null?'—':'S$'+new Intl.NumberFormat('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
   const field=(name,label,value='',attrs='')=>`<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
   async function reload(){
@@ -29,6 +30,12 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     if(!loaded||busy)throw Error('Wait for strategy data to finish loading or saving.');
     busy=true;
     try{await storage.save(next);if(alive){config=next;notice='Saved. Preview only; no order or notification sent.';}}finally{busy=false;}
+  }
+  function renderCashAllowance(model){
+    const rows=model.allowance.entries;
+    if(!rows.length)return '<p class="ic-meta">CC cash tracking only affects planning. Imported StocksCafe holdings, balances and performance history remain unchanged.</p>';
+    const pending=rows.filter(e=>cashUseCanBeIncluded(e,state));
+    return `<details data-section="cash-use" ${model.allowance.needsReconciliation?'open':''}><summary>CC cash used since import · ${show(model.allowance.spent)}</summary><p>These planning deductions do not post ledger transactions or change imported holdings/balances. Keep them until a new StocksCafe cash import reflects the spending.</p>${pending.length||model.allowance.needsReconciliation?`<form data-cash-reconcile><p>Reconcile against your latest StocksCafe cash import. Select only spending already included in that balance; unselected records carry forward.</p>${pending.map(e=>`<label><input type="checkbox" name="included" value="${esc(e.id)}"> ${esc(e.date)} · ${esc(e.symbol)} · ${show(e.amount)} is included in StocksCafe</label>`).join('')}<label><input type="checkbox" name="confirmed" required> I checked these against the imported StocksCafe cash balance.</label><button>Reconcile CC cash use</button></form>`:''}<div class="ic-support-table-wrap"><table><thead><tr><th>Date</th><th>Company</th><th>Cash used (SGD)</th></tr></thead><tbody>${rows.map(e=>`<tr><td>${esc(e.date)}</td><td>${esc(e.symbol)}</td><td>${show(e.amount)}</td></tr>`).join('')}</tbody></table></div></details>`;
   }
   function render(){
     if(!alive)return;
@@ -43,15 +50,16 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     const open=new Set([...root.querySelectorAll('details[open]')].map(x=>x.dataset.section));
     const symbols=[...new Set([...(state.holdings||[]).filter(h=>h.accountType==='Cash'&&!h.exited).map(h=>h.ticker),...(state.watchlist||[]).map(h=>h.symbol)])].filter(Boolean);
     selectedSymbol=preferredPlanSymbol(symbols,state,config.plans,selectedSymbol);
-    root.innerHTML=`<div class="ic-title"><div><h2>Investment Command Centre</h2><p>Your next investment decisions, using current holdings and the watchlist.</p></div><button type="button" class="ic-secondary" data-reload-command>Reload saved decisions</button></div>
+    root.innerHTML=`<div class="ic-title"><div><h2>Investment Command Centre</h2><p>Your next investment decisions, using current holdings and the watchlist.</p></div><div class="ic-actions"><button type="button" class="ic-secondary" data-refresh-prices ${!refreshPrices||refreshing?'disabled':''}>${refreshing?'Refreshing…':'Refresh prices'}</button><button type="button" class="ic-secondary" data-reload-command>Reload saved decisions</button></div></div>
       <p>Anchor: equal nibbles at every approved support. Core: 1.5% + 1.5% + up to 3% at the deepest three (6% ceiling). Selective: reassess 2–4% per eligible entry at the deepest two (4% company ceiling); buy less or skip when cash or alternatives warrant it. Anchor ceiling: 10%.</p>
       ${!loaded?'<p>Loading saved plans and decisions…</p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
-      ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. Recorded order reservations: ${show(model.reserved)}. Available after all pending orders: <strong>${show(funding.available)}</strong>.</p>`:''}
+      ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. CC cash used since import: ${show(model.allowance.spent)}. Pending order reservations: ${show(model.reserved)}. Available for other buys: <strong>${show(funding.available)}</strong>.</p>`:''}
       ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort})}
-      <details data-section="funding" ${open.has('funding')?'open':''}><summary>Confirm strategy funding</summary>
-        <form data-funding>${field('liabilities','Related liabilities (SGD)',config.funding.liabilities??0,'type="number" min="0" step="0.01" required')}${field('pending','External pending orders / reserved cash (SGD)',config.funding.pending??0,'type="number" min="0" step="0.01" required')}
+      ${filter==='watchlist'?'':renderCashAllowance(model)}
+      <details data-section="funding" ${open.has('funding')||model.allowance.legacyReviewRequired?'open':''}><summary>Confirm strategy funding</summary>
+        <form data-funding>${field('liabilities','Related liabilities (SGD)',config.funding.liabilities??0,'type="number" min="0" step="0.01" required')}${field('pending','Other unavailable cash: external orders or unrecorded spending (SGD)',config.funding.pending??0,'type="number" min="0" step="0.01" required')}
         <label><input type="checkbox" name="confirmed" ${config.funding.confirmed?'checked':''} required> I reviewed holdings and FX. All recorded broker cash and bank set-aside cash are committed to this strategy; liabilities and pending orders above are current.</label><button ${!loaded?'disabled':''}>Save funding confirmation</button></form>
-        <p>Enter pending orders not already recorded in My decisions, so cash is counted once. CPF/SRS are excluded. Pending orders reduce available cash, not the portfolio base. Refresh this confirmation when commitments change. Bank cash may need transferring before an order can be funded.</p></details>
+        <p>Enter only amounts not already tracked in CC. New fill cash use stays deducted until you reconcile it against a StocksCafe import. Earlier history-only fills are not charged retrospectively. CPF/SRS are excluded. Pending orders reduce available cash, not the portfolio base. Refresh this confirmation when commitments change. Bank cash may need transferring before an order can be funded.</p></details>
       <details data-section="plan" ${open.has('plan')?'open':''}><summary>Create or review a company plan</summary>
         <form data-plan class="ic-compact-plan">
         <label>Company<select name="symbol">${symbols.map(s=>`<option value="${esc(s)}" ${s===selectedSymbol?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
@@ -74,6 +82,12 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         <p class="ic-meta" data-plan-feedback></p>
         </details>
 `;
+    root.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{filter=button.dataset.commandFilter;onViewChange(filter);render();});
+    root.querySelector('[data-reload-command]').onclick=()=>reload();
+    root.querySelector('[data-refresh-prices]').onclick=async()=>{refreshing=true;render();try{await refreshPrices?.();notice='Prices refreshed. AK sheet sync is available under Watchlist → Research.';}catch(e){error=e.message;}finally{refreshing=false;render();}};
+    if(filter==='watchlist'){
+      root.querySelector('[data-section="funding"]').remove();root.querySelector('[data-section="plan"]').remove();root.querySelector('[data-plan-feedback]')?.remove();return;
+    }
     const selector=root.querySelector('[name="symbol"]');
     const get=name=>root.querySelector('[data-plan] [name="'+name+'"]');
     const currentDraft=()=>{
@@ -123,7 +137,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     });
     const action=fn=>async e=>{e.preventDefault();error='';notice='';try{if(!loaded||busy)throw Error('Wait for saved decisions to load or finish saving.');await fn(new FormData(e.target),e.target);}catch(err){error=err.message;}render();};
     root.querySelector('[data-funding]').onsubmit=action(async fd=>{
-      const next={...config,funding:{liabilities:Number(fd.get('liabilities')),pending:Number(fd.get('pending')),confirmed:fd.get('confirmed')==='on',confirmedAt:new Date().toISOString(),basisSignature:fundingSignature(state)}};
+      const next={...config,cashTrackingVersion:1,funding:{liabilities:Number(fd.get('liabilities')),pending:Number(fd.get('pending')),confirmed:fd.get('confirmed')==='on',confirmedAt:new Date().toISOString(),basisSignature:fundingSignature(state)}};
       strategyFunding(state,next.funding);await save(next);
     });
     root.querySelector('[data-plan]').onsubmit=action(async fd=>{
@@ -147,11 +161,15 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       if(fd.get('date')>today())throw Error('A fill cannot be dated in the future.');
       const symbol=form.dataset.fill;
       if(Object.values(config.decisions||{}).some(d=>d.status==='ordered'&&d.symbol===symbol&&d.stageId===form.dataset.stage))throw Error('Record this fill through the pending order in My decisions so its reservation is reconciled.');
-      const plan=recordStageFill(config.plans[symbol],form.dataset.stage,{spent:fd.get('spent'),completed:fd.get('completed')==='on',date:fd.get('date')});
-      // Fill and funding invalidation must persist atomically.
-      await save({...config,plans:{...config.plans,[symbol]:plan},funding:{...config.funding,confirmed:false}});
-      notice='Stage fill saved. Import updated holdings and broker cash, then confirm funding before using another preview.';
+      const next=recordStageCashFill(config,symbol,form.dataset.stage,{spent:fd.get('spent'),completed:fd.get('completed')==='on',date:fd.get('date')},{id:crypto.randomUUID(),now:new Date().toISOString(),state});
+      await save(next);
+      notice='Fill saved. CC cash available for other buys is reduced; StocksCafe holdings, cash balances and ledger are unchanged.';
     }));
+    if(root.querySelector('[data-cash-reconcile]'))root.querySelector('[data-cash-reconcile]').onsubmit=action(async(fd,form)=>{
+      const includedIds=[...form.querySelectorAll('[name="included"]')].filter(input=>input.checked).map(input=>input.value);
+      await save(reconcileCashUse(config,state,{includedIds,confirmed:fd.get('confirmed')==='on',now:new Date().toISOString()}));
+      notice='CC spending reconciled against the imported balance. Included spending is no longer deducted; unselected entries remain deducted.';
+    });
     root.querySelector('[data-reload-command]').onclick=()=>reload();
     root.querySelectorAll('[data-copy-review]').forEach(button=>button.onclick=async()=>{
       const record=config.decisions[button.dataset.copyReview],text=reviewText(record);
@@ -160,7 +178,6 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     });
     if(root.querySelector('[data-opportunity-category]'))root.querySelector('[data-opportunity-category]').onchange=e=>{categoryFilter=e.target.value;render();};
     if(root.querySelector('[data-opportunity-sort]'))root.querySelector('[data-opportunity-sort]').onchange=e=>{categorySort=e.target.value;render();};
-    root.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{filter=button.dataset.commandFilter;render();});
     root.querySelectorAll('[data-review-plan]').forEach(button=>button.onclick=()=>{
       const details=root.querySelector('[data-section="plan"]');details.open=true;selector.value=button.dataset.reviewPlan;selectedSymbol=button.dataset.reviewPlan;showLevels();details.scrollIntoView?.({behavior:'smooth',block:'start'});
     });
@@ -183,12 +200,12 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       error='';try{await save(settleOrder(config,button.dataset.cancelOrder,{kind:'cancelled',now:new Date().toISOString(),today:today()}));notice='Cancellation recorded; the reservation is released. No broker order was cancelled by this application.';}catch(e){error=e.message;}render();
     });
     root.querySelectorAll('[data-settle-order]').forEach(form=>form.onsubmit=action(async(fd,form)=>{
-      await save(settleOrder(config,form.dataset.settleOrder,{kind:'filled',spent:fd.get('spent'),completed:fd.get('completed')==='on',date:fd.get('date'),now:new Date().toISOString(),today:today()}));
-      notice='Final fill recorded and reservation closed. Import updated holdings/cash, then confirm funding before another purchase preview.';
+      await save(settleOrder(config,form.dataset.settleOrder,{kind:'filled',spent:fd.get('spent'),completed:fd.get('completed')==='on',date:fd.get('date'),now:new Date().toISOString(),today:today(),cashBasis:cashImportBasis(state),cashId:crypto.randomUUID()}));
+      notice='Final fill recorded. The reservation is replaced by cash actually used. CC can size other buys; StocksCafe remains the master record.';
     }));
     if(!loaded)root.querySelectorAll('button:not([data-reload-command])').forEach(button=>button.disabled=true);
   }
   render();
   reload();
-  return {update(next,nextResearch,nextCategoryChange=categoryChange){state=next;research=nextResearch;categoryChange=nextCategoryChange;render();},destroy(){alive=false;root.innerHTML='';}};
+  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices){state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;render();},destroy(){alive=false;root.innerHTML='';}};
 }

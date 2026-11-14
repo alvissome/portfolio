@@ -107,7 +107,7 @@ export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSi
   const stage=unused.filter(s=>close<=Math.min(s.price,s.entryPrice??s.price)).at(-1);
   if(!stage)return {status:'hold',amount:0,next:unused[0],reasons:['No unused support is currently eligible.']};
   const holding=funding.byCompany[plan.symbol]||0;
-  const limits={stage:Math.max(0,Math.min(stage.budget,stage.purchaseBudget??stage.budget)-stage.spent),ceiling:Math.max(0,funding.base*plan.ceilingPct/100-holding),cash:funding.available};
+  const limits={stage:Math.max(0,Math.min(stage.budget,stage.purchaseBudget??stage.budget)-stage.spent),ceiling:Math.max(0,funding.base*plan.ceilingPct/100-holding-(funding.unreconciledByCompany?.[plan.symbol]||0)),cash:funding.available};
   const amount=cents(Math.min(...Object.values(limits)));
   const lot=positive(oddLots?1:lotSize,'lot size');
   if(!Number.isInteger(lot))throw Error('Lot size must be a whole number.');
@@ -120,6 +120,6 @@ export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSi
   const units=stage.purchaseQuantity==null?budgetUnits:Math.min(budgetUnits,Math.floor(Math.max(0,stage.purchaseQuantity)/lot)*lot);
   const minimumAmount=plan.category==='selective'?Math.min(amount,Math.max(0,funding.base*.02-stage.spent)):amount;
   return {status:'eligible',stage,amount,minimumAmount,rawUnits,lot,portfolioPct:amount/funding.base*100,limits,limitedBy:Object.keys(limits).filter(k=>Math.abs(limits[k]-amount)<.011),maxEntry,strictIV:maxEntry===iv,units,
-    estimatedSpend:units*maxEntry*fx,projectedWeight:(holding+units*maxEntry*fx)/funding.base*100,
+    estimatedSpend:units*maxEntry*fx,projectedWeight:(holding+(funding.unreconciledByCompany?.[plan.symbol]||0)+units*maxEntry*fx)/funding.base*100,
     reasons:[...(plan.category==='selective'?['Reassess spending against uncommitted cash and competing opportunities. Choose a smaller amount or skip; the 4% company ceiling applies.']:[]),'At or below '+stage.key.toUpperCase()+'. Review before placing an order.',...(stage.final?['Recheck the thesis and IV before the final buy.']:[])]};
 }

@@ -1,4 +1,4 @@
-import {entryDraft} from './investment-plan-defaults.js?v=compact-price-20261114';
+import {entryDraft} from './investment-plan-defaults.js?v=cc-cash-budget-20261114';
 import {money,quantityText} from './investment-format.js?v=compact-price-20261114';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function renderPlanBreakdown(draft,company,funding,selected){
