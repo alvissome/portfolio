@@ -1,9 +1,9 @@
 import {planDraft,preferredPlanSymbol} from './investment-plan-defaults.js';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js';
 import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-prefill-20261114';
 import {renderCommandCentre} from './investment-command-view.js';
-export {resolvedCompany} from './investment-command-centre.js';
+export {resolvedCompany} from './investment-command-centre.js?v=plan-prefill-20261114';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
