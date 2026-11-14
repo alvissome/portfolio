@@ -1,3 +1,4 @@
+import {selectCategoryRows,categoryRank,createCategoryControls} from '../assets/strategy-categories.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -188,7 +189,7 @@ test('compiled Holdings integration keeps Research across accounts despite remem
     ne: {useState: initial => [hook < states.length ? states[hook++] : (hook++, initial), () => {}],
       useMemo: calculate => calculate()},
     m: {jsx, jsxs: jsx}, Ca: 'expand', md: 'collapse', eg: 'columns', ka: 'warning',
-    ResearchPanel: 'research-panel', ResearchViewSwitch: 'research-switch', combinedHolding,
+    selectCategoryRows,categoryRank,CategoryControls:'category-controls',ResearchPanel: 'research-panel', ResearchViewSwitch: 'research-switch', combinedHolding,
     Dt: (row, prices) => row.shares * prices[row.ticker].close,
     Tr: row => row.shares * row.average_cost,
   };

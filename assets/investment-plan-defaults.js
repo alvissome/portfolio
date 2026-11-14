@@ -1,4 +1,4 @@
-import {purchaseSchedule,RULE_VERSION} from './investment-strategy.js?v=plan-review-20261114';
+import {purchaseSchedule,RULE_VERSION} from './investment-strategy.js?v=entry-sizing-20261114';
 const number=value=>value===null||value===undefined||String(value).trim()===''||!Number.isFinite(Number(value))?null:Number(value);
 const cents=n=>Math.floor((n+1e-9)*100)/100;
 const choose=(overrides,key,fallback)=>Object.hasOwn(overrides,key)?overrides[key]:fallback;
@@ -31,7 +31,7 @@ export function planDraft(company,saved,funding,overrides={}){
   const frozen=saved?.category===category&&saved.ruleVersion===RULE_VERSION&&samePercents&&saved.stages.length===schedule.length&&saved.stages.every((s,i)=>s.key===schedule[i].key);
   stages=schedule.map((stage,i)=>({...stage,portfolioPct:selective?selectivePercents[i]:stage.portfolioPct??null,
    budget:frozen?saved.stages[i].budget:anchor?(addBudget!==null?cents(addBudget/schedule.length):null):base!==null&&(!selective||selectivePercents[i]!==null)?cents(base*(selective?selectivePercents[i]:stage.portfolioPct)/100):null,
-   frozen:!!frozen}));
+   spent:saved?.stages?.find(s=>s.key===stage.key)?.spent??0,completed:saved?.stages?.find(s=>s.key===stage.key)?.completed??false,purchaseBudget:saved?.stages?.find(s=>s.key===stage.key)?.purchaseBudget??null,frozen:!!frozen}));
  }catch(e){scheduleError=e.message;if(category)missing.push('Review the support ladder: '+e.message);}
  return {category,base,holding,ceiling,room,addBudget,selectivePercents,feeReserve,lotSize,stages,missing,scheduleError,
   budgetSource:savedBudget!==null?'Saved approved budget — unchanged by ordinary reviews':anchor?'Draft maximum room below the company ceiling — editable, not a compulsory target':selective?'Dynamic 2–4% spending range per entry, capped at 4% per company; reassess cash and competing opportunities':'Category schedule from the game plan',
@@ -40,4 +40,23 @@ export function planDraft(company,saved,funding,overrides={}){
 export function preferredPlanSymbol(symbols,state,plans,previous=''){
  if(symbols.includes(previous))return previous;
  return symbols.find(s=>state.strategyCategories?.[s]==='anchor')||symbols.find(s=>plans?.[s])||symbols.find(s=>state.strategyCategories?.[s])||symbols[0]||'';
+}
+// A stage budget is an independent proposal, not a cash reservation.
+export function entryDraft(draft,company,funding,{stageKey,budget,increment=draft.lotSize}={}){
+ const remaining=s=>Math.max(0,s.budget-(s.spent||0));
+ const unused=draft.stages.filter(s=>!s.completed&&s.budget!==null&&remaining(s)>0);
+ const stage=draft.stages.find(s=>s.key===stageKey)||unused.filter(s=>company.quote?.close>0&&company.quote.close<=s.price).at(-1)||unused[0]||draft.stages[0];
+ if(!stage)return {stage:null,capacity:null,requested:null,amount:null,units:null,lots:null,spend:null,entry:null,increment:null,issues:['No approved support is available.']};
+ const capacity=stage.budget!==null&&draft.room!==null&&funding?.available!=null?cents(Math.max(0,Math.min(stage.completed?0:remaining(stage),draft.room,funding.available))):null;
+ const saved=stage.purchaseBudget==null?capacity:Math.max(0,stage.purchaseBudget-(stage.spent||0));
+ const requested=number(budget)==null?capacity!==null?Math.min(saved??capacity,capacity):null:number(budget);
+ const amount=requested!==null&&capacity!==null?Math.min(Math.max(0,requested),capacity):null;
+ const lot=number(increment),fx=company.currency==='SGD'?1:number(company.fx),entry=company.iv>0?Math.min(stage.price,company.iv):null;
+ const issues=[];
+ if(capacity===null)issues.push('Complete current portfolio values to calculate the purchase budget.');
+ if(requested!==null&&(requested<0||requested>capacity))issues.push('Purchase budget exceeds the remaining stage allowance, company room or available cash.');
+ if(!(lot>0)||!Number.isInteger(lot))issues.push('Confirm the share increment for this order. Use 1 for whole-share orders.');
+ if(!(fx>0))issues.push('Trading-currency FX is missing.');
+ const units=amount!==null&&lot>0&&Number.isInteger(lot)&&fx>0&&entry>0?Math.floor((amount+1e-9)/(entry*fx*lot))*lot:null;
+ return {stage,capacity,requested,amount,increment:lot,entry,fx,units,lots:units!==null?units/lot:null,spend:units!==null?units*entry*fx:null,issues};
 }

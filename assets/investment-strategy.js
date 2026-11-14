@@ -1,5 +1,5 @@
 // Share purchase previews only. No orders, notifications or brokerage access.
-import {STRATEGY_CATEGORIES} from './strategy-categories.js';
+import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 export const RULE_VERSION = '2026-11-14-ceilings-dynamic-selective';
 const value = (n, label) => {
   if(n === null || n === undefined || String(n).trim() === '' || !Number.isFinite(Number(n))) throw Error('Missing or invalid '+label+'.');
@@ -75,7 +75,7 @@ export function reviewPurchasePlan(previous,fresh) {
   const stages=fresh.stages.map(s=>{
     const old=oldByKey.get(s.key);
     if(!old)return s;
-    return {...s,id:old.id,spent:old.spent,completed:old.completed,...(old.fillDate?{fillDate:old.fillDate}:{}),...(sameSchedule?{budget:old.budget}:{})};
+    return {...s,id:old.id,spent:old.spent,completed:old.completed,...(old.purchaseBudget!=null?{purchaseBudget:sameSchedule?old.purchaseBudget:Math.min(s.budget,old.purchaseBudget)}:{}),...(old.fillDate?{fillDate:old.fillDate}:{}),...(sameSchedule?{budget:old.budget}:{})};
   });
   const activeKeys=new Set(stages.map(s=>s.key));
   return {...fresh,...(sameSchedule?{baseAtApproval:previous.baseAtApproval}:{}),stages,
@@ -107,7 +107,7 @@ export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSi
   const stage=unused.filter(s=>close<=s.price).at(-1);
   if(!stage)return {status:'hold',amount:0,next:unused[0],reasons:['No unused support is currently eligible.']};
   const holding=funding.byCompany[plan.symbol]||0;
-  const limits={stage:Math.max(0,stage.budget-stage.spent),ceiling:Math.max(0,funding.base*plan.ceilingPct/100-holding),cash:funding.available};
+  const limits={stage:Math.max(0,Math.min(stage.budget,stage.purchaseBudget??stage.budget)-stage.spent),ceiling:Math.max(0,funding.base*plan.ceilingPct/100-holding),cash:funding.available};
   const amount=cents(Math.min(...Object.values(limits)));
   const lot=positive(oddLots?1:lotSize,'lot size');
   if(!Number.isInteger(lot))throw Error('Lot size must be a whole number.');

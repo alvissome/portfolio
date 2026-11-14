@@ -30,7 +30,7 @@ test('known holdings and base remain visible with stale quotes; missing valuatio
  const state={strategyCategories:{XYZ:'core'},holdings:[{ticker:'XYZ',shares:10,currency:'USD',accountType:'Cash'}],watchlist:[{symbol:'XYZ',priceCurrency:'USD',iv:150,s1:120,s2:110,s3:100,s4:90,s5:80}],priceCache:{XYZ:{close:79,timestamp:now-5*86400000}},fxRates:{USD:1.3},cash:{brokers:10000,growth:0,dividend:0}};
  const m=buildCommandCentre(state,{}, {plans:{XYZ:{...create(),lotSize:1}},funding:{}},{today:'2026-11-14',now});
  assert.equal(m.funding,null);assert.equal(m.displayFunding.base,11027);assert.equal(m.rows[0].shares,10);assert.equal(m.rows[0].currentHolding,1027);assert.equal(m.rows[0].portfolioBase,11027);assert.equal(m.rows[0].result.amount,null);
- const html=renderCommandCentre(m,{show:n=>String(n),today:'2026-11-14',filter:'all'});assert.match(html,/10 shares/);assert.match(html,/11027/);
+ const html=renderCommandCentre(m,{show:n=>String(n),today:'2026-11-14',filter:'all'});assert.match(html,/10 shares/);assert.doesNotMatch(html,/Portfolio base/);assert.match(html,/1027/);
  state.holdings.push({ticker:'MISSING',shares:1,currency:'USD',accountType:'Cash'});
  const partial=buildCommandCentre(state,{}, {},{today:'2026-11-14',now});assert.equal(partial.displayFunding.complete,false);assert.equal(partial.rows[0].currentHolding,1027);assert.equal(partial.rows[0].portfolioBase,null);assert.equal(partial.rows[1].currentHolding,null);
 });

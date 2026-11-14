@@ -1,10 +1,10 @@
-import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=plan-review-20261114';
-import {planDraft,preferredPlanSymbol} from './investment-plan-defaults.js?v=plan-review-20261114';
-import {STRATEGY_CATEGORIES} from './strategy-categories.js';
-import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=plan-review-20261114';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-review-20261114';
-import {renderCommandCentre} from './investment-command-view.js?v=plan-review-20261114';
-export {resolvedCompany} from './investment-command-centre.js?v=plan-review-20261114';
+import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=entry-sizing-20261114';
+import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=entry-sizing-20261114';
+import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
+import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=entry-sizing-20261114';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=entry-sizing-20261114';
+import {renderCommandCentre} from './investment-command-view.js?v=entry-sizing-20261114';
+export {resolvedCompany} from './investment-command-centre.js?v=entry-sizing-20261114';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
@@ -16,7 +16,7 @@ export function createInvestmentComponent(React,jsx){
   };
 }
 export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange}){
-  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',categoryChange=onCategoryChange,selectedSymbol='',draftEdits={};
+  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',categoryFilter='all',categorySort='none',categoryChange=onCategoryChange,selectedSymbol='',draftEdits={};
   const show=n=>state.privacyMode?'S$•••':n==null?'—':'S$'+new Intl.NumberFormat('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
   const field=(name,label,value='',attrs='')=>`<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
   async function reload(){
@@ -40,7 +40,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       <p>Anchor: equal nibbles at every approved support. Core: 1.5% + 1.5% + up to 3% at the deepest three (6% ceiling). Selective: reassess 2–4% per eligible entry at the deepest two (4% company ceiling); buy less or skip when cash or alternatives warrant it. Anchor ceiling: 10%.</p>
       ${!loaded?'<p>Loading saved plans and decisions…</p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
       ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. Recorded order reservations: ${show(model.reserved)}. Available after all pending orders: <strong>${show(funding.available)}</strong>.</p>`:''}
-      ${renderCommandCentre(model,{show,today:today(),filter})}
+      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort})}
       <details data-section="funding" ${open.has('funding')?'open':''}><summary>Confirm strategy funding</summary>
         <form data-funding>${field('liabilities','Related liabilities (SGD)',config.funding.liabilities??0,'type="number" min="0" step="0.01" required')}${field('pending','External pending orders / reserved cash (SGD)',config.funding.pending??0,'type="number" min="0" step="0.01" required')}
         <label><input type="checkbox" name="confirmed" ${config.funding.confirmed?'checked':''} required> I reviewed holdings and FX. All recorded broker cash and bank set-aside cash are committed to this strategy; liabilities and pending orders above are current.</label><button ${!loaded?'disabled':''}>Save funding confirmation</button></form>
@@ -48,27 +48,36 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       <details data-section="plan" ${open.has('plan')?'open':''}><summary>Create or review a company plan</summary>
         <form data-plan><label>Company<select name="symbol">${symbols.map(s=>`<option value="${esc(s)}" ${s===selectedSymbol?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
         ${field('ceiling','Company purchase ceiling (%)','','type="number" min="0.01" max="100" step="0.01" required')}
-        ${field('budget','Anchor: draft / approved addition budget (SGD)','','type="number" min="0" step="0.01"')}
-        ${field('lot','Exchange board lot (shares)',1,'type="number" min="1" step="1" required')}
-        <label><input type="checkbox" name="oddLots"> My broker supports buying odd lots in whole shares</label>
-        <label>Decision / remarks<textarea name="remarks" maxlength="2000" rows="3" placeholder="Thesis, competing opportunities, reasons to reduce, defer or skip"></textarea></label>
+        ${field('budget','Total Anchor addition budget (SGD)','','type="number" min="0" step="0.01"')}
+        <label>Support to plan<select name="stage"></select></label>
+        ${field('stageBudget','Purchase budget for this SL (SGD)','','type="number" min="0" step="0.01" required')}
+        ${field('lot','Order increment (shares)',1,'type="number" min="1" step="1" required')}
+        ${field('quantity','Calculated quantity (shares)','','type="text" readonly')}
+        ${field('lots','Calculated lots','','type="text" readonly')}
+        ${field('commitment','Estimated purchase (SGD)','','type="text" readonly')}
+        <label class="ic-plan-remarks-field">Decision / remarks<textarea name="remarks" maxlength="2000" rows="3" placeholder="Thesis, competing opportunities, reasons to reduce, defer or skip"></textarea></label>
         ${field('reviewedAt','Thesis and IV reviewed',today(),`type="date" max="${today()}" required`)}
-        <label><input type="checkbox" name="approved" required> I reviewed the business, IV, trading currency, support ladder and ceiling. Any material news has been resolved.</label>
+        <label class="ic-plan-approval" title="I reviewed the business, IV, trading currency, support ladder and ceiling. Any material news has been resolved."><input type="checkbox" name="approved" required> Thesis, IV and entry plan reviewed</label>
         <div data-plan-levels></div><div class="ic-plan-prefill" data-plan-prefill></div><button ${!loaded?'disabled':''}>Save reviewed plan</button></form>
-        <p>Known rules and current dashboard values are prefilled for review. The Anchor draft budget is the remaining room below 10%; you may reduce it to what you actually intend to add. Core and Selective ceilings default to 6% and 4%. Selective previews show a spending range; choose the actual committed order amount after comparing opportunities. Shares are calculated from the capped planned amount and maximum entry price, using the board lot or whole shares if odd lots are supported. No fee/FX reserve is deducted. Anchor and Core stage budgets freeze in SGD on first approval. Selective budgets are maximums, not commitments. Routine reviews keep stage budgets and fills. An approved category or support-ladder change revises the schedule and preserves fills; removed stages remain in the history below. Remarks and a dated plan snapshot are retained in My decisions. <a href="${NOTION_REVIEW_URL}" target="_blank" rel="noopener">Stocks Plan Review in Notion</a> — copy a saved review there using My decisions.</p></details>
+        <p>Known rules and current dashboard values are prefilled for review. The Anchor draft budget is the remaining room below 10%; you may reduce it to what you actually intend to add. Core and Selective ceilings default to 6% and 4%. Selective previews show a spending range; choose the actual committed order amount after comparing opportunities. Shares are calculated from the capped planned amount and maximum entry price, using the order increment. Use 1 for whole-share orders, including supported odd lots; use the exchange board lot when required. No fee/FX reserve is deducted. Anchor and Core stage budgets freeze in SGD on first approval. Selective budgets are maximums, not commitments. Routine reviews keep stage budgets and fills. An approved category or support-ladder change revises the schedule and preserves fills; removed stages remain in the history below. Remarks and a dated plan snapshot are retained in My decisions. <a href="${NOTION_REVIEW_URL}" target="_blank" rel="noopener">Stocks Plan Review in Notion</a> — copy a saved review there using My decisions.</p></details>
       <p class="ic-footnote">Removing watchlist-only tickers retires their active cards and preserves plans, fills and decisions. Holdings remain monitored even if removed from the watchlist. Written game-plan changes need an explicit rule update and plan review; Notion edits do not silently change the configured rules. Retirement and LEAPS remain later steps.</p>`;
     const selector=root.querySelector('[name="symbol"]');
     const showDraftDetails=()=>{
       const company=resolvedCompany(state,research,selector.value),saved=config.plans[selector.value];
       const draft=planDraft(company,saved,funding,{ceiling:root.querySelector('[name="ceiling"]').value,addBudget:root.querySelector('[name="budget"]').value,
-        selectivePercents:[4,4],lotSize:root.querySelector('[name="oddLots"]').checked?1:root.querySelector('[name="lot"]').value});
-      const boardLot=root.querySelector('[name="oddLots"]').checked?1:draft.lotSize;
-      const available=funding?.available??null;
+        selectivePercents:[4,4],lotSize:root.querySelector('[name="lot"]').value});
+      const boardLot=draft.lotSize;
+      const stageSelector=root.querySelector('[name="stage"]');
+      if(stageSelector.dataset.symbol!==selector.value){stageSelector.innerHTML=draft.stages.map(s=>`<option value="${esc(s.key)}">${esc(s.key.toUpperCase())} · ${esc(company.currency)} ${s.price}${s.completed?' · completed':''}</option>`).join('');stageSelector.dataset.symbol=selector.value;stageSelector.value=(draft.stages.some(s=>s.key===saved?.plannedEntryKey)?saved.plannedEntryKey:entryDraft(draft,company,funding).stage?.key)||'';}
+      const execution=entryDraft(draft,company,funding,{stageKey:stageSelector.value,budget:root.querySelector('[name="stageBudget"]').value,increment:boardLot});
+      const budgetInput=root.querySelector('[name="stageBudget"]');if(budgetInput.value==='')budgetInput.value=execution.requested??'';budgetInput.max=execution.capacity??'';
+      root.querySelector('[name="quantity"]').value=execution.units??'—';root.querySelector('[name="lots"]').value=execution.lots??'—';root.querySelector('[name="commitment"]').value=execution.spend==null?'—':show(execution.spend);
+
       const formatPrice=n=>n>0?esc(company.currency)+' '+Number(n).toLocaleString('en-SG',{maximumFractionDigits:2}):'—';
       root.querySelector('[data-plan-prefill]').innerHTML=`<p><strong>Prefilled from your game plan and dashboard</strong></p><dl class="ic-plan-facts"><div><dt>Portfolio base</dt><dd>${show(draft.base)}</dd></div><div><dt>Current holding · ${company.shares} shares</dt><dd>${show(draft.holding)}</dd></div><div><dt>Room below ceiling</dt><dd>${show(draft.room)}</dd></div><div><dt>Current IV</dt><dd>${formatPrice(company.iv)}</dd></div></dl>
-        ${draft.stages.length?`<div class="ic-plan-stages">${draft.stages.map(stage=>`<div><strong>${esc(stage.key.toUpperCase())} · ${formatPrice(stage.price)}</strong><span>${draft.category==='anchor'?'Equal nibble':stage.portfolioPct!==null?(draft.category==='selective'?'2–4% dynamic; max ':'' )+stage.portfolioPct+'%':'Choose 2–4%'} · ${show(stage.budget)}${stage.frozen?' · saved budget':''}</span>${(()=>{const fx=company.currency==='SGD'?1:state.fxRates?.[company.currency],cap=Math.min(stage.budget??0,draft.room??0,available??0),raw=cap/(stage.price*fx);return boardLot>0&&fx>0&&stage.budget!==null&&draft.room!==null?`<span>${Math.floor(raw/boardLot)*boardLot} shares · ${show(Math.floor(raw/boardLot)*boardLot*stage.price*fx)} at entry · ${raw.toFixed(2)} before lot rounding</span>`:'<span>Quantity needs current funding and a confirmed trading lot.</span>';})()}</div>`).join('')}</div>`:''}
-        <p class="ic-meta">${esc(draft.budgetSource)}. Stage budgets are capped by company room and shared available cash when a buy is reviewed. Lot size: ${esc(draft.lotSource)}.</p>
-        ${draft.missing.length?`<p><strong>Still needs your input</strong></p><ul>${draft.missing.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`:'<p>Plan amounts and execution inputs are populated. Review the business, valuation and intended spending before approving.</p>'}`;
+        ${draft.stages.length?`<div class="ic-plan-stages">${draft.stages.map(stage=>`<div data-selected="${stage.key===execution.stage?.key}"><strong>${esc(stage.key.toUpperCase())} · ${formatPrice(stage.price)}</strong><span>${draft.category==='anchor'?'Equal nibble':stage.portfolioPct!==null?(draft.category==='selective'?'2–4% dynamic; max ':'' )+stage.portfolioPct+'%':'Choose 2–4%'} · ${show(stage.budget)}${stage.frozen?' · saved budget':''}</span>${(()=>{const each=entryDraft(draft,company,funding,{stageKey:stage.key,increment:boardLot});return stage.completed?'<span>Completed · no further purchase</span>':each.units!==null?`<span>${each.units} shares · ${show(each.spend)} at entry</span>`:'<span>Quantity needs current funding and an order increment.</span>';})()}</div>`).join('')}</div>`:''}
+        <p class="ic-meta">${execution.stage?`Selected ${esc(execution.stage.key.toUpperCase())} · maximum entry ${formatPrice(execution.entry)} · budget ${show(execution.amount)} · ${execution.units??'—'} shares (${execution.lots??'—'} lots of ${execution.increment??'—'}). `:''}${esc(draft.budgetSource)}. Stage budgets are capped by company room and shared available cash when a buy is reviewed. The selected SL budget is available for all three categories. Saving it does not commit or reserve cash. Lot size: ${esc(draft.lotSource)}.</p>
+        ${draft.missing.length||execution.issues.length?`<p><strong>Still needs your input</strong></p><ul>${[...draft.missing,...execution.issues].map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`:'<p>Plan amounts and execution inputs are populated. Review the business, valuation and intended spending before approving.</p>'}`;
     };
     const showLevels=()=>{
       try{
@@ -77,26 +86,27 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         root.querySelector('[data-plan-levels]').textContent=`${STRATEGY_CATEGORIES[company.category]||'Unassigned — choose in Holdings or Watchlist'} · ${company.currency||'Currency missing'} · IV ${company.iv||'missing'} · `+company.levels.map(l=>`${l.key.toUpperCase()} ${l.price}`).join(' · ');
         const set=(key,value)=>{root.querySelector('[name="'+key+'"]').value=value??'';};
         set('ceiling',draft.ceiling);set('budget',draft.addBudget);set('lot',draft.lotSize);
-        root.querySelector('[name="oddLots"]').checked=saved?.oddLots===true;root.querySelector('[name="lot"]').required=!saved?.oddLots;set('remarks',saved?.remarks||'');
+        set('remarks',saved?.remarks||'');set('stageBudget','');root.querySelector('[name="stage"]').dataset.symbol='';
+        const savedDraft=draftEdits[selectedSymbol];
+        showDraftDetails();if(savedDraft?.stage)set('stage',savedDraft.stage);
         root.querySelector('[name="ceiling"]').max=({anchor:10,core:6,selective:4}[company.category]||100);
         const budget=root.querySelector('[name="budget"]');budget.disabled=company.category!=='anchor';budget.readOnly=company.category==='anchor'&&saved?.category==='anchor';budget.required=company.category==='anchor';
-        budget.title=draft.budgetSource;
+        budget.title=draft.budgetSource;budget.closest('label').hidden=company.category!=='anchor';
         root.querySelector('[name="ceiling"]').placeholder=company.category==='anchor'?'10% from game plan':'Set company ceiling';
-        root.querySelector('[name="lot"]').placeholder='Confirm exchange board lot';
+        root.querySelector('[name="lot"]').placeholder='1 for whole-share orders';
         root.querySelector('[data-plan] button').disabled=!loaded||!company.category;
         const edits=draftEdits[selectedSymbol];
         if(edits)for(const [key,value]of Object.entries(edits)){const input=root.querySelector('[data-plan] [name="'+key+'"]');if(input){if(input.type==='checkbox')input.checked=value;else input.value=value;}}
-        root.querySelector('[name="lot"]').required=!root.querySelector('[name="oddLots"]').checked;
         showDraftDetails();
       }catch(e){root.querySelector('[data-plan-levels]').textContent=e.message;}
     };
     selector.onchange=showLevels;showLevels();
-    root.querySelector('[name="oddLots"]').onchange=()=>{root.querySelector('[name="lot"]').required=!root.querySelector('[name="oddLots"]').checked;showDraftDetails();};
-    const rememberDraft=()=>{draftEdits[selectedSymbol]=Object.fromEntries([...root.querySelectorAll('[data-plan] input,[data-plan] textarea')].filter(input=>input.name).map(input=>[input.name,input.type==='checkbox'?input.checked:input.value]));};
-    root.querySelectorAll('[data-plan] input,[data-plan] textarea').forEach(input=>{
+    const rememberDraft=()=>{draftEdits[selectedSymbol]=Object.fromEntries([...root.querySelectorAll('[data-plan] input:not([readonly]),[data-plan] textarea,[data-plan] select[name="stage"]')].filter(input=>input.name).map(input=>[input.name,input.type==='checkbox'?input.checked:input.value]));};
+    root.querySelectorAll('[data-plan] input:not([readonly]),[data-plan] textarea,[data-plan] select[name="stage"]').forEach(input=>{
       const previous=input.onchange;
-      input.oninput=()=>{rememberDraft();try{showDraftDetails();}catch(e){root.querySelector('[data-plan-prefill]').textContent=e.message;}};
-      input.onchange=()=>{rememberDraft();previous?.();};
+      if(input.name==='stage')input.onchange=()=>{root.querySelector('[name="stageBudget"]').value='';showDraftDetails();rememberDraft();};
+      input.oninput=()=>{if(['budget','ceiling'].includes(input.name))root.querySelector('[name="stageBudget"]').value='';try{showDraftDetails();rememberDraft();}catch(e){root.querySelector('[data-plan-prefill]').textContent=e.message;}};
+      if(input.name!=='stage')input.onchange=()=>{if(['budget','ceiling'].includes(input.name)){root.querySelector('[name="stageBudget"]').value='';showDraftDetails();}rememberDraft();previous?.();};
     });
     const action=fn=>async e=>{e.preventDefault();error='';notice='';try{if(!loaded||busy)throw Error('Wait for saved decisions to load or finish saving.');await fn(new FormData(e.target),e.target);}catch(err){error=err.message;}render();};
     root.querySelector('[data-funding]').onsubmit=action(async fd=>{
@@ -110,8 +120,13 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       let fresh=createPurchasePlan({symbol,category:c.category,selectivePercents:[4,4],levels:c.levels,base:funding.base,ceilingPct:fd.get('ceiling'),addBudget:previous?.category==='anchor'?previous.stages.reduce((n,s)=>n+s.budget,0):fd.get('budget'),iv:c.iv,currency:c.currency,reviewedAt:fd.get('reviewedAt'),id:previous?.id||crypto.randomUUID()});
       if(fresh.reviewedAt>today())throw Error('A review cannot be dated in the future.');
       fresh=reviewPurchasePlan(previous,fresh);
-      fresh.lotSize=fd.get('oddLots')==='on'?1:Number(fd.get('lot'));fresh.oddLots=fd.get('oddLots')==='on';fresh.rounding='down';fresh.remarks=String(fd.get('remarks')||'').slice(0,2000);
-      if(!Number.isInteger(fresh.lotSize)||fresh.lotSize<1)throw Error('Confirm the exchange board lot.');
+      fresh.lotSize=Number(fd.get('lot'));fresh.oddLots=false;fresh.rounding='down';fresh.remarks=String(fd.get('remarks')||'').slice(0,2000);
+      if(!Number.isInteger(fresh.lotSize)||fresh.lotSize<1)throw Error('Confirm the share increment for this order.');
+      const approvedDraft=planDraft(c,fresh,funding,{lotSize:fresh.lotSize}),execution=entryDraft(approvedDraft,c,funding,{stageKey:fd.get('stage'),budget:fd.get('stageBudget'),increment:fresh.lotSize});
+      if(execution.issues.length)throw Error(execution.issues.join(' '));
+      if(!execution.stage||execution.units===null)throw Error('Review the selected support and calculated purchase quantity.');
+      fresh.plannedEntryKey=execution.stage.key;
+      fresh.stages=fresh.stages.map(s=>s.key===execution.stage.key?{...s,purchaseBudget:s.spent+execution.amount}:s);
       await save(recordPlanReview(config,fresh,{id:crypto.randomUUID(),now:new Date().toISOString(),holding:funding.byCompany[symbol]??0,base:funding.base,shares:c.shares}));delete draftEdits[symbol];
     });
     root.querySelectorAll('[data-fill]').forEach(form=>form.onsubmit=action(async(fd,form)=>{
@@ -129,7 +144,8 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       try{await navigator.clipboard.writeText(text);button.textContent='Copied — paste into Stocks Plan Review';}
       catch{const area=document.createElement('textarea');area.value=text;area.readOnly=true;button.after(area);area.focus();area.select();button.textContent='Select and copy this review';}
     });
-    root.querySelectorAll('[data-clear-category]').forEach(button=>{button.disabled=!categoryChange;button.onclick=()=>categoryChange?.(button.dataset.clearCategory,'');});
+    if(root.querySelector('[data-opportunity-category]'))root.querySelector('[data-opportunity-category]').onchange=e=>{categoryFilter=e.target.value;render();};
+    if(root.querySelector('[data-opportunity-sort]'))root.querySelector('[data-opportunity-sort]').onchange=e=>{categorySort=e.target.value;render();};
     root.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{filter=button.dataset.commandFilter;render();});
     root.querySelectorAll('[data-review-plan]').forEach(button=>button.onclick=()=>{
       const details=root.querySelector('[data-section="plan"]');details.open=true;selector.value=button.dataset.reviewPlan;selectedSymbol=button.dataset.reviewPlan;showLevels();details.scrollIntoView?.({behavior:'smooth',block:'start'});
