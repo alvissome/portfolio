@@ -2,7 +2,7 @@ import {calculateIV, calculateSupports, MODEL_VERSION} from './research-calculat
 import {compareSupportLevels, ivPercentError} from '../../assets/research-core.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
-const METHODS = ['dcf_20y', 'dni_20y', 'yield_5pct', 'historical_pb', 'justified_pb'];
+const METHODS = ['dcf_20y', 'dni_20y', 'ocf_20y', 'historical_ps', 'psg', 'nav', 'yield_price', 'yield_5pct', 'historical_pb', 'justified_pb'];
 function methodId(row) {
   if (METHODS.includes(row?.methodId)) return row.methodId;
   if (METHODS.includes(row?.key)) return row.key;

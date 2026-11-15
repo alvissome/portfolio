@@ -1,3 +1,4 @@
+import {normalizeValuationSettings, IV_POLICY_VERSION} from './valuation-settings.js';
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
 import {normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js';
 
@@ -45,6 +46,8 @@ export function buildResearchRequest(security, {previous, now = new Date().toISO
   const record = {securityId: symbol, symbol, requestId, modelVersion,
     requestedAt: now, workerAcknowledged: false, acknowledgedAt: null, completedAt: null,
     phase: 'requested', startedAt: null, finishedAt: null, leaseUntil: null, asOf: null,
+    ivPolicyVersion: IV_POLICY_VERSION,
+    valuation: normalizeValuationSettings(security.valuation ?? previous?.valuation ?? {}),
     requestError: null, priority: security.held ? 'holding' : 'watchlist',
     methodFamily: family,
     methodFamilySource: override !== undefined ? override === 'auto' ? previous?.reference?.methodFamily ? 'reference' : 'auto' : 'user'
@@ -204,7 +207,7 @@ export function createResearchController({load, write, now = () => new Date().to
     })();
     return refreshing;
   };
-  const requestOnce = async (security, {force = false, methodFamily} = {}) => {
+  const requestOnce = async (security, {force = false, methodFamily, valuation} = {}) => {
     if (paused || closed) throw new Error('Research is paused during backup restore.');
     if (!state.hydrated) await refresh();
     if (paused || closed) throw new Error('Research is paused during backup restore.');
@@ -214,7 +217,7 @@ export function createResearchController({load, write, now = () => new Date().to
     if (!force && previous?.phase === 'restored') return previous;
     if (!force && pending.has(symbol)) return previous;
     if (!force && previous?.requestId && previous.modelVersion === modelVersion) return previous;
-    const record = buildResearchRequest({...security, ...(methodFamily !== undefined ? {methodFamilyOverride:methodFamily} : {})},
+    const record = buildResearchRequest({...security, ...(valuation !== undefined ? {valuation} : {}), ...(methodFamily !== undefined ? {methodFamilyOverride:methodFamily} : {})},
       {previous, now: now(), requestId: uuid(), modelVersion});
     pending.set(symbol, record.requestId);
     publish({records: {...state.records, [symbol]: {...previous, ...record}}, error: ''});

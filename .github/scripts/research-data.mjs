@@ -286,7 +286,7 @@ export function classifyListingShares(instrument,fundamentals,submissions,{now=n
   const type=String(instrument.type||'').toUpperCase();
   const exactIssuer=Array.isArray(submissions?.tickers)&&submissions.tickers.some(t=>String(t).toUpperCase()===instrument.symbol.toUpperCase());
   const sic=exactIssuer?Number(submissions.sic):null;
-  const methodFamily=sic===6798?'reit':sic>=6020&&sic<=6099?'bank':sic>=6000&&sic<=6999?'financial_other':sic>=100&&sic<=9999?'stock':'unknown';
+  const methodFamily=sic===6798?'reit':sic>=6020&&sic<=6099?'bank':sic>=6310&&sic<=6399?'insurance':sic>=6000&&sic<=6999?'financial_other':sic>=100&&sic<=9999?'stock':'unknown';
   const base={listingSharesVerified:false,listingSharesProvenance:null,listingSharesReason:'Listing share basis has not been verified',methodFamily};
   if(type==='ETF')return{...base,methodFamily:'etf',listingSharesReason:'ETF does not use an individual-company share denominator'};
   if(['MUTUALFUND','FUND','MUTUAL FUND'].includes(type))return{...base,methodFamily:'fund',listingSharesReason:'Fund does not use an individual-company share denominator'};

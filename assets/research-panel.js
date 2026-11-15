@@ -1,3 +1,4 @@
+import {createValuationEditor} from './valuation-editor.js';
 import {researchColumns,visibleResearchColumns} from './research-columns.js';
 import {prioritizeUniverse, planTrackInWatchlist} from './research-core.js';
 import {createAkSheetControls} from './ak-sheet-controls.js?v=compact-research-20261114';
@@ -69,6 +70,7 @@ export function researchComparisonLabel(record, part) {
 export function createResearchComponents(React) {
   const h = React.createElement;
   const AkSheetControls=createAkSheetControls(React);
+  const ValuationEditor=createValuationEditor(React);
   function ResearchColumnSettings({scope='holdings',visibility={},onChange}){
     return h('div',{className:'research-column-settings','aria-label':scope==='holdings'?'Holdings research columns':'Watchlist research columns'},
       ...researchColumns(scope).map(column=>h('label',{key:column.key},h('input',{type:'checkbox',checked:column.key==='symbol'||visibility[column.key]!==false,disabled:column.key==='symbol'||!onChange,
@@ -129,6 +131,8 @@ export function createResearchComponents(React) {
       ...parts.map(({part,result}) => h('div', {key:part},
         h('strong', null, part === 'iv' ? 'Independent IV' : 'Independent supports'),
         h('p', null, [result.method, date(result.asOf), result.source].filter(Boolean).join(' · ')),
+        result.settingsSource ? h('p',null,'Assumption source: '+result.settingsSource+' · '+date(result.settingsAsOf)) : null,
+        result.inputs ? h('details',null,h('summary',null,'Calculation inputs'),h('pre',null,JSON.stringify(result.inputs,null,2))) : null,
         result.assumptions ? h('pre', null, typeof result.assumptions === 'string' ? result.assumptions : JSON.stringify(result.assumptions, null, 2)) : null,
         Array.isArray(result.variants) ? h('ul', null, ...result.variants.map((variant,index) => h('li', {key:index},
           `${variant.method ?? variant.label ?? variant.key}: ${price(variant.value)}`))) : null)),
@@ -274,7 +278,7 @@ export function createResearchComponents(React) {
                 onChange:event=>request(row,event.target.value)},
                 ...[['auto','Auto method'],['stock','Company DCF'],['bank','Bank'],['reit','REIT'],['fund','Fund / ETF']].map(([value,label])=>h('option',{key:value,value},label))),
                 h('button',{type:'button',className:'research-track',disabled:!research?.request,
-                onClick:()=>request(row)}, record?.requestId ? 'Recalculate' : 'Calculate'), h(ResearchDetails,{record}),
+                onClick:()=>request(row)}, record?.requestId ? 'Recalculate' : 'Calculate'), h(ResearchDetails,{record}), research?.request?h(ValuationEditor,{record,row,research}):null,
                 fromAk&&scope==='watchlist'&&onApplyAkLevels&&record?.reference?.supports?.length?h('button',{type:'button',className:'research-track',
                   onClick:()=>setCopyPreview(row.symbol)},'Use AK SL in watchlist'):null,
                 fromAk&&copyPreview===row.symbol?h('div',{className:'research-details'},

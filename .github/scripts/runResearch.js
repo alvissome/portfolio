@@ -1,3 +1,4 @@
+import {IV_POLICY_VERSION} from '../../assets/valuation-settings.js';
 /** Personal-only research queue consumer. No alerts, email or trading actions. */
 import {randomUUID} from 'node:crypto';
 import {resolve} from 'node:path';
@@ -27,6 +28,13 @@ export function prepareSecRecovery(record, contactConfigured) {
   return {...record, secContactRecovery:'contact-v1', phase:'requested',
     workerAcknowledged:false, leaseToken:null, leaseUntil:null,
     iv:{...record.iv,processing:'not_started'}};
+}
+
+export function prepareValuationUpgrade(record) {
+  if(record?.phase!=='finished'||record.ivPolicyVersion===IV_POLICY_VERSION)return record;
+  return {...record,ivPolicyVersion:IV_POLICY_VERSION,phase:'requested',
+    workerAcknowledged:false,leaseToken:null,leaseUntil:null,
+    iv:{...record.iv,result:null,previousResult:record.iv?.result||record.iv?.previousResult||null,processing:'not_started'}};
 }
 
 export function claimRecord(current, now, leaseToken) {
@@ -73,13 +81,13 @@ async function main() {
   initializeApp({credential: cert(serviceAccount), projectId: PERSONAL_PROJECT});
   const db = getFirestore();
   const userRefs = await db.collection('users').listDocuments();
-  const counters = {portfolios: 0, pending: 0, claimed: 0, completed: 0, partial: 0, failed: 0, staleDiscarded: 0};
+  const counters = {portfolios: 0, pending: 0, claimed: 0, completed: 0, partial: 0, failed: 0, staleDiscarded: 0, ivMethods: {}, ivUnavailable: {}};
   for (const user of userRefs) {
     const ref = user.collection('portfolio').doc('data');
     const snap = await ref.get();
     if (!snap.exists) continue;
     counters.portfolios++;
-    const requests = prioritizeRequests(Object.entries(snap.data().researchBySecurity || {}).filter(([,record]) => needsProcessing(prepareSecRecovery(record, !!process.env.SEC_CONTACT_EMAIL))));
+    const requests = prioritizeRequests(Object.entries(snap.data().researchBySecurity || {}).filter(([,record]) => needsProcessing(prepareValuationUpgrade(prepareSecRecovery(record, !!process.env.SEC_CONTACT_EMAIL)))));
     counters.pending += requests.length;
     for (const [symbol, observed] of requests) {
       if (!canClaimResearchJob(counters.claimed, runStartedAt)) break;
@@ -94,7 +102,7 @@ async function main() {
         if (!sameRequest(current, observed)) return null;
         if (!canClaimResearchJob(counters.claimed, runStartedAt)) return null;
         const reference = resolveReference(current, data.researchReferenceSnapshotMeta);
-        const retry = prepareSecRecovery(current, !!process.env.SEC_CONTACT_EMAIL);
+        const retry = prepareValuationUpgrade(prepareSecRecovery(current, !!process.env.SEC_CONTACT_EMAIL));
         const record = claimRecord({...retry, ...(reference ? {reference} : {})}, Date.now(), leaseToken);
         if (!record) return null;
         transaction.update(ref, new FieldPath('researchBySecurity', symbol), record);
@@ -117,6 +125,9 @@ async function main() {
           progress: persist,
         });
         if (!await persist(output)) {counters.staleDiscarded++; continue;}
+        const method=output.iv.result?.methodId;
+        if(method)counters.ivMethods[method]=(counters.ivMethods[method]||0)+1;
+        else {const code=output.iv.code||output.iv.processing;counters.ivUnavailable[code]=(counters.ivUnavailable[code]||0)+1;}
         const completed = [output.iv.processing, output.supports.processing].filter(state => state === 'completed').length;
         if (completed === 2) counters.completed++;
         else if (completed === 1 || output.iv.validation === 'not_applicable' && output.supports.processing === 'completed') counters.partial++;

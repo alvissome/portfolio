@@ -35,3 +35,9 @@
 
 @media(max-width:360px){.holdings-detail-header h3{font-size:11px}.holdings-detail-header .research-view-switch button{padding:4px 5px;font-size:9px}.holdings-detail-header>span{font-size:9px}.holdings-detail-header>button{gap:2px}}
 @media(min-width:701px){.holdings-detail-header{position:relative;min-height:36px}.holdings-detail-header .holdings-table-tools{position:absolute;left:50%;transform:translateX(-50%);margin:0}.holdings-detail-header .holdings-table-tools>button{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%)}}
+
+.valuation-editor{max-width:520px;min-width:140px}
+.valuation-fields{display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:8px}
+.valuation-fields label{display:flex;flex-direction:column;gap:3px;font-size:11px}
+.valuation-fields input,.valuation-fields select{min-width:0;width:100%;padding:5px;border:1px solid #d1d5db;border-radius:4px;background:white;color:#111827}
+@media(max-width:600px){.valuation-fields{grid-template-columns:minmax(150px,1fr)}}
