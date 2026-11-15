@@ -8,12 +8,12 @@ test('legacy alert senders and dashboard controls are retired while shared data 
  const bundle=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8'),index=await readFile(new URL('../index.html',import.meta.url),'utf8');
  const settings=bundle.slice(bundle.indexOf('function ON('),bundle.indexOf('function LN('));assert.ok(settings.includes('Twelve Data API key'));assert.ok(!settings.includes('EmailJS'));assert.ok(!settings.includes('Global Alert Email'));assert.ok(!bundle.includes('Sync Watchlist'));assert.ok(!bundle.includes('async function DN('));assert.ok(!index.includes('alerts-entry'));
  const watch=bundle.slice(bundle.indexOf('function RN('),bundle.indexOf('function NN('));for(const text of ['Cooldown (hours','Email override','Legacy multi-level config','children:"🔔"'])assert.ok(!watch.includes(text),text);
- assert.ok(bundle.includes('watchlistPanel:m.jsx(RN,'));assert.equal((bundle.match(/m\.jsx\(RN,/g)||[]).length,1);
+ assert.ok(bundle.includes('researchPanel:m.jsx(RN,'));assert.equal((bundle.match(/m\.jsx\(RN,/g)||[]).length,1);
 });
-test('CC owns the React Watchlist sibling and hides it together with financial forms in privacy mode',()=>{
+test('CC owns the React Research disclosure and hides it together with financial forms in privacy mode',()=>{
  const React={useRef:current=>({current}),useState:()=>['watchlist',()=>{}],useEffect:()=>{}};
- const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},Panel=createInvestmentComponent(React,jsx),watchlistPanel={type:'watchlist-test'};
- const props={uid:'test',state:{},research:{},storage:{},watchlistPanel};let tree=Panel(props);
- assert.equal(tree.type,'section');assert.equal(tree.props.children[1].props.className,'ic-watchlist-host');assert.equal(tree.props.children[1].props.children,watchlistPanel);
+ const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},Panel=createInvestmentComponent(React,jsx),researchPanel={type:'watchlist-test'};
+ const props={uid:'test',state:{},research:{},storage:{},researchPanel};let tree=Panel(props);
+ assert.equal(tree.type,'section');assert.equal(tree.props.children[1].props.className,'ic-watchlist-host');assert.equal(tree.props.children[1].props.children,researchPanel);
  tree=Panel({...props,state:{privacyMode:true}});assert.equal(tree.props.children[1],false);
 });
