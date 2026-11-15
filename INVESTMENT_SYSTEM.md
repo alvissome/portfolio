@@ -279,3 +279,9 @@ Validation: 356 Node tests and the existing mounted execution/clipboard harness 
 ### Notion icon height and footer — 15 November 2026
 
 The clipboard SVG explicitly resets the shared performance chart minimum height (180px) to zero and constrains its dimensions to 16px. The table cell remains middle-aligned. The generated Perplexity footer component now returns null, and its generator/author credits were removed from the HTML head. Validation: existing 356 Node tests and mounted interactions pass; browser rendering remains unverified.
+
+### AK average-cost column import — 15 November 2026
+
+AK average cost is a separately published input, not inferred from IV, SL, personal holdings, or broker average cost. Some active sheet variants label the field Avg Price / Avg. Price, Avg Buy Price, Average Purchase Price, Average Entry Price, Average Cost Per Share, or include a currency/adjustment suffix. The importer now recognizes those headings, and retains positive average cost in the correct source entry for every matching ticker, including NVDA, META, and NVO when present in the supplied sheet. Closed positions treat average price as average sell price, never acquisition cost. A source with no recognizable header remains missing, with a diagnostic in AK sheet settings; values are never invented. Run Sync AK sheets after refreshing the dashboard to re-read the active source and update the retained reference. This change does not claim verification of the signed-in premium sheet because the browser connector was unavailable outside its originating browser context.
+
+Unit coverage tests synthetic NVDA/META/NVO rows with independent IV/SL/cost data, header aliases, closed-position semantics, no-cost handling and source-header diagnostics. AK sources, research controller, public bundle and HTML imports use revised module versions to prevent stale cached parses.
