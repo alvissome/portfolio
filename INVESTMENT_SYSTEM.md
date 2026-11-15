@@ -253,3 +253,11 @@ Saved plans are exclusive to My decisions even if a persisted Holdings Rebalanci
 New Hold plans default to one calendar month from today in Singapore. 1M and 3M shortcuts use today as their basis, clamp month ends, and leave existing saved revisit dates intact until edited.
 
 Validation: 351 Node tests and the mounted action-form interaction harness pass, covering current-price defaults, removed inputs, shared settings row, calendar shortcuts, save/reopen behavior, Rebalancing exclusion and unchanged imported master records. Browser layout and signed-in writes were not exercised in this iteration.
+
+### Plan clarity and visible opportunity totals — 15 November 2026
+
+The Anchor addition budget now shares a desktop row with ceiling, level source and IV method. The source/status line names the displayed support source as AK, Independent or Manual; mixed sources are named per support. The holding/room/current-price/IV facts precede the numeric override inputs. The approval checkbox has a separate associated label in a fixed aligned control, avoiding generic stacked field-label rules.
+
+Open opportunities count only visible unsaved opportunity cards, excluding dismissed/deferred rows, and follow the selected category filter. The summary distinguishes price-reached from approaching-support counts; approaching cards no longer say price reached or monitoring. Rebalancing and data-review model counts also exclude suppressed rows. Saved plans stay exclusive to My decisions.
+
+Validation: 353 Node tests pass, including suppression/category/count consistency and source labels for mixed overrides. Mounted-form checks cover the new desktop field grouping, fact-strip ordering and label association. Full browser layout remains unverified.

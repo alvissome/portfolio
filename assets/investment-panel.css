@@ -48,3 +48,13 @@
 @media(max-width:420px){.ic-plan-research{grid-template-columns:minmax(0,1fr)}}
 
 .ic-revisit-field{min-width:0;max-width:100%}.ic-revisit-field>label{margin-bottom:5px}.investment-panel .ic-revisit-field label{font-size:12px}
+
+/* A single desktop settings row and an explicitly associated, aligned review label. */
+.investment-panel .ic-plan-research{grid-template-columns:repeat(4,minmax(0,1fr)) auto}
+.investment-panel .ic-plan-research:has(>label[hidden]){grid-template-columns:repeat(3,minmax(0,1fr)) auto}
+.investment-panel .ic-settings-body>.ic-plan-facts-host{grid-column:1/-1;min-width:0}
+.investment-panel form.ic-compact-plan>.ic-plan-approval{display:grid;grid-template-columns:15px minmax(0,1fr);align-items:center;align-self:end;gap:8px;height:36px;margin:0;padding:0;line-height:16px}
+.investment-panel form.ic-compact-plan>.ic-plan-approval>label{display:block;align-self:center;font-size:11px;line-height:16px;margin:0;padding:0;cursor:pointer}
+.investment-panel form.ic-compact-plan>.ic-plan-approval>input{display:block;align-self:center;position:static;transform:none;vertical-align:middle;margin:0;width:15px;height:15px}
+@media(max-width:900px){.investment-panel .ic-plan-research,.investment-panel .ic-plan-research:has(>label[hidden]){grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.investment-panel .ic-plan-research,.investment-panel .ic-plan-research:has(>label[hidden]){grid-template-columns:minmax(0,1fr)}}

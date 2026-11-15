@@ -8,13 +8,19 @@ import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=redistribution-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=compact-settings-20261115';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=compact-settings-20261115';
-export {resolvedCompany} from './investment-command-centre.js?v=compact-settings-20261115';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-clarity-20261115';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=plan-clarity-20261115';
+export {resolvedCompany} from './investment-command-centre.js?v=plan-clarity-20261115';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function revisitDate(date,months=1){
   const [year,month,day]=date.split('-').map(Number),last=new Date(Date.UTC(year,month-1+months+1,0)).getUTCDate();
   return new Date(Date.UTC(year,month-1+months,Math.min(day,last))).toISOString().slice(0,10);
+}
+export function supportSourceLabel(company){
+  const levels=company.levels||[];
+  if(!levels.length)return 'unavailable';
+  const sources=levels.map(l=>company.sources?.[l.key]||'unavailable');
+  return new Set(sources).size===1?sources[0]+' ('+levels.map(l=>l.key.toUpperCase()).join(', ')+')':levels.map((l,i)=>l.key.toUpperCase()+': '+sources[i]).join(' · ');
 }
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
@@ -82,13 +88,12 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         <label class="ic-native-estimate">Estimated purchase<output data-native-estimate>—</output><small data-sgd-estimate></small></label>
         <label class="ic-plan-remarks-field">Decision / remarks<textarea name="remarks" maxlength="2000" rows="1" placeholder="Thesis, alternatives or reason to wait"></textarea></label>
         ${field('reviewedAt','Reviewed',today(),`type="date" max="${today()}" required`)}
-        <label class="ic-plan-approval" title="I reviewed the business, IV, trading currency, support ladder and ceiling. Any material news has been resolved."><input type="checkbox" name="approved" required><span>Plan reviewed</span></label>
+        <div class="ic-plan-approval" title="I reviewed the business, IV, trading currency, support ladder and ceiling. Any material news has been resolved."><input id="ic-plan-approved" type="checkbox" name="approved" required><label for="ic-plan-approved">Plan reviewed</label></div>
         <button ${!loaded?'disabled':''}>Save plan</button>
         <details class="ic-plan-settings" data-section="plan-settings" ${open.has('plan-settings')?'open':''}><summary>Plan settings</summary><div class="ic-settings-body">
           <label class="ic-redistribute" data-rebase-control><input type="checkbox" name="redistribute"><strong>Redistribute remaining budget from selected support</strong></label>${field('rebaseBudget','Remaining budget to redistribute (SGD)','','type="text" inputmode="decimal"')}<p data-rebase-control>Explicit review only. Anchor: equal remaining shares; Core: retain 1:1:2 weights; Selective: independent 2–4% proposals within one total budget. Higher unfilled supports are skipped. Resolve pending orders first. Saving the plan approves this redistribution.</p>
-          ${field('budget','Total Anchor addition budget (SGD)','','type="text" inputmode="decimal"')}
           <label class="ic-sale-completed"><input type="checkbox" name="saleCompleted"> Sale completed · exclude potential proceeds</label>
-          <div class="ic-plan-research">${field('ceiling','Company ceiling (%)','','type="number" min="0.01" max="100" step="0.01" required')}<label>Level source<select name="levelSource"><option value="ak">AK sheets · independent fallback</option><option value="independent">Independent reconstruction</option></select></label><label>IV method<select name="methodFamily">${[['auto','Auto method'],['stock','Company DCF'],['bank','Bank'],['reit','REIT'],['fund','Fund / ETF']].map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label><button type="button" data-recalculate>Recalculate</button><p data-plan-research-status></p></div><div class="ic-research-overrides"><p>IV and supports: blank values follow AK sheets, then independent calculation. Enter a value to override it for this plan.</p>${['iv','s1','s2','s3','s4','s5','refCost'].map(key=>field('override-'+key,key==='iv'?'IV':key==='refCost'?'Ref cost':key.toUpperCase(),'','type="text" inputmode="decimal"')).join('')}</div>
+          <div class="ic-plan-research">${field('budget','Total Anchor addition budget (SGD)','','type="text" inputmode="decimal"')}${field('ceiling','Company ceiling (%)','','type="number" min="0.01" max="100" step="0.01" required')}<label>Level source<select name="levelSource"><option value="ak">AK sheets · independent fallback</option><option value="independent">Independent reconstruction</option></select></label><label>IV method<select name="methodFamily">${[['auto','Auto method'],['stock','Company DCF'],['bank','Bank'],['reit','REIT'],['fund','Fund / ETF']].map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label><button type="button" data-recalculate>Recalculate</button><p data-plan-research-status></p></div><div class="ic-plan-facts-host" data-plan-facts></div><div class="ic-research-overrides"><p>IV and supports: blank values follow AK sheets, then independent calculation. Enter a value to override it for this plan.</p>${['iv','s1','s2','s3','s4','s5','refCost'].map(key=>field('override-'+key,key==='iv'?'IV':key==='refCost'?'Ref cost':key.toUpperCase(),'','type="text" inputmode="decimal"')).join('')}</div>
           <div class="ic-plan-prefill" data-plan-prefill></div>
           <p class="ic-footnote">Saving a plan records your proposed entry, quantity and remarks. Cash is reserved only when you record a committed order. Dated reviews are in My decisions, with Copy for Notion for the <a href="${NOTION_REVIEW_URL}" target="_blank" rel="noopener">Stocks Plan Review log</a>.</p>
         </div></details></form>
@@ -111,7 +116,8 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     const showDraftDetails=()=>{
       const {company,saved,draft}=currentDraft(),stageSelector=get('stage'),action=get('action').value;
       const buy=action==='buy',hold=action==='hold';
-      const record=research?.records?.[company.symbol];root.querySelector('[data-plan-research-status]').textContent='IV: '+researchProcessingLabel(record,'iv')+' · '+researchComparisonLabel(record,'iv').text+' | SL: '+researchProcessingLabel(record,'supports')+' · '+researchComparisonLabel(record,'supports').text+' | Displayed IV: '+(company.sources.iv||'unavailable')+'; numeric overrides take precedence. Ref cost: '+company.refCostLabel;
+      root.querySelector('[data-plan-facts]').innerHTML=`<dl class="ic-plan-facts"><div><dt>Current holding · ${quantityText(company.shares)} shares</dt><dd>${show(draft.holding)}</dd></div><div><dt>Room below ceiling</dt><dd>${show(draft.room)}</dd></div><div><dt>Current price</dt><dd>${esc(money(company.quote?.close,company.currency))}</dd></div><div><dt>IV</dt><dd>${esc(money(company.iv,company.currency))}</dd></div></dl>`;
+      const record=research?.records?.[company.symbol];root.querySelector('[data-plan-research-status]').textContent='IV: '+researchProcessingLabel(record,'iv')+' · '+researchComparisonLabel(record,'iv').text+' | SL: '+researchProcessingLabel(record,'supports')+' · '+researchComparisonLabel(record,'supports').text+' | Displayed IV: '+(company.sources.iv||'unavailable')+' | Displayed SL: '+supportSourceLabel(company)+'; numeric overrides take precedence. Ref cost: '+company.refCostLabel;
       root.querySelectorAll('[data-rebase-control]').forEach(el=>el.hidden=!buy);get('redistribute').closest('label').hidden=!buy;get('redistribute').disabled=!buy;get('rebaseBudget').closest('label').hidden=!buy||!get('redistribute').checked;get('rebaseBudget').disabled=!buy||!get('redistribute').checked;
       get('entry').closest('label').firstChild.textContent=action==='sell'?'Sale price':'Entry price';
       for(const key of ['stage','ceiling','budget']){get(key).disabled=!buy||(key==='budget'&&company.category!=='anchor');get(key).required=buy&&key!=='stage'&&(key!=='budget'||company.category==='anchor');get(key).closest('label').hidden=!buy||(key==='budget'&&company.category!=='anchor');}
@@ -141,7 +147,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       root.querySelector('[data-native-estimate]').textContent=sized.spend==null?'—':money(sized.units*sized.entry,company.currency);
       root.querySelector('[data-sgd-estimate]').textContent=company.currency==='SGD'||sized.spend==null?'':'≈ '+money(sized.spend,'SGD');
       root.querySelector('[data-plan-feedback]').textContent=[...sized.issues,...(draft.missing.length?draft.missing:[])].join(' ');
-      root.querySelector('[data-plan-prefill]').innerHTML=`<dl class="ic-plan-facts"><div><dt>Current holding · ${quantityText(company.shares)} shares</dt><dd>${show(draft.holding)}</dd></div><div><dt>Room below ceiling</dt><dd>${show(draft.room)}</dd></div><div><dt>Current price</dt><dd>${esc(money(company.quote?.close,company.currency))}</dd></div><div><dt>IV</dt><dd>${esc(money(company.iv,company.currency))}</dd></div></dl><p class="ic-meta">${esc(draft.budgetSource)}. Remaining stage allowance and shared cash cap the quantity.</p>${renderPlanBreakdown(draft,company,funding,sized)}`;
+      root.querySelector('[data-plan-prefill]').innerHTML=`<p class="ic-meta">${esc(draft.budgetSource)}. Remaining stage allowance and shared cash cap the quantity.</p>${renderPlanBreakdown(draft,company,funding,sized)}`;
       return sized;
     };
     const showLevels=()=>{
