@@ -10,10 +10,15 @@ test('legacy alert senders and dashboard controls are retired while shared data 
  const watch=bundle.slice(bundle.indexOf('function RN('),bundle.indexOf('function NN('));for(const text of ['Cooldown (hours','Email override','Legacy multi-level config','children:"🔔"'])assert.ok(!watch.includes(text),text);
  assert.ok(bundle.includes('researchPanel:m.jsx(RN,'));assert.equal((bundle.match(/m\.jsx\(RN,/g)||[]).length,1);
 });
-test('CC owns the React Research disclosure and hides it together with financial forms in privacy mode',()=>{
+test('CC excludes the old Watchlist AK disclosure; settings own source controls',()=>{
  const React={useRef:current=>({current}),useState:()=>['watchlist',()=>{}],useEffect:()=>{}};
  const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},Panel=createInvestmentComponent(React,jsx),researchPanel={type:'watchlist-test'};
- const props={uid:'test',state:{},research:{},storage:{},researchPanel};let tree=Panel(props);
- assert.equal(tree.type,'section');assert.equal(tree.props.children[1].props.className,'ic-watchlist-host');assert.equal(tree.props.children[1].props.children,researchPanel);
- tree=Panel({...props,state:{privacyMode:true}});assert.equal(tree.props.children[1],false);
+ const props={uid:'test',state:{},research:{},storage:{},researchPanel};
+ const tree=Panel(props);
+ assert.equal(tree.type,'section');
+ assert.equal(tree.props.children.length,1);
+ assert.equal(tree.props.children[0].props.className,'pf-panel investment-panel');
+ assert.ok(!tree.props.children.some(c=>c===researchPanel));
+ const privateTree=Panel({...props,state:{privacyMode:true}});
+ assert.equal(privateTree.props.children.length,1);
 });
