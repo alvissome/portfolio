@@ -1,8 +1,9 @@
+import {akReferenceCost} from './ak-reference-cost.js?v=plan-research-20261115';
 import {createValuationEditor} from './valuation-editor.js';
-import {researchColumns,visibleResearchColumns} from './research-columns.js';
+import {researchColumns,visibleResearchColumns} from './research-columns.js?v=plan-research-20261115';
 import {prioritizeUniverse, planTrackInWatchlist} from './research-core.js';
-import {createAkSheetControls} from './ak-sheet-controls.js?v=compact-research-20261114';
-import {planAkLevelCopy} from './ak-sheet-sources.js';
+import {createAkSheetControls} from './ak-sheet-controls.js?v=plan-research-20261115';
+import {planAkLevelCopy} from './ak-sheet-sources.js?v=plan-research-20261115';
 
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
 const price = value => numeric(value) ? value.toLocaleString('en-SG', {
@@ -147,7 +148,7 @@ export function createResearchComponents(React) {
   }
 
   function ResearchPanel({holdings = [], watchlist = [], scope = 'holdings',
-    onTrack,onApplyAkLevels, getHoldingMetrics, privacyMode = false, research,columnVisibility}) {
+    onTrack,onRebalance,rebalancingSymbols={},plans={},onApplyAkLevels, getHoldingMetrics, privacyMode = false, research,columnVisibility}) {
     const pending = React.useRef(new Map());
     const [tracked, setTracked] = React.useState(() => new Set());
     const [error, setError] = React.useState('');
@@ -286,7 +287,9 @@ export function createResearchComponents(React) {
                   h('button',{type:'button',className:'research-track',onClick:()=>{try{const plan=planAkLevelCopy(watchlist,row.symbol,record.reference,{instrument:record.instrument});onApplyAkLevels(plan.id,plan.patch);setCopyPreview(null);setError('');}catch(e){setError(e.message);}}},'Apply AK levels'),
                   h('button',{type:'button',className:'research-track',onClick:()=>setCopyPreview(null)},'Cancel')):null),
             ];
-            if (scope === 'holdings') cells.push(h('td', {key:'track'}, h('input', {type:'checkbox',
+            const refCost=akReferenceCost(record,plans[row.symbol]?.action||'buy',record?.instrument?.currency||record?.reference?.currency||holdings.find(h=>h.ticker===row.symbol)?.currency);cells.push(h('td',{key:'ref-cost',title:refCost.label,className:'research-number'},price(refCost.value)));
+            if (scope === 'holdings'&&onRebalance)cells.push(h('td',{key:'track'},h('input',{type:'checkbox','aria-label':`Flag ${row.symbol} for CC Rebalancing`,title:'Show in CC Rebalancing; does not add to Watchlist',checked:!privacyMode&&!!rebalancingSymbols[row.symbol],disabled:privacyMode||!holdings.some(h=>h.ticker===row.symbol&&!h.exited&&h.accountType==='Cash'),onChange:async event=>{try{await onRebalance(row.symbol,event.target.checked);setError('');}catch(e){setError('Could not save rebalancing flag. '+e.message);}}})));
+            if (scope === 'holdings'&&!onRebalance) cells.push(h('td', {key:'track'}, h('input', {type:'checkbox',
               'aria-label':`Track ${row.symbol} in watchlist`, title:trackedNow ? 'Tracked in watchlist' : 'Track in watchlist',
               checked:trackedNow, disabled:trackedNow || typeof onTrack !== 'function',
               onChange:event=>{if(event.target.checked) track(row);}})));

@@ -1,6 +1,6 @@
 import {normalizeValuationSettings, IV_POLICY_VERSION} from './valuation-settings.js';
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
-import {normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js';
+import {normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=plan-research-20261115';
 
 export const RESEARCH_MODEL_VERSION = 'ak-reconstruction-v1';
 const PARTS = ['iv', 'supports'];
@@ -72,7 +72,7 @@ const METHOD_FIELDS = [
   ['adjustedPbIV', 'justified_pb', 'Adjusted P/B'],
 ];
 const sourceName = key => ({capital_gains:'Capital gains', dividend:'Dividend',
-  priority_watchlist:'Priority watchlist', secondary_watchlist:'Secondary watchlist'}[key] ?? key);
+  closed_positions:'Closed positions', priority_watchlist:'Priority watchlist', secondary_watchlist:'Secondary watchlist'}[key] ?? key);
 
 /** Import facts only. No reference value is copied into generated results or
  * active IV/support fields. Missing coverage is explicit, never inferred from
@@ -114,7 +114,7 @@ export function parseAdamSnapshot(input, securities = []) {
       ?{...v,method:'published_'+v.key.replace(/IV$/,'').toLowerCase()+'_unspecified'}:v);
     const entry = {source: String(raw.source ?? ''), label: sourceName(String(raw.source ?? '')),
       asOf: raw.asOf, currency: raw.currency, supports: normalizeSupports(raw.supportLevels ?? raw.supports ?? []),
-      variants, category: raw.category ?? null, classification: raw.classification ?? null, methodFamily: family};
+      averageCost:Number(raw.averageCost)>0?Number(raw.averageCost):null,averageSellPrice:Number(raw.averageSellPrice)>0?Number(raw.averageSellPrice):null,variants, category: raw.category ?? null, classification: raw.classification ?? null, methodFamily: family};
     if (!entry.source) throw new TypeError('Every reference row needs its source list.');
     if (!groups.has(raw.symbol)) groups.set(raw.symbol, []);
     groups.get(raw.symbol).push(entry);
@@ -131,8 +131,8 @@ export function parseAdamSnapshot(input, securities = []) {
     // Latest published source wins by date, never by closeness to our result.
     // Conflicting same-date sources remain visible and prevent a single match.
     entries.sort((a, b) => b.asOf.localeCompare(a.asOf) || a.source.localeCompare(b.source));
-    const chosen = entries[0];
-    const sameDate = entries.filter(entry => entry.asOf === chosen.asOf);
+    const chosen = entries.find(e=>e.source!=='closed_positions')||entries[0];
+    const sameDate = entries.filter(e=>e.source!=='closed_positions').filter(entry => entry.asOf === chosen.asOf);
     const signature = entry => JSON.stringify({currency: entry.currency, variants: entry.variants, supports: entry.supports});
     const conflict = sameDate.some(entry => signature(entry) !== signature(chosen));
     const selectedKey = chosen.methodFamily === 'bank' ? 'adjustedPbIV'
@@ -363,7 +363,7 @@ export function createResearchController({load, write, now = () => new Date().to
       sourceAbort=new AbortController();publish({sheetSyncBusy:true});
       const result=await readAkSources(normalized,state.records,{fetch:sheetFetch,now:new Date(now()),signal:sourceAbort.signal});
       if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
-      const status={checkedAt:now(),readable:result.readable,complete:result.readable===4,sources:result.statuses};
+      const status={checkedAt:now(),readable:result.readable,complete:result.snapshot.complete,sources:result.statuses};
       if(result.changed&&result.readable)await importSnapshot(result.snapshot);
       if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
       await persist({researchSheetSyncStatus:status});publish({sheetSyncStatus:status});

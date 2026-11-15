@@ -91,7 +91,7 @@ test('research views omit Category while keeping Track in watchlist',()=>{
  const tree=ResearchPanel({holdings:[{ticker:'XYZ'}],watchlist:[],strategyCategories:{XYZ:'selective'},onStrategyCategoryChange:()=>{}});
  const headings=all(tree,n=>n.type==='th');assert.ok(!headings.some(n=>n.props.children.includes('Category')));
  const cells=all(tree,n=>typeof n.type==='function'&&n.type.name==='StrategyCategorySelect');
- assert.equal(cells.length,0);assert.ok(headings.some(n=>n.props.children.includes('Watchlist')));
+ assert.equal(cells.length,0);assert.ok(headings.some(n=>n.props.children.includes('Rebalancing')));
 });
 
 test('production category handler saves immediately in order; normal autosave cannot overwrite it',async()=>{
@@ -157,7 +157,7 @@ test('holdings table filters by category; Watchlist research no longer renders t
   const cells=all(tree,n=>typeof n.type==='function'&&n.type.name==='StrategyCategorySelect');assert.equal(cells.length,1);assert.equal(cells[0].props.symbol,'BBB');
   assert.ok(all(tree,n=>typeof n.type==='function'&&n.type.name==='CategoryControls').length);
  }
- assert.equal(all(watch,n=>n.type==='tr').length,0);assert.ok(all(watch,n=>typeof n.type==='function'&&n.type.name==='ResearchPanel').length);
+ assert.equal(all(watch,n=>n.type==='tr').length,0);assert.ok(!all(watch,n=>typeof n.type==='function'&&n.type.name==='ResearchPanel').length);
 });
 
 test('privacy masks account quantities, average costs and notes while keeping public closes',()=>{

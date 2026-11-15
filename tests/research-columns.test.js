@@ -45,6 +45,6 @@ test('holdings keeps its Research toolbar and CC Watchlist retains separate rese
   assert.ok(after.includes('m.jsx("button"'));assert.ok(!after.includes('className:"ml-auto p-1.5'));
   assert.ok(part.includes('m.jsx(ResearchColumnSettings,{scope:"'+scope+'",visibility:researchColumnVisibility,onChange:onResearchColumnsChange})'));
   assert.ok(part.includes('columnVisibility:researchColumnVisibility'));
-  const watch=bundle.slice(bundle.indexOf('function RN('),bundle.indexOf('function NN('));assert.ok(watch.includes('Show/hide research columns'));assert.ok(watch.includes('scope:"watchlist",visibility:researchColumnVisibility'));assert.ok(!watch.includes('ResearchViewSwitch'));
+  const watch=bundle.slice(bundle.indexOf('function RN('),bundle.indexOf('function NN('));assert.ok(watch.includes('SharedAkSheetControls'));assert.ok(!watch.includes('Research · AK sheets'));assert.ok(!watch.includes('ResearchViewSwitch'));
  }
 });
