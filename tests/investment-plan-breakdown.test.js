@@ -28,3 +28,7 @@ test('selected entry/quantity edits appear in the explanation, and completed or 
  d.stages[1].completed=true;const done=entryDraft(d,company,funding,{stageKey:'s2',useStageAllowance:true});assert.match(renderPlanBreakdown(d,company,funding,done),/S2 is completed/);
  const missing=planDraft(company,null,null);const pending=entryDraft(missing,company,null);assert.match(renderPlanBreakdown(missing,company,null,pending),/needed to calculate shares/);
 });
+test('support boxes distinguish the support quote from a lower IV-capped entry',()=>{
+ const c={...company,iv:400,levels:[600,550,350].map((price,i)=>({key:'s'+(i+1),price}))},d=planDraft(c,null,funding),e=entryDraft(d,c,funding,{stageKey:'s1',useStageAllowance:true});
+ const html=renderPlanBreakdown(d,c,funding,e);assert.match(html,/ic-support-boxes/);assert.doesNotMatch(html,/<table/);assert.match(html,/Support price/);assert.match(html,/US\$600.00/);assert.match(html,/US\$400.00/);assert.match(html,/Entry capped by reviewed IV/);
+});

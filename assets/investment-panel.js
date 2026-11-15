@@ -1,6 +1,6 @@
 import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides} from './investment-actions.js?v=cc-queue-currency-20261115';
 import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=cc-cash-budget-20261114';
-import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=cc-actions-20261115';
+import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=support-boxes-20261115';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
 import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=cc-actions-20261115';
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=cc-actions-20261115';
@@ -105,7 +105,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       const {company,saved,draft}=currentDraft(),stageSelector=get('stage'),action=get('action').value;
       const buy=action==='buy',hold=action==='hold';
       get('entry').closest('label').firstChild.textContent=action==='sell'?'Sale price':'Entry price';
-      root.querySelector('[data-plan-levels]').textContent=`${STRATEGY_CATEGORIES[company.category]||'Unassigned'} · IV ${money(company.iv,company.currency)} · `+company.levels.map(l=>`${l.key.toUpperCase()} ${money(l.price,company.currency)}`).join(' · ');
+      root.querySelector('[data-plan-levels]').textContent=`Current ${money(company.quote?.close,company.currency)} · ${STRATEGY_CATEGORIES[company.category]||'Unassigned'} · IV ${money(company.iv,company.currency)} · `+company.levels.map(l=>`${l.key.toUpperCase()} ${money(l.price,company.currency)}`).join(' · ');
       for(const key of ['stage','ceiling','budget','lot']){get(key).disabled=!buy||(key==='budget'&&company.category!=='anchor');get(key).required=buy&&key!=='stage'&&(key!=='budget'||company.category==='anchor');get(key).closest('label').hidden=!buy||(key==='budget'&&company.category!=='anchor');}
       for(const key of ['entry','quantity']){get(key).required=!hold;get(key).disabled=hold;get(key).closest('label').hidden=hold;}
       get('revisitOn').closest('label').hidden=!hold;get('revisitOn').required=hold;get('revisitOn').disabled=!hold;
@@ -143,7 +143,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         const saved=config.plans[selectedSymbol],company=resolvedCompany(state,research,selectedSymbol,saved),draft=planDraft(company,saved,funding);
         get('action').value=saved?planAction(saved):'buy';get('revisitOn').value=saved?.revisitOn||new Date(Date.now()+90*86400000).toISOString().slice(0,10);get('revisitOn').min=new Date(Date.now()+86400000).toISOString().slice(0,10);get('saleCompleted').checked=saved?.sale?.completed===true;
         for(const key of ['iv','s1','s2','s3','s4','s5','refCost']){const input=get('override-'+key);input.value=company.manualValues[key]??'';input.placeholder=key==='priceCurrency'?company.currency||'Auto':key==='refCost'?'Optional':money(key==='iv'?company.iv:company.levels.find(l=>l.key===key)?.price,company.currency);}
-        root.querySelector('[data-plan-levels]').textContent=`${STRATEGY_CATEGORIES[company.category]||'Unassigned'} · IV ${money(company.iv,company.currency)} · `+company.levels.map(l=>`${l.key.toUpperCase()} ${money(l.price,company.currency)}`).join(' · ');
+        root.querySelector('[data-plan-levels]').textContent=`Current ${money(company.quote?.close,company.currency)} · ${STRATEGY_CATEGORIES[company.category]||'Unassigned'} · IV ${money(company.iv,company.currency)} · `+company.levels.map(l=>`${l.key.toUpperCase()} ${money(l.price,company.currency)}`).join(' · ');
         get('ceiling').value=draft.ceiling??'';get('ceiling').max=({anchor:10,core:6,selective:4}[company.category]||100);
         get('budget').value=draft.addBudget==null?'':money(draft.addBudget,'SGD');get('budget').disabled=company.category!=='anchor';get('budget').required=company.category==='anchor';get('budget').readOnly=company.category==='anchor'&&saved?.category==='anchor'&&saved.stages.length>0;get('budget').closest('label').hidden=company.category!=='anchor';
         get('lot').value=draft.lotSize??'';get('remarks').value=saved?.remarks||'';get('entry').value='';get('quantity').value='';get('stage').dataset.symbol='';
