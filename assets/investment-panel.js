@@ -6,9 +6,9 @@ import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=cc-actions-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=cc-cash-budget-20261114';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=cc-queue-currency-20261115';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=cc-queue-currency-20261115';
-export {resolvedCompany} from './investment-command-centre.js?v=cc-queue-currency-20261115';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=cc-workflow-20261115';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=cc-workflow-20261115';
+export {resolvedCompany} from './investment-command-centre.js?v=cc-workflow-20261115';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
@@ -20,7 +20,7 @@ export function createInvestmentComponent(React,jsx){
   };
 }
 export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange,onViewChange=()=>{},onRefresh,onWatchlistAdd,onWatchlistRemove}){
-  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',categoryFilter='all',categorySort='none',categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
+  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
   const show=n=>state.privacyMode?'S$•••':n==null?'—':'S$'+new Intl.NumberFormat('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
   const field=(name,label,value='',attrs='')=>`<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
   async function reload(){
@@ -58,7 +58,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       ${!loaded?'<p>Loading saved plans and decisions…</p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
       ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<details data-section="funding-breakdown" ${open.has('funding-breakdown')?'open':''}><summary>Portfolio and cash basis</summary><p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. CC cash used since import: ${show(model.allowance.spent)}. Pending order reservations: ${show(model.reserved)}. Available for other buys: <strong>${show(funding.available)}</strong>.</p></details>`:''}
       ${model.incompleteSales?'<p class="ic-meta">Some planned sales lack FX and are excluded from potential cash.</p>':''}
-      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,planSetOpen:open.has('plans-set'),setupOpen:open.has('setup-checks')})}
+      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter})}
       ${renderCashAllowance(model)}
       <details data-section="funding" ${open.has('funding')||model.allowance.legacyReviewRequired?'open':''}><summary>Confirm strategy funding</summary>
         <form data-funding>${field('liabilities','Related liabilities (SGD)',config.funding.liabilities??0,'type="number" min="0" step="0.01" required')}${field('pending','Other unavailable cash: external orders or unrecorded spending (SGD)',config.funding.pending??0,'type="number" min="0" step="0.01" required')}
@@ -220,6 +220,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       try{await navigator.clipboard.writeText(text);button.textContent='Copied — paste into Stocks Plan Review';}
       catch{const area=document.createElement('textarea');area.value=text;area.readOnly=true;button.after(area);area.focus();area.select();button.textContent='Select and copy this review';}
     });
+    root.querySelectorAll('[data-plan-action-filter]').forEach(input=>input.onchange=()=>{actionFilter=[...root.querySelectorAll('[data-plan-action-filter]')].filter(el=>el.checked).map(el=>el.dataset.planActionFilter);render();});
     if(root.querySelector('[data-opportunity-category]'))root.querySelector('[data-opportunity-category]').onchange=e=>{categoryFilter=e.target.value;render();};
     if(root.querySelector('[data-opportunity-sort]'))root.querySelector('[data-opportunity-sort]').onchange=e=>{categorySort=e.target.value;render();};
     root.querySelectorAll('[data-review-plan]').forEach(button=>button.onclick=()=>{

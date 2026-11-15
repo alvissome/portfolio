@@ -50,13 +50,13 @@ test('action switching retains earlier purchase fills and first-time Hold does n
  const restored=reviewPurchasePlan(sell,{...buy,action:'buy'});assert.equal(restored.stages[0].spent,500);
  const firstHold=save('hold',{revisitOn:'2026-12-15'}),draft=planDraft({...company,levels},firstHold,{base:100000,byCompany:{AAA:1000},available:10000});assert.equal(draft.addBudget,9000);
 });
-test('Watchlist renders cards for every tracked ticker, even Hold/deferred; decisions use a latest-plan table',()=>{
+test('saved plans leave Watchlist and remain in the latest-plan table',()=>{
  const s=state(),c=config(s);c.plans.AAA=save('hold',{revisitOn:'2026-12-15'});c.plans.BBB={...save('sell'),symbol:'BBB'};let m=model(s,c);
  c.decisions={defer:{id:'defer',symbol:'AAA',status:'deferred',context:m.rows[0].context,until:'2026-12-01',updatedAt:'2026-11-15T02:00:00Z'}};m=model(s,c);
- const watch=renderCommandCentre(m,{show:String,today,filter:'watchlist'});assert.match(watch,/data-opportunity="AAA"/);assert.match(watch,/data-opportunity="BBB"/);assert.match(watch,/data-add-watchlist/);assert.doesNotMatch(watch,/<table/);
+ const watch=renderCommandCentre(m,{show:String,today,filter:'watchlist'});assert.doesNotMatch(watch,/data-opportunity="AAA"/);assert.doesNotMatch(watch,/data-opportunity="BBB"/);assert.match(watch,/data-add-watchlist/);assert.doesNotMatch(watch,/<table/);
  const table=renderCommandCentre(m,{show:String,today,filter:'decisions'});for(const label of ['Ticker','Company','Action','Close','Avg Price','BValue','IV','Ref cost','Current SL','Notes'])assert.ok(table.includes('>'+label+'<'),label);
  assert.equal((table.match(/data-decision-row="AAA"/g)||[]).length,1);assert.match(table,/HOLD/);assert.match(table,/2026-12-15/);assert.match(table,/US\$80.00/);assert.match(table,/Synthetic &lt;note&gt;/);assert.match(table,/Decision history and orders/);
- const core=renderCommandCentre(m,{show:String,today,filter:'watchlist',categoryFilter:'core'});assert.doesNotMatch(core,/data-opportunity="AAA"/);assert.match(core,/data-opportunity="BBB"/);
+ const core=renderCommandCentre(m,{show:String,today,filter:'watchlist',categoryFilter:'core'});assert.doesNotMatch(core,/data-opportunity="AAA"/);assert.doesNotMatch(core,/data-opportunity="BBB"/);
 });
 test('non-Buy review snapshots copy the explicit action and preserve dated decisions',()=>{
  const first=recordPlanReview(config(state()),save('hold',{revisitOn:'2026-12-15'}),{id:'hold-review',now:'2026-11-15T02:00:00Z'});
@@ -70,8 +70,8 @@ test('privacy exposes only public research and hides action, sale quantities, re
 test('deferred notification timing never changes Hold action or suppresses an overdue Hold review',()=>{
  const s=state(),c=config(s);c.plans.AAA=save('hold',{revisitOn:'2026-11-16'});
  const context=model(s,c).rows[0].context;c.decisions={defer:{id:'d',symbol:'AAA',context,status:'deferred',until:'2026-12-20'}};
- const m=buildCommandCentre(s,{},c,{today:'2026-11-16',now:now+86400000});assert.equal(m.rows[0].action,'hold');assert.equal(m.rows[0].status,'review');assert.equal(m.rows[0].notificationDeferred,true);assert.ok(m.stats.attention>=1);
- const html=renderCommandCentre(m,{show:String,today:'2026-11-16',filter:'attention'});assert.match(html,/Hold review is due/);
+ const m=buildCommandCentre(s,{},c,{today:'2026-11-16',now:now+86400000});assert.equal(m.rows[0].action,'hold');assert.equal(m.rows[0].status,'review');assert.equal(m.rows[0].notificationDeferred,true);assert.ok(m.rows[0].reviewReasons.length);
+ const html=renderCommandCentre(m,{show:String,today:'2026-11-16',filter:'decisions'});assert.match(html,/due/);
 });
 test('invalid research overrides are rejected for every non-Buy plan rather than silently saved',()=>{
  for(const researchOverrides of [{iv:'bad'},{s1:-1},{priceCurrency:'US'},{unknown:1}])assert.throws(()=>save('hold',{revisitOn:'2026-12-15',researchOverrides}));

@@ -84,7 +84,7 @@ test('cards use actual entry levels, SGD suggestions and current/projected alloc
  const html=renderOpportunityCard(row,{show:n=>'S$'+n,today});
  assert.ok(html.includes('US$100.00'));assert.ok(html.includes('Allocation / ceiling'));assert.ok(html.includes('projected allocation'));
  assert.ok(html.includes('US$1,538.46')); assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));
- const full=renderCommandCentre(model(s,c),{show:n=>n==null?'—':'S$'+n,today});assert.ok(full.includes('Plan/data checks'));assert.ok(full.includes('My decisions'));
+ const full=renderCommandCentre(model(s,c),{show:n=>n==null?'—':'S$'+n,today});assert.ok(full.includes('Data review'));assert.ok(full.includes('My decisions'));
 });
 test('all command decisions, reservations and archived plans survive dashboard backup restore',()=>{
  const s=state();let c=config(s);c=action(c,model(s,c).rows[0],'ordered',{amount:500});

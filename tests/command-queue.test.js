@@ -8,34 +8,22 @@ const base=()=>({strategyCategories:{AAA:'anchor',BBB:'core'},holdings:[],watchl
 const config=s=>({cashTrackingVersion:1,plans:{},decisions:{},funding:{confirmed:true,basisSignature:fundingSignature(s)}});
 const build=(s,c)=>buildCommandCentre(s,{},c,{today,now});
 const plan=()=>({...createPurchasePlan({id:'plan-a',symbol:'AAA',category:'anchor',ceilingPct:10,addBudget:1500,base:15000,iv:200,currency:'USD',reviewedAt:today,levels:[120,100,80].map((price,i)=>({key:'s'+(i+1),price}))}),lotSize:1,plannedEntryKey:'s1'});
-test('saved current plan moves to collapsed Plan set; price reached without a plan stays open',()=>{
- const s=base(),c=config(s);let m=build(s,c);assert.equal(m.stats.opportunities,1);assert.equal(m.stats.attention,0);assert.equal(m.rows[1].reviewReasons.length,0);
- c.plans.AAA=plan();m=build(s,c);assert.equal(m.rows[0].planSet,true);assert.equal(m.rows[0].openOpportunity,false);assert.equal(m.stats.opportunities,0);
- const html=renderCommandCentre(m,{show:String,today});assert.match(html,/<details class="ic-plans-set" data-section="plans-set" >/);assert.match(html,/Plan set \(1\)/);
- const before=html.slice(0,html.indexOf('class="ic-plans-set"'));assert.doesNotMatch(before,/data-opportunity="AAA"/);
+test('saved plans are exclusive to My decisions even when inputs change',()=>{
+ const s=base(),c=config(s);c.plans.AAA=plan();s.watchlist[0].iv=210;
+ const m=build(s,c);assert.equal(m.rows[0].openOpportunity,false);
+ for(const filter of ['opportunities','watchlist','balance','data'])assert.doesNotMatch(renderCommandCentre(m,{show:String,today,filter}),/data-opportunity="AAA"/);
+ assert.match(renderCommandCentre(m,{show:String,today,filter:'decisions'}),/data-decision-row="AAA"/);
 });
-test('deeper unused stage, updated IV and overdue review reopen a saved plan',()=>{
- for(const cause of ['deeper','iv','due']){
-  const s=base(),c=config(s);c.plans.AAA=plan();
-  if(cause==='deeper')s.priceCache.AAA.close=95;
-  if(cause==='iv')s.watchlist[0].iv=210;
-  if(cause==='due')c.plans.AAA.reviewedAt='2026-09-01';
-  const r=build(s,c).rows[0];assert.equal(r.planSet,false,cause);assert.equal(r.openOpportunity,true,cause);assert.ok(r.reviewReasons.length,cause);
- }
+test('opportunities contain held stocks at or within five percent of support, not distant holdings',()=>{
+ const s=base();s.holdings=[{ticker:'AAA',accountType:'Cash',shares:1,currency:'USD'}];const c=config(s);
+ for(const [close,expected]of [[115,true],[125,true],[127,false],[180,false]]){s.priceCache.AAA.close=close;assert.equal(build(s,c).rows[0].openOpportunity,expected);}
+ s.holdings=[];assert.equal(build(s,c).rows[0].openOpportunity,false);
 });
-test('allocation and above-IV checks apply without a plan and across Sell/Hold, independent of entry distance',()=>{
- const s=base();s.holdings=[{ticker:'AAA',accountType:'Cash',shares:100,currency:'USD'}];s.priceCache.AAA.close=250;const c=config(s);
- for(const action of [null,'sell','hold']){
-  c.plans=action?{AAA:{...plan(),action,revisitOn:'2027-01-15',sale:{quantity:5,price:300}}}:{};
-  const m=build(s,c),r=m.rows[0];assert.ok(r.reviewReasons.some(c=>c.key==='ceiling'));assert.ok(r.reviewReasons.some(c=>c.key==='above-iv'));assert.equal(r.openOpportunity,false);assert.equal(m.stats.attention,1);
-  const html=renderCommandCentre(m,{show:String,today,filter:'attention'});assert.match(html,/Allocation above company ceiling/);assert.match(html,/Price above IV/);
- }
-});
-test('unplanned distant ticker is monitoring, while missing data stays in collapsed setup checks',()=>{
- const s=base(),c=config(s);s.priceCache.AAA.close=180;s.watchlist[1].iv='';const m=build(s,c);
- assert.equal(m.stats.attention,0);assert.equal(m.stats.opportunities,0);assert.equal(m.stats.setup,1);
- const html=renderCommandCentre(m,{show:String,today,filter:'attention'});assert.match(html,/<details class="ic-setup-checks" data-section="setup-checks" >/);assert.match(html,/IV unavailable/);
- const watch=renderCommandCentre(m,{show:String,today,filter:'watchlist'});assert.match(watch,/Monitoring · entry not reached/);
+test('rebalancing labels above-IV and ceiling conditions; data review excludes missing plans',()=>{
+ const s=base();s.holdings=[{ticker:'AAA',accountType:'Cash',shares:100,currency:'USD'}];s.priceCache.AAA.close=250;const c=config(s),m=build(s,c);
+ assert.ok(m.rows[0].lists.includes('balance'));assert.ok(!m.rows[0].lists.includes('data'));
+ const html=renderCommandCentre(m,{show:String,today,filter:'balance'});assert.match(html,/Price above IV/);assert.match(html,/Allocation above company ceiling/);
+ s.watchlist[0].iv='';assert.match(renderCommandCentre(build(s,c),{show:String,today,filter:'data'}),/Review data before setting a plan/);
 });
 test('summary uses known cash even with stale quotes, adds sale BValue only to potential cash and nets commitments once',()=>{
  const s=base();s.holdings=[{ticker:'AAA',accountType:'Cash',shares:20,currency:'USD'}];s.priceCache.AAA.timestamp=now-5*86400000;const c=config(s);
@@ -64,4 +52,11 @@ test('price sort promotes reached rows; nearest entry uses distance, not allocat
 test('changing category applies its lower ceiling before a stale plan is reviewed',()=>{
  const s=base();s.holdings=[{ticker:'AAA',accountType:'Cash',shares:8,currency:'USD'}];s.priceCache.AAA.close=100;s.strategyCategories.AAA='core';const c=config(s);c.plans.AAA=plan();
  const row=build(s,c).rows[0];assert.equal(row.ceiling,6);assert.ok(row.currentWeight>6&&row.currentWeight<10);assert.equal(row.concentration,true);assert.equal(row.planSet,false);
+});
+test('decision table supports combined action filters and shows planned quantity, price and following support',()=>{
+ const s=base(),c=config(s);c.plans.AAA=plan();c.plans.AAA.stages[0].purchaseQuantity=3;c.plans.AAA.stages[0].entryPrice=119;
+ c.plans.BBB={...plan(),symbol:'BBB',action:'hold',revisitOn:'2027-01-01'};
+ const m=build(s,c);const html=renderCommandCentre(m,{show:String,today,filter:'decisions',actionFilter:['buy','sell']});
+ assert.match(html,/Next SL/);assert.match(html,/Quantity/);assert.match(html,/Entry \/ sale price/);assert.match(html,/US\$119.00/);assert.match(html,/>3<\/td>/);assert.match(html,/data-decision-row="AAA"/);assert.doesNotMatch(html,/data-decision-row="BBB"/);assert.match(html,/Purchase stages and fills/);assert.match(html,/Record pending order/);
+ const none=renderCommandCentre(m,{show:String,today,filter:'decisions',actionFilter:[]});assert.doesNotMatch(none,/data-decision-row=/);
 });

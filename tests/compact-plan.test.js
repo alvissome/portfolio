@@ -35,8 +35,8 @@ test('privacy renders only public research and omits private values, notes, plan
  assert.match(html,/data-public-opportunity="XYZ"/);
 });
 test('Plan/data checks explain their scope instead of implying a moat alert',()=>{
- const html=renderCommandCentre({rows:[],visible:[],history:[],archivedPlans:[],stats:{},funding:null},{show:String,today:'2026-11-14',filter:'attention'});
- assert.match(html,/Plan\/data checks/);assert.match(html,/do not detect business deterioration or moat changes/);assert.doesNotMatch(html,/Needs attention/);
+ const html=renderCommandCentre({rows:[],visible:[],history:[],archivedPlans:[],stats:{},funding:null},{show:String,today:'2026-11-14',filter:'data'});
+ assert.match(html,/Data review/);assert.match(html,/Missing, stale or inconsistent inputs only/);assert.doesNotMatch(html,/Needs attention/);
 });
 test('desktop form has six columns, two default control rows and optional settings',async()=>{
  const [css,source]=await Promise.all(['investment-panel.css','investment-panel.js'].map(p=>readFile(new URL('../assets/'+p,import.meta.url),'utf8')));
