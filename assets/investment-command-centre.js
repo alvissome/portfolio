@@ -1,3 +1,4 @@
+import {commandQueueState,companyCeiling} from './command-queue.js?v=cc-queue-20261115';
 import {planAction,previewActionPlan,potentialSale} from './investment-actions.js?v=cc-actions-20261115';
 import {cashAllowance,recordCashUse} from './cc-cash-allowance.js?v=cc-cash-budget-20261114';
 import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
@@ -12,9 +13,10 @@ export function resolvedCompany(state,research,symbol,plan){
   const record=research?.records?.[symbol];
   const holding=(state.holdings||[]).find(h=>h.ticker===symbol&&h.accountType==='Cash'&&!h.exited);
   const original=rows[0]||{symbol};
-  const row={...original,...(plan?.researchOverrides||{})};
+  const {priceCurrency:ignoredCurrency,...researchOverrides}=plan?.researchOverrides||{};
+  const row={...original,...researchOverrides};
   const quote=state.priceCache?.[symbol];
-  const currency=row.priceCurrency||holding?.currency||record?.instrument?.currency||(!record?.reference?.conflict&&record?.reference?.currency)||quote?.currency||'';
+  const currency=holding?.currency||record?.instrument?.currency||(!record?.reference?.conflict&&record?.reference?.currency)||quote?.currency||original.priceCurrency||'';
   const manualCurrency=row.priceCurrency??'';
   row.priceCurrency=currency;
   const resolved=resolveWatchlistLevels(row,record).row;
@@ -59,7 +61,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
       const stale=company.quote?.priceStale||!company.quote?.timestamp||!Number.isFinite(Number(company.quote.timestamp))||now-Number(company.quote.timestamp)>4*86400000;
       const levels=expectedLevels(company);
       const levelsChanged=!!plan&&(levels.length!==plan.stages.length||plan.stages.some((s,i)=>levels[i]?.key!==s.key||levels[i]?.price!==s.price)||company.currency!==plan.currency);
-      result=plan&&planAction(plan)!=='buy'?previewActionPlan(plan,company,{today}):!plan?{status:'review',amount:null,reasons:[company.category?'Approve this company’s purchase plan.':'Choose Anchor, Core or Selective in Holdings or Watchlist.']}
+      result=plan&&planAction(plan)!=='buy'?previewActionPlan(plan,company,{today}):!plan?{status:'review',amount:null,reasons:[company.category?'No plan set. Set up Buy, Sell or Hold when you decide to act.':'Choose Anchor, Core or Selective in Holdings or Watchlist.']}
         :!funding?{status:'review',amount:null,reasons:[fundingError]}
         :previewPurchase(plan,funding,{close:company.quote?.close,priceStale:stale,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],iv:company.iv,category:company.category,today,lotSize:plan.lotSize,oddLots:plan.oddLots,rounding:plan.rounding,levelsChanged});
       if(result.status==='eligible'&&(!(result.amount>0)||!(result.units>0)))result={...result,status:'review',amount:null,reasons:[result.amount>0?'The budget cannot fund one order increment. Review the budget and share increment.':'No purchase capacity remains under the company ceiling or available cash.']};
@@ -82,11 +84,13 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const shares=holdings.reduce((n,h)=>n+Number(h.shares||0),0);
     const currentHolding=displayFunding?(Object.hasOwn(displayFunding.byCompany,item.symbol)?displayFunding.byCompany[item.symbol]:0):null;
     const currentWeight=displayFunding?.complete&&currentHolding!==null?currentHolding/displayFunding.base*100:null;
-    const concentration=!!plan&&planAction(plan)==='buy'&&currentWeight!==null&&currentWeight>plan.ceilingPct;
+    const ceiling=companyCeiling(plan,company.category);
+    const concentration=currentWeight!==null&&ceiling>0&&currentWeight>ceiling;
     const averageCost=shares>0&&holdings.every(h=>Number.isFinite(Number(h.average_cost??h.averageCost)))?holdings.reduce((n,h)=>n+Number(h.shares||0)*Number(h.average_cost??h.averageCost),0)/shares:null;
     const sale=potentialSale(plan,company);
-    return {...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
+    const row={...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
       changedDecision:history.some(d=>d.context!==context&&['deferred','dismissed','reviewed'].includes(d.status))};
+    return {...row,...commandQueueState(row,{today,now})};
   });
   const archivedPlans=Object.values(config.plans||{}).filter(p=>!active.has(p.symbol));
   const history=decisions.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')||(b.sequence||0)-(a.sequence||0)).map(d=>({...d,active:active.has(d.symbol),contextCurrent:rows.some(r=>r.symbol===d.symbol&&r.context===d.context)}));
@@ -94,8 +98,8 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
   const potentialSales=rows.reduce((n,r)=>n+(r.sale?.sgd||0),0);
   const incompleteSales=rows.filter(r=>r.sale&&r.sale.sgd===null).length;
   const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol])=>({symbol,category:'selective'}));
-  return {decisionColumns:{...state.watchlistColumnVisibility,...config.decisionColumns},rows,visible,history,archivedPlans,inactiveCategories,potentialSales,incompleteSales,potentialCash:displayFunding?displayFunding.available+potentialSales:null,funding,displayFunding,fundingError,reserved,allowance,
-    stats:{attention:visible.filter(r=>r.status==='review'||r.concentration).length,opportunities:visible.filter(r=>r.status==='eligible').length,
+  return {decisionColumns:{...state.watchlistColumnVisibility,...config.decisionColumns},rows,visible,history,archivedPlans,inactiveCategories,potentialSales,incompleteSales,potentialCash:displayFunding?Math.max(0,displayFunding.committed-displayFunding.liabilities-displayFunding.pending-allowance.spent+potentialSales):null,funding,displayFunding,fundingError,reserved,allowance,
+    stats:{attention:rows.filter(r=>r.reviewReasons.length).length,opportunities:rows.filter(r=>r.openOpportunity).length,setup:rows.filter(r=>r.dataReasons.length).length,planSet:rows.filter(r=>r.planSet).length,
       pendingOrders:decisions.filter(d=>d.status==='ordered').length,decisions:decisions.length},
     totalSuggested:visible.filter(r=>r.status==='eligible').reduce((n,r)=>n+r.result.amount,0)};
 }
