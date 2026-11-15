@@ -108,3 +108,23 @@ test('generic dividend conservative/base labels do not assert an unverified DCF 
   assert.equal(parsed.references.EXAMPLE.methodFamily,null);
   assert.ok(parsed.references.EXAMPLE.iv.variants.every(v=>!v.method.startsWith('dcf')));
 });
+
+test('one sync matches tracked holdings and watchlist rows and retains a blocked source',async()=>{
+  const priority=url.replace('gid=123','gid=77');
+  const controller=createResearchController({
+    load:async()=>({researchBySecurity:records,researchSheetSources:{capital_gains:url},
+      researchReferenceSnapshotMeta:{sources:{priority_watchlist:{url:priority}}}}),
+    write:async()=>{}, now:()=>now.toISOString(),
+    sheetFetch:async link=>new URL(link).searchParams.get('gid')==='77'
+      ?response(csv('10 Nov 26','HELD-US','Priority Watchlist')+',WATCH-US,Watch,USD,18,16,NA,,,20,20,Large Growth\n')
+      :{ok:false,status:403}
+  });
+  await controller.ensure([{symbol:'HELD',held:true},{symbol:'WATCH',held:false},{symbol:'EXAMPLE',held:true}]);
+  const status=await controller.syncAkSheets();
+  assert.equal(status.tracked,3);
+  assert.equal(status.matched,2);
+  assert.equal(status.sources.capital_gains.status,'unavailable');
+  for(const symbol of ['HELD','WATCH'])assert.equal(controller.getState().records[symbol].reference.iv.value,20);
+  assert.equal(controller.getState().records.EXAMPLE.reference.asOf,'2026-11-03');
+  controller.close();
+});
