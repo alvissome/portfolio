@@ -37,13 +37,14 @@ test('research preferences survive dashboard backup and malformed imports are re
  assert.deepEqual(readDashboardBackup(createDashboardBackup(state,history)).state.researchColumnVisibility,state.researchColumnVisibility);
  assert.throws(()=>readDashboardBackup(createDashboardBackup({...state,researchColumnVisibility:{holdings:{iv:'hidden'}}},history)),/true or false/);
 });
-test('both toolbar column buttons are immediately beside the Research switch and route research preferences separately',async()=>{
+test('holdings keeps its Research toolbar and CC Watchlist retains separate research column preferences',async()=>{
  const bundle=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8');
- for(const [name,end,scope]of [['RN','function NN(','watchlist'],['NN','async function','holdings']]){
+ for(const [name,end,scope]of [['NN','function ON(','holdings']]){
   const a=bundle.indexOf('function '+name+'('),b=bundle.indexOf(end,a+15),part=bundle.slice(a,b);
   const switchAt=part.indexOf('m.jsx(ResearchViewSwitch,');const after=part.slice(switchAt,part.indexOf('children:m.jsx(eg',switchAt));
   assert.ok(after.includes('m.jsx("button"'));assert.ok(!after.includes('className:"ml-auto p-1.5'));
   assert.ok(part.includes('m.jsx(ResearchColumnSettings,{scope:"'+scope+'",visibility:researchColumnVisibility,onChange:onResearchColumnsChange})'));
   assert.ok(part.includes('columnVisibility:researchColumnVisibility'));
+  const watch=bundle.slice(bundle.indexOf('function RN('),bundle.indexOf('function NN('));assert.ok(watch.includes('Show/hide research columns'));assert.ok(watch.includes('scope:"watchlist",visibility:researchColumnVisibility'));assert.ok(!watch.includes('ResearchViewSwitch'));
  }
 });

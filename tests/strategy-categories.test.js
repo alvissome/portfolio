@@ -73,12 +73,12 @@ function renderProductionTable(name,props,states=[]){
  runInNewContext(bundle.slice(start,end)+';this.render='+name+';',context);
  return context.render(props);
 }
-test('both production position tables include working shared category cells beside each symbol',()=>{
+test('holdings position table includes working shared category cells beside each symbol',()=>{
  const categories={GOOGL:'core'};let change;
  const common={holdings:[{ticker:'GOOGL',accountType:'Cash',portfolioType:'Growth',shares:1,currency:'USD',average_cost:50}],prices:{GOOGL:{close:100}},fxRate:1.3,fxRates:{USD:1.3},cash:{},portfolioTypes:['Growth'],accountTypes:['Cash'],columnVisibility:{},strategyCategories:categories,onStrategyCategoryChange:(...args)=>change=args};
  const watch=renderProductionTable('RN',{...common,watchlist:[{id:'x',symbol:'GOOGL',alertConfig:{},s1:'90'}]});
  const holdings=renderProductionTable('NN',common);
- for(const tree of [watch,holdings]){
+ for(const tree of [holdings]){
   assert.ok(all(tree,n=>n.type==='th'&&(n.props.children==='Category'||Array.isArray(n.props.children)&&n.props.children[0]==='Category')).length);
   const cells=all(tree,n=>typeof n.type==='function'&&n.type.name==='StrategyCategorySelect');
   assert.equal(cells.length,1);
@@ -148,22 +148,22 @@ test('production inactive category migration persists through the same immediate
 });
 
 
-test('both production tables filter by category and watchlist filtering disables index-based dragging',()=>{
+test('holdings table filters by category; Watchlist research no longer renders the old position table',()=>{
  const categories={AAA:'anchor',BBB:'core'},holdings=['AAA','BBB'].map(ticker=>({ticker,accountType:'Cash',portfolioType:'Growth',shares:1,currency:'USD',average_cost:50}));
  const common={holdings,prices:{AAA:{close:100},BBB:{close:100}},fxRate:1.3,fxRates:{USD:1.3},cash:{},portfolioTypes:['Growth'],accountTypes:['Cash'],columnVisibility:{},strategyCategories:categories,onStrategyCategoryChange:()=>{}};
  const watch=renderProductionTable('RN',{...common,watchlist:holdings.map((h,i)=>({id:String(i),symbol:h.ticker,alertConfig:{},s1:90}))},['core','none']);
  const held=renderProductionTable('NN',common,[false,false,false,'All','All',null,'',{growth:true,dividend:true,brokers:true,srs:true,cpf:true},'core']);
- for(const tree of [watch,held]){
+ for(const tree of [held]){
   const cells=all(tree,n=>typeof n.type==='function'&&n.type.name==='StrategyCategorySelect');assert.equal(cells.length,1);assert.equal(cells[0].props.symbol,'BBB');
   assert.ok(all(tree,n=>typeof n.type==='function'&&n.type.name==='CategoryControls').length);
  }
- assert.ok(all(watch,n=>n.type==='tr'&&n.props.draggable===false).length);
+ assert.equal(all(watch,n=>n.type==='tr').length,0);assert.ok(all(watch,n=>typeof n.type==='function'&&n.type.name==='ResearchPanel').length);
 });
 
 test('privacy masks account quantities, average costs and notes while keeping public closes',()=>{
  const holdings=[{ticker:'XYZ',accountType:'Cash',portfolioType:'Growth',shares:123456,currency:'USD',average_cost:543.21}],prices={XYZ:{close:95}};
  const common={holdings,prices,fxRate:1.3,fxRates:{USD:1.3},cash:{},privacyMode:true,portfolioTypes:['Growth'],accountTypes:['Cash'],columnVisibility:{shares:true,avgPrice:true,close:true,notes:true},strategyCategories:{XYZ:'core'}};
- for(const tree of [renderProductionTable('NN',common),renderProductionTable('RN',{...common,watchlist:[{id:'row',symbol:'XYZ',notes:'PRIVATE NOTE',alertConfig:{}}]})]){
+ for(const tree of [renderProductionTable('NN',common)]){
   const json=JSON.stringify(tree,(key,value)=>typeof value==='function'?undefined:value);
   assert.ok(!json.includes('543.21'));assert.ok(!json.includes('123,456'));assert.ok(!json.includes('PRIVATE NOTE'));assert.ok(json.includes('95.00'));
  }
