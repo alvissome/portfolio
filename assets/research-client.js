@@ -1,6 +1,6 @@
 import {normalizeValuationSettings, IV_POLICY_VERSION} from './valuation-settings.js';
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
-import {normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=plan-research-20261115';
+import {normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-cost-headers-20261115';
 
 export const RESEARCH_MODEL_VERSION = 'ak-reconstruction-v1';
 const PARTS = ['iv', 'supports'];
