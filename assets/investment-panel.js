@@ -33,6 +33,7 @@ export function createInvestmentComponent(React,jsx){
 }
 export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange,onViewChange=()=>{},onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
   let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',watchStop=null,pendingCloud=null,cloudSnapshot='',draftDirty=false,akRefreshing=false,filter='opportunities',expandedDecision='',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
+  const stableJSON=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
   const show=n=>state.privacyMode?'S$•••':n==null?'—':'S$'+new Intl.NumberFormat('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
   const field=(name,label,value='',attrs='')=>`<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
   const mergeCloud=cloud=>{
@@ -40,7 +41,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     storage.acceptCloud?.(cloud);
     pendingCloud=null;draftDirty=false;
     const saved=cloud.strategy||{};
-    cloudSnapshot=JSON.stringify(saved);
+    cloudSnapshot=stableJSON(saved);
     config={plans:{},funding:{},decisions:{},...saved};
     loaded=true;error='';
     onPlansChange?.(config.plans);
@@ -69,7 +70,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
   root.addEventListener('change',onDraftInput);
   function handleCloud(cloud){
     if(!alive||busy)return;
-    const signature=JSON.stringify(cloud.strategy||{});
+    const signature=stableJSON(cloud.strategy||{});
     if(signature===cloudSnapshot){storage.acceptCloud?.(cloud);return;}
     if(draftDirty){pendingCloud=cloud;cloudWarning();return;}
     mergeCloud(cloud);
@@ -79,7 +80,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     try{
       const saved=await storage.load();
       if(!alive)return;
-      cloudSnapshot=JSON.stringify(saved);
+      cloudSnapshot=stableJSON(saved);
       pendingCloud=null;draftDirty=false;
       config={plans:{},funding:{},decisions:{},...saved};
       loaded=true;error='';onPlansChange?.(config.plans);render();
@@ -91,7 +92,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     if(!loaded||busy)throw Error('Wait for strategy data to finish loading or saving.');
     if(pendingCloud)throw Error('A newer CC plan was saved elsewhere. Your draft is preserved; review the cloud-change warning before saving.');
     busy=true;
-    try{await storage.save(next);if(alive){config=next;cloudSnapshot=JSON.stringify(next);draftDirty=false;onPlansChange?.(config.plans);notice='Saved to cloud. Preview only; no order or notification sent.';}}catch(e){if(alive&&/unconfirmed|another tab|another action|changed in/i.test(e.message||'')){try{pendingCloud=await storage.readLatest?.();}catch{}cloudWarning();}throw e;}finally{busy=false;}
+    try{await storage.save(next);if(alive){config=next;cloudSnapshot=stableJSON(next);draftDirty=false;onPlansChange?.(config.plans);notice='Saved to cloud. Preview only; no order or notification sent.';}}catch(e){if(alive&&/unconfirmed|another tab|another action|changed in/i.test(e.message||'')){try{pendingCloud=await storage.readLatest?.();}catch{}cloudWarning();}throw e;}finally{busy=false;}
   }
   async function clearRebalancing(symbol){if(state.rebalancingSymbols?.[symbol]&&onRebalance){await onRebalance(symbol,false);state={...state,rebalancingSymbols:{...state.rebalancingSymbols,[symbol]:false}};}}
   function renderCashAllowance(model){
