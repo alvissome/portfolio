@@ -5,6 +5,7 @@ export const AK_SOURCES = [
   {key:'dividend',label:'Dividend',portal:'https://insight.piranhaprofits.com/uip/current_dividend_portfolio/'},
   {key:'priority_watchlist',label:'Priority watchlist',portal:'https://insight.piranhaprofits.com/uip/watchlist/'},
   {key:'secondary_watchlist',label:'Secondary watchlist',portal:'https://insight.piranhaprofits.com/uip/secondary-watchlist/'},
+  {key:'closed_positions',label:'Closed positions (optional)',portal:'https://insight.piranhaprofits.com/uip/current_growth_portfolio/'},
 ];
 const LIMIT=3*1024*1024;
 const norm=s=>String(s??'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -83,23 +84,23 @@ function listedSymbol(value) {
 export function parseAkSheet(text,source,{today=new Date().toISOString().slice(0,10)}={}) {
   if(!AK_SOURCES.some(x=>x.key===source))throw Error('Unknown AK list.');
   const grid=parseSheetCSV(text),asOf=sourceDate(grid);if(asOf>today)throw Error('Sheet date is in the future.');
-  const titles={capital_gains:['capitalgainsportfolio','capitalgainportfolio','growthportfolio'],dividend:['dividendportfolio'],priority_watchlist:['prioritywatchlist'],secondary_watchlist:['secondarywatchlist']};
+  const titles={closed_positions:['closedpositions','closedtrades','closedposition'],capital_gains:['capitalgainsportfolio','capitalgainportfolio','growthportfolio'],dividend:['dividendportfolio'],priority_watchlist:['prioritywatchlist'],secondary_watchlist:['secondarywatchlist']};
   if(!grid.slice(0,6).flat().some(cell=>titles[source].some(title=>norm(cell).includes(title))))throw Error('The list title does not match this source setting. Check the sheet or tab link.');
   const rows=[];let columns=null;
   for(const cells of grid){
     const headers=cells.map(norm),ticker=headers.indexOf('ticker'),currency=headers.indexOf('currency');
     const supports=[1,2,3,4,5].map(n=>headers.findIndex(h=>h==='supportlevel'+n||h==='sl'+n));
-    if(ticker>=0&&currency>=0&&supports.every(n=>n>=0)){
-      columns={ticker,currency,supports,category:headers.findIndex(h=>['investmenttype','investmentcategory'].includes(h)),classification:headers.indexOf('classification'),
+    if(ticker>=0&&(currency>=0||source==='closed_positions')&&(source==='closed_positions'||supports.every(n=>n>=0))){
+      columns={ticker,currency,supports,averageCost:headers.findIndex(h=>['averagecost','avgcost','averagecostprice','averagepurchaseprice','averagebuyprice'].includes(h)),averageSellPrice:headers.findIndex(h=>['averagesellprice','averagesellingprice','avgsellprice'].includes(h)),category:headers.findIndex(h=>['investmenttype','investmentcategory'].includes(h)),classification:headers.indexOf('classification'),
         fields:Object.fromEntries(Object.entries(aliases).map(([key,names])=>[key,headers.findIndex(h=>names.includes(h))]))};continue;
     }
     if(!columns||!String(cells[columns.ticker]??'').trim())continue;
     const raw=String(cells[columns.ticker]).trim();
     if(!/^[A-Za-z0-9.\-]+-(?:US|SG|SGX|HK|UK)$/.test(raw)&&!['USD','SGD','HKD','GBP'].includes(String(cells[columns.currency]).trim()))continue;
-    const curr=String(cells[columns.currency]??'').trim().toUpperCase();if(!['USD','SGD','HKD','GBP'].includes(curr))throw Error('A listing currency is missing or unsupported.');
+    const curr=String(cells[columns.currency]??'').trim().toUpperCase()||(source==='closed_positions'?({'US':'USD','SG':'SGD','SGX':'SGD','HK':'HKD','UK':'GBP'}[raw.split('-').at(-1)]||''):'');if(!['USD','SGD','HKD','GBP'].includes(curr))throw Error('A listing currency is missing or unsupported.');
     const supportLevels=columns.supports.map(i=>number(cells[i])).filter(v=>v!==null);
     if(supportLevels.some((v,i)=>i&&v>=supportLevels[i-1]))throw Error('Support levels are not in descending order; review the sheet layout.');
-    rows.push({symbol:listedSymbol(raw),source,asOf,currency:curr,supportLevels,
+    rows.push({symbol:listedSymbol(raw),source,asOf,currency:curr,supportLevels,averageCost:columns.averageCost<0?null:number(cells[columns.averageCost]),averageSellPrice:columns.averageSellPrice<0?null:number(cells[columns.averageSellPrice]),
       category:columns.category>=0?String(cells[columns.category]??'').trim()||null:null,
       classification:columns.classification>=0?String(cells[columns.classification]??'').trim()||null:null,
       ...Object.fromEntries(Object.entries(columns.fields).map(([key,index])=>[key,index<0?null:number(cells[index])]))});
@@ -112,7 +113,7 @@ export function previousAkRows(records={}) {
   const rows=[];
   for(const [symbol,record] of Object.entries(records))for(const entry of record.reference?.entries??[]){
     if(!AK_SOURCES.some(s=>s.key===entry.source))continue;
-    rows.push({symbol,source:entry.source,asOf:entry.asOf,currency:entry.currency,supportLevels:entry.supports??[],category:entry.category??null,classification:entry.classification??null,
+    rows.push({symbol,source:entry.source,asOf:entry.asOf,currency:entry.currency,supportLevels:entry.supports??[],averageCost:entry.averageCost??null,averageSellPrice:entry.averageSellPrice??null,category:entry.category??null,classification:entry.classification??null,
       ...Object.fromEntries(Object.keys(aliases).map(key=>[key,entry.variants?.find(v=>v.key===key)?.value??null]))});
   }
   return rows;
@@ -127,7 +128,7 @@ export function planAkLevelCopy(watchlist,symbol,reference,{instrument}={}) {
   return {id:row.id,patch:Object.fromEntries([1,2,3,4,5].map((n,i)=>['s'+n,reference.supports[i]===undefined?'':String(reference.supports[i])]))};
 }
 function comparable(rows) {return JSON.stringify(rows.map(r=>({symbol:r.symbol,source:r.source,asOf:r.asOf,currency:r.currency,supportLevels:r.supportLevels,
-  category:r.category??null,classification:r.classification??null,...Object.fromEntries(Object.keys(aliases).map(k=>[k,r[k]??null]))})).sort((a,b)=>(a.source+a.symbol).localeCompare(b.source+b.symbol)));}
+  averageCost:r.averageCost??null,averageSellPrice:r.averageSellPrice??null,category:r.category??null,classification:r.classification??null,...Object.fromEntries(Object.keys(aliases).map(k=>[k,r[k]??null]))})).sort((a,b)=>(a.source+a.symbol).localeCompare(b.source+b.symbol)));}
 export async function readAkSources(settings,records,{fetch:fetchImpl=globalThis.fetch,now=new Date(),signal}={}) {
   const urls=normalizeAkSourceSettings(settings),old=previousAkRows(records),today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
   const results=await Promise.all(AK_SOURCES.map(async source=>{
@@ -145,6 +146,6 @@ export async function readAkSources(settings,records,{fetch:fetchImpl=globalThis
   const readable=results.filter(r=>['updated','unchanged'].includes(r.status));const rows=results.flatMap(r=>r.rows);
   const statuses=Object.fromEntries(results.map(({rows,...r})=>[r.source,r]));
   return {settings:urls,statuses,readable:readable.length,changed:readable.some(r=>r.status==='updated'),snapshot:{snapshotId:'ak-sync-'+now.toISOString().replace(/[^0-9]/g,''),retrievedAt:today,
-    complete:readable.length===4,coveredMarkets:['US','SG','HK'],rows,sources:statuses,
+    complete:readable.filter(r=>r.source!=='closed_positions').length===4,coveredMarkets:['US','SG','HK'],rows,sources:statuses,
     unresolvedListings:rows.filter(r=>/-UK$/.test(r.symbol)).map(r=>({sourceTicker:r.symbol,source:r.source,reason:'UK listing and quote units require verification.'}))}};
 }

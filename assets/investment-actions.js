@@ -12,10 +12,11 @@ export function planWatchlistAddition(state,{symbol,category,id}){
  return {strategyCategories,watchlist:[...(state.watchlist||[]),{id,symbol,order:state.watchlist?.length||0,name:'',levelSource:'ak',iv:'',s1:'',s2:'',s3:'',s4:'',s5:'',refCost:'',notes:''}]};
 }
 export function validateResearchOverrides(values){
- const allowed=['iv','s1','s2','s3','s4','s5','refCost','priceCurrency'];
+ const allowed=['iv','s1','s2','s3','s4','s5','refCost','priceCurrency','levelSource'];
  for(const [key,value]of Object.entries(values||{})){
   if(!allowed.includes(key))throw Error('Unknown plan research override.');
   if(value==='')continue;
+  if(key==='levelSource'){if(!['ak','independent'].includes(value))throw Error('Choose AK sheets or independent reconstruction.');continue;}
   if(key==='priceCurrency'){if(!/^[A-Z]{3}$/.test(value))throw Error('Use a three-letter trading currency.');}
   else if(!(Number(value)>0)||!Number.isFinite(Number(value)))throw Error('Enter a positive '+key+' override, or clear it to follow research.');
  }

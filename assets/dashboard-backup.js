@@ -1,7 +1,7 @@
-import {normalizeResearchColumnSettings} from './research-columns.js';
+import {normalizeResearchColumnSettings} from './research-columns.js?v=plan-research-20261115';
 import {normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {ACCOUNTS,dateKey,todaySG} from './performance-core.js?v=ytd-20261105';
-import {normalizeAkSourceSettings} from './ak-sheet-sources.js';
+import {normalizeAkSourceSettings} from './ak-sheet-sources.js?v=plan-research-20261115';
 
 const isRecord=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 

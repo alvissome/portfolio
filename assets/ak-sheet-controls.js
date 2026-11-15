@@ -1,4 +1,4 @@
-import {AK_SOURCES,previousAkRows,akSourceDefaults} from './ak-sheet-sources.js';
+import {AK_SOURCES,previousAkRows,akSourceDefaults} from './ak-sheet-sources.js?v=plan-research-20261115';
 
 export function createAkSheetControls(React){
   const h=React.createElement;
@@ -9,14 +9,14 @@ export function createAkSheetControls(React){
     React.useEffect(()=>{if(!dirty)setUrls({...akSourceDefaults(research.referenceMeta),...research.sheetSources});},[research.sheetSources,research.referenceMeta,dirty]);
     const busy=research.sheetSyncBusy||saving;
     const run=async sync=>{setError('');setMessage('');setSaving(true);try{
-      if(sync){const status=await research.syncAkSheets(urls);setMessage(`${status.readable}/4 lists read. Saved values remain for any unavailable list.`);onSynced?.();}
+      if(sync){const status=await research.syncAkSheets(urls);setMessage(`${status.readable} lists read (closed positions optional). Saved values remain for unavailable lists.`);onSynced?.();}
       else{await research.saveSheetSources(urls);setMessage('Sheet links saved.');}
       setDirty(false);
     }catch(e){setError(e?.message||'Sheet sync failed. Previous values remain.');}finally{setSaving(false);}};
     const old=previousAkRows(research.records);
     const sync=h('div',{className:'research-controls'},
         h('button',{type:'button',className:'research-track',disabled:busy||!research.hydrated||!Object.values(urls).some(Boolean),onClick:()=>run(true)},busy?'Syncing AK sheets…':'Sync AK sheets'),
-        h('small',null,'Refreshes the AK view. Active watchlist levels and alerts are kept.'));
+        h('small',null,'Refreshes the AK view. Saved plans and manual overrides are kept.'));
     const settings=h('details',{className:'research-details'},h('summary',null,'AK sheet settings'),
         h('p',null,'Use the embedded Google Sheets links. Replace a link here when AK changes a sheet. Subscription passwords are not stored.'),
         ...AK_SOURCES.map(source=>{

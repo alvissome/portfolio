@@ -1,11 +1,11 @@
 const BASE_COLUMNS=[
  ['symbol','Symbol / Name'],['avg','Avg Price'],['close','Close'],['iv','IV'],['iv-status','IV status'],
- ['sl1','SL1'],['sl2','SL2'],['sl3','SL3'],['sl4','SL4'],['sl5','SL5'],['sl-status','SL status'],['research','Research']
+ ['sl1','SL1'],['sl2','SL2'],['sl3','SL3'],['sl4','SL4'],['sl5','SL5'],['sl-status','SL status'],['research','Research'],['ref-cost','Ref cost']
 ];
 export function researchColumns(scope='holdings',fromAk=false){
  if(!['holdings','watchlist'].includes(scope))throw Error('Choose holdings or watchlist research.');
  const columns=BASE_COLUMNS.map(([key,label])=>({key,label:key==='iv'?(fromAk?'AK IV':'Independent IV'):key==='iv-status'&&fromAk?'IV source / date':label}));
- if(scope==='holdings')columns.push({key:'track',label:'Watchlist'});
+ if(scope==='holdings')columns.push({key:'track',label:'Rebalancing'});
  return columns;
 }
 export function normalizeResearchVisibility(value,scope){

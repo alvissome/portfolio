@@ -1,4 +1,4 @@
-import {planAction} from './investment-actions.js?v=cc-queue-currency-20261115';
+import {planAction} from './investment-actions.js?v=plan-research-20261115';
 import {money} from './investment-format.js?v=compact-price-20261114';
 import {selectCategoryRows} from './strategy-categories.js?v=entry-sizing-20261114';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
@@ -18,11 +18,11 @@ export function renderOpportunityCard(row,{show,today}){
  const native=n=>row.fx>0?money(n/row.fx,row.currency):show(n);
  const action=planAction(row.plan);
  const heading=row.concentration?'Review company allocation':row.overIV?'Review price against IV':!row.plan&&row.openOpportunity?'Price reached · set up plan':!row.plan&&!row.priceTriggered?((row.dataReasons?.length)?'Setup / data pending':'Monitoring · entry not reached'):row.planSet&&action==='buy'?'Buy plan set'+(ready?' · up to '+native(r.amount):''):row.plan&&action==='hold'?'Hold · revisit '+(row.plan.revisitOn||'date required'):row.plan&&action==='sell'?(row.plan.sale?.completed?'Sale completed · awaiting import':'Sell '+(row.plan.sale?.quantity??'—')+' shares at '+money(row.plan.sale?.price,row.currency)):order?'Recorded order · '+show(row.orders.reduce((n,d)=>n+d.reserved,0)):ready?'Review buy '+(row.category==='selective'?native(r.minimumAmount)+'–':'up to ')+native(r.amount)+' ('+pct(r.portfolioPct)+' max)':row.status==='hold'?'Hold · monitor next unused support':row.status==='paused'?'Pause additions':'Review first · amount pending';
- const badge=row.planSet?'Plan set':!row.plan&&!row.reviewReasons?.length&&!row.priceTriggered?(row.dataReasons?.length?'Setup / data pending':'Monitoring · no plan'):row.reviewReasons?.[0]?.label||(row.status==='review'&&row.priceTriggered?'Price reached · review first':statusLabel[row.status]||'Review');
+ const badge=row.manuallyRebalancing?'Rebalancing review':row.planSet?'Plan set':!row.plan&&!row.reviewReasons?.length&&!row.priceTriggered?(row.dataReasons?.length?'Setup / data pending':'Monitoring · no plan'):row.reviewReasons?.[0]?.label||(row.status==='review'&&row.priceTriggered?'Price reached · review first':statusLabel[row.status]||'Review');
  const explanation=row.reviewReasons?.length?row.reviewReasons.map(c=>c.label).join(' · '):row.concentration?'Current company weight exceeds its purchase ceiling. Review concentration before adding.':r.reasons.join(' ');
  return `<article class="ic-opportunity" data-opportunity="${esc(row.symbol)}"><header><div><h3>${esc(row.symbol)} <span>${esc(row.name===row.symbol?'':row.name)}</span></h3><p>${esc(STRATEGY_CATEGORIES[row.category]||'Unassigned')}${row.plan?' · '+esc(action[0].toUpperCase()+action.slice(1)):''} · ${row.held?'Holding':'Potential investment'}${row.watchlisted&&row.held?' + watchlist':''}</p></div><span class="ic-badge ic-${esc(row.status)}">${esc(badge)}</span></header>
  ${row.dataReasons?.length?`<p class="ic-data-first"><strong>Review data before setting a plan:</strong> ${row.dataReasons.map(c=>esc(c.label)).join(' · ')}</p>`:''}
- <div class="ic-reason-tags">${(row.lists||[]).map(list=>`<span>${esc({opportunities:'Opportunities',watchlist:'Watchlist',balance:'Rebalancing',data:'Data review'}[list])}</span>`).join('')}${row.approaching?'<span>Approaching support · within 5%</span>':''}${row.priceTriggered?'<span class="ic-tag-price">Price reached</span>':''}${(row.reviewReasons||[]).map(c=>`<span class="ic-tag-review">${esc(c.label)}</span>`).join('')}</div>
+ <div class="ic-reason-tags">${row.manuallyRebalancing?'<span>Manually flagged for rebalancing</span>':''}${(row.lists||[]).map(list=>`<span>${esc({opportunities:'Opportunities',watchlist:'Watchlist',balance:'Rebalancing',data:'Data review'}[list])}</span>`).join('')}${row.approaching?'<span>Approaching support · within 5%</span>':''}${row.priceTriggered?'<span class="ic-tag-price">Price reached</span>':''}${(row.reviewReasons||[]).map(c=>`<span class="ic-tag-review">${esc(c.label)}</span>`).join('')}</div>
  <dl class="ic-grid"><div><dt>Current price</dt><dd>${price(row.quote?.close,row.currency)}</dd></div><div><dt>${action==='sell'?'Sale price':action==='hold'?'Current support':row.result.stage?'Entry price':'Planned entry'}</dt><dd>${price(action==='sell'?row.plan?.sale?.price:r.maxEntry??row.plan?.stages?.find(s=>s.key===row.support?.key)?.entryPrice??row.support?.price,row.currency)}${row.support&&action!=='sell'?` <small>${esc(row.support.key.toUpperCase())}</small>`:''}</dd></div><div><dt>Allocation / ceiling</dt><dd>${pct(row.currentWeight)} <small>/</small> ${pct(row.ceiling??row.plan?.ceilingPct??{anchor:10,core:6,selective:4}[row.category])}</dd><small>${row.shares??0} shares · ${show(row.currentHolding)}${row.ccSpent?` · ${show(row.ccSpent)} CC spend pending import`:""}</small></div><div><dt>Following support</dt><dd>${price(row.followingSupport?.price,row.currency)}${row.followingSupport?` <small>${esc(row.followingSupport.key.toUpperCase())}</small>`:row.support?' <small>Final support</small>':''}</dd></div></dl>
  ${row.watchlisted?`<div class="ic-card-category"><label>Category<select data-card-category="${esc(row.symbol)}">${[['','Unassigned'],...Object.entries(STRATEGY_CATEGORIES)].map(([v,label])=>`<option value="${v}" ${row.category===v?'selected':''}>${label}</option>`).join('')}</select></label><button type="button" class="ic-secondary" data-remove-watchlist="${esc(row.symbol)}">Remove</button></div>`:''}
  ${row.sale?`<p class="ic-meta">Potential sale proceeds ${price(row.sale.native,row.currency)}${row.sale.sgd!==null&&row.currency!=='SGD'?' (≈ '+show(row.sale.sgd)+')':''}; conditional, before fees.</p>`:''}
@@ -61,7 +61,7 @@ export function renderDecisionTable(model,{show,today,rows=model.rows}={}){
   if(key==='avgPrice')return r.held?price(r.averageCost,c):'—';
   if(key==='bValue')return r.sale?`${price(r.sale.native,c)}${r.sale.sgd!==null&&c!=='SGD'?`<small>≈ ${show(r.sale.sgd)}</small>`:''}`:'—';
   if(key==='iv')return price(r.iv,c);
-  if(key==='refCost')return price(r.refCost,c);
+  if(key==='refCost')return '<span title="'+esc(r.refCostLabel)+'">'+price(r.refCost,c)+'</span>';
   if(key==='currentSL')return r.support?`<span class="${r.quote?.close<=r.support.price?'ic-sl-reached':'ic-sl-next'}">${esc(r.support.key.toUpperCase())} · ${price(r.support.price,c)}</span>`:'—';
   return `<span class="ic-table-notes">${esc(r.notes)}</span>`;
  };
@@ -77,7 +77,7 @@ export function renderCommandCentre(model,{show,today,filter='opportunities',cat
   if(categorySort==='distance')ranked.sort((a,b)=>(Math.abs(a.distanceToEntry??Infinity))-(Math.abs(b.distanceToEntry??Infinity)));
   return ranked;
  };
- const pending=all.filter(r=>!r.plan&&!['dismissed','deferred'].includes(r.status));
+ const pending=all.filter(r=>(!r.plan||(filter==='balance'&&r.manuallyRebalancing))&&((filter==='balance'&&r.manuallyRebalancing)||!['dismissed','deferred'].includes(r.status)));
  const selected=filter==='all'?all:filter==='decisions'?all.filter(r=>r.plan&&actionFilter.includes(r.action||'buy')):pending.filter(r=>r.lists?.includes(filter));
  const sorted=sort(subset(selected));
  const cards=rows=>`<div class="ic-card-list">${rows.map(r=>renderOpportunityCard(r,{show,today})).join('')}</div>`;

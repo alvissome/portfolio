@@ -89,7 +89,7 @@ test('research view deduplicates account positions and never exposes manual leve
   assert.ok(!text.includes('87654'));
   assert.equal((text.match(/Research service is not connected/g) || []).length, 1);
   assert.equal((text.match(/Not started/g) || []).length, 2, 'separate IV and SL processing badges');
-  assert.equal(nodes(tree, 'td').filter(cell => content(cell) === '—').length, 6);
+  assert.equal(nodes(tree, 'td').filter(cell => content(cell) === '—').length, 7);
 });
 
 test('track checkbox uses existing add callback once even on repeated changes before a rerender', () => {
