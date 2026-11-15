@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {recordPlanReview,reviewText} from '../assets/investment-review.js';
+import {recordPlanReview,reviewText,companyDecisionText} from '../assets/investment-review.js';
 import {createPurchasePlan,reviewPurchasePlan,previewPurchase,RULE_VERSION} from '../assets/investment-strategy.js';
 import {buildCommandCentre} from '../assets/investment-command-centre.js';
 import {renderCommandCentre} from '../assets/investment-command-view.js';
@@ -40,5 +40,18 @@ test('plan remarks retain immutable dated snapshots, escaped rendering and a cop
  const second=recordPlanReview(first,{...plan,remarks:'Defer next buy.'},{id:'review-2',now:'2026-11-14T02:00:00Z'});
  assert.equal(first.decisions['review-1'].note,plan.remarks);assert.equal(second.decisions['review-1'].note,plan.remarks);assert.equal(second.plans.XYZ.remarks,'Defer next buy.');
  const text=reviewText(first.decisions['review-1']);assert.match(text,/10 shares/);assert.match(text,/100,000/);assert.match(text,/Watch <script>/);assert.match(text,/review-1/);
- const html=renderCommandCentre({history:[first.decisions['review-1']],archivedPlans:[],inactiveCategories:[],visible:[],stats:{},funding:null},{show:String,today:'2026-11-14',filter:'decisions'});assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/data-copy-review="review-1"/);
+ const html=renderCommandCentre({history:[first.decisions['review-1']],archivedPlans:[],inactiveCategories:[],visible:[],stats:{},funding:null},{show:String,today:'2026-11-14',filter:'decisions'});assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.doesNotMatch(html,/data-copy-review/);
+});
+
+test('company clipboard export includes review, actual fills and orders for only its ticker',()=>{
+ const p={...create(),remarks:'Compare alternatives'};p.stages[0].spent=500;p.stages[0].fillDate='2026-11-14';p.stages[0].completed=true;
+ const config=recordPlanReview({plans:{},decisions:{}},p,{id:'review',now:'2026-11-14T01:00:00Z'});
+ const history=[...Object.values(config.decisions),{id:'order',symbol:'XYZ',status:'ordered',reserved:700,stageKey:'s4',updatedAt:'2026-11-14T02:00:00Z',note:'Limit order'},{id:'other',symbol:'OTHER',status:'filled',actualSpend:999,note:'Other private record'}];
+ const text=companyDecisionText({symbol:'XYZ',plan:p},history);
+ assert.match(text,/Compare alternatives/);assert.match(text,/cumulative actual spend S\$500.00; actual fill date 2026-11-14/);assert.match(text,/Completed/);assert.match(text,/reserved S\$700.00/);assert.match(text,/Limit order/);assert.doesNotMatch(text,/OTHER|Other private record/);
+});
+test('legacy Buy, Hold and Sell plans can be copied without a review-history record',()=>{
+ const p=create();const row={symbol:'XYZ',plan:p,shares:1,currentHolding:100,portfolioBase:10000};assert.match(companyDecisionText(row),/legacy plan/);
+ assert.match(companyDecisionText({...row,plan:{...p,action:'hold',revisitOn:'2026-12-15',stages:[]}}),/HOLD\nRevisit: 2026-12-15/);
+ assert.match(companyDecisionText({...row,plan:{...p,action:'sell',sale:{quantity:2,price:120},stages:[]}}),/SELL\nSale: 2 shares at US\$120.00/);
 });

@@ -57,7 +57,7 @@ test('decision table supports combined action filters and shows planned quantity
  const s=base(),c=config(s);c.plans.AAA=plan();c.plans.AAA.stages[0].purchaseQuantity=3;c.plans.AAA.stages[0].entryPrice=119;
  c.plans.BBB={...plan(),symbol:'BBB',action:'hold',revisitOn:'2027-01-01'};
  const m=build(s,c);const html=renderCommandCentre(m,{show:String,today,filter:'decisions',actionFilter:['buy','sell']});
- assert.match(html,/Next SL/);assert.match(html,/Quantity/);assert.match(html,/Entry \/ sale price/);assert.match(html,/US\$119.00/);assert.match(html,/>3<\/td>/);assert.match(html,/data-decision-row="AAA"/);assert.doesNotMatch(html,/data-decision-row="BBB"/);assert.match(html,/Purchase stages and fills/);assert.match(html,/Record pending order/);
+ assert.match(html,/Next SL/);assert.match(html,/Quantity/);assert.match(html,/Entry \/ sale price/);assert.match(html,/US\$119.00/);assert.match(html,/>3<\/td>/);assert.match(html,/data-decision-row="AAA"/);assert.doesNotMatch(html,/data-decision-row="BBB"/);assert.match(html,/Stages &amp; fills|Stages & fills/);assert.match(html,/Record pending order/);
  const none=renderCommandCentre(m,{show:String,today,filter:'decisions',actionFilter:[]});assert.doesNotMatch(none,/data-decision-row=/);
 });
 
@@ -77,4 +77,15 @@ test('opportunity summary matches visible cards and separates reached from appro
  html=renderCommandCentre(m,{show:String,today});assert.equal((html.match(/data-opportunity=/g)||[]).length,1);assert.match(html,/Open opportunities<\/span><strong>1/);
  c=addDecision(c,m.rows.find(r=>r.symbol==='BBB'),{kind:'deferred',id:'defer',until:'2026-12-01',today,now:today+'T02:00:00Z'});
  m=build(s,c);assert.equal(m.stats.opportunities,0);html=renderCommandCentre(m,{show:String,today});assert.doesNotMatch(html,/data-opportunity=/);assert.match(html,/Open opportunities<\/span><strong>0/);
+});
+
+test('My decisions puts clipboard icons last and opens company-specific execution without nested stage headings',()=>{
+ const s=base(),c=config(s);c.plans.AAA=plan();c.plans.BBB={...plan(),symbol:'BBB',action:'hold',stages:[],revisitOn:'2027-01-01'};
+ const m=build(s,c);let html=renderCommandCentre(m,{show:String,today,filter:'decisions'});
+ assert.match(html,/<th>Manage<\/th><th>Notion<\/th><\/tr>/);
+ assert.match(html,/data-copy-company="AAA"/);assert.match(html,/data-copy-company="BBB"/);
+ assert.match(html,/data-company-detail-row="AAA" hidden/);assert.doesNotMatch(html,/<summary>Purchase stages|data-copy-review/);
+ html=renderCommandCentre(m,{show:String,today,filter:'decisions',expandedSymbol:'AAA'});
+ assert.match(html,/data-company-details="AAA" aria-expanded="true"/);assert.match(html,/data-company-detail-row="AAA" ><td/);
+ assert.match(html,/AAA · Stages, fills & orders/);assert.match(html,/data-fill="AAA"/);assert.match(html,/data-company-detail-row="BBB" hidden/);
 });

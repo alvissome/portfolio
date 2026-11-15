@@ -261,3 +261,11 @@ The Anchor addition budget now shares a desktop row with ceiling, level source a
 Open opportunities count only visible unsaved opportunity cards, excluding dismissed/deferred rows, and follow the selected category filter. The summary distinguishes price-reached from approaching-support counts; approaching cards no longer say price reached or monitoring. Rebalancing and data-review model counts also exclude suppressed rows. Saved plans stay exclusive to My decisions.
 
 Validation: 353 Node tests pass, including suppression/category/count consistency and source labels for mixed overrides. Mounted-form checks cover the new desktop field grouping, fact-strip ordering and label association. Full browser layout remains unverified.
+
+### My decisions row controls — 15 November 2026
+
+The last table column contains a clipboard icon for each ticker. It copies the saved review, current stage budgets/fills (including archived stages), and only that ticker's dated decision/order history for pasting into Notion. It performs no Notion write and no portfolio mutation. Legacy plans without journal snapshots remain copyable using a clearly labelled legacy fallback. Clipboard failure provides selectable text below the table.
+
+The preceding Manage column opens a single company detail row: Buy uses Stages & fills, while Hold/Sell uses History & orders. Fill forms and pending-order cancellation/final-settlement controls are scoped to that company; the row stays open after saves. Stage completion and pending-order counts are visible in the table. The repeated Purchase stages and fills → ticker → Purchase stages and actual fills disclosure hierarchy is removed. History for tickers not represented by a saved table plan remains separately available, so removed-ticker orders can still be settled.
+
+Validation: 356 Node tests pass. Mounted interactions cover row expansion/collapse, clipboard content, order cancellation, final-fill settlement, retention of the open row after saves, and unchanged StocksCafe master holdings/cash. Browser layout and signed-in live writes were not exercised.

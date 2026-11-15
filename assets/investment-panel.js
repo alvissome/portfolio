@@ -4,12 +4,12 @@ import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverride
 import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=redistribution-20261115';
 import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=compact-settings-20261115';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
-import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=redistribution-20261115';
+import {recordPlanReview,companyDecisionText,NOTION_REVIEW_URL} from './investment-review.js?v=decision-tools-20261115';
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=redistribution-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
 import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-clarity-20261115';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=plan-clarity-20261115';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=decision-tools-20261115';
 export {resolvedCompany} from './investment-command-centre.js?v=plan-clarity-20261115';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function revisitDate(date,months=1){
@@ -32,7 +32,7 @@ export function createInvestmentComponent(React,jsx){
   };
 }
 export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange,onViewChange=()=>{},onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
-  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
+  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',expandedDecision='',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
   const show=n=>state.privacyMode?'S$•••':n==null?'—':'S$'+new Intl.NumberFormat('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
   const field=(name,label,value='',attrs='')=>`<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
   async function reload(){
@@ -71,7 +71,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       ${!loaded?'<p>Loading saved plans and decisions…</p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
       ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<details data-section="funding-breakdown" ${open.has('funding-breakdown')?'open':''}><summary>Portfolio and cash basis</summary><p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. CC cash used since import: ${show(model.allowance.spent)}. Pending order reservations: ${show(model.reserved)}. Available for other buys: <strong>${show(funding.available)}</strong>.</p></details>`:''}
       ${model.incompleteSales?'<p class="ic-meta">Some planned sales lack FX and are excluded from potential cash.</p>':''}
-      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter})}
+      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter,expandedSymbol:expandedDecision})}
       ${renderCashAllowance(model)}
       <details data-section="funding" ${open.has('funding')||model.allowance.legacyReviewRequired?'open':''}><summary>Confirm strategy funding</summary>
         <form data-funding>${field('liabilities','Related liabilities (SGD)',config.funding.liabilities??0,'type="number" min="0" step="0.01" required')}${field('pending','Other unavailable cash: external orders or unrecorded spending (SGD)',config.funding.pending??0,'type="number" min="0" step="0.01" required')}
@@ -230,10 +230,12 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       notice='CC spending reconciled against the imported balance. Included spending is no longer deducted; unselected entries remain deducted.';
     });
     root.querySelector('[data-reload-command]').onclick=()=>reload();
-    root.querySelectorAll('[data-copy-review]').forEach(button=>button.onclick=async()=>{
-      const record=config.decisions[button.dataset.copyReview],text=reviewText(record);
-      try{await navigator.clipboard.writeText(text);button.textContent='Copied — paste into Stocks Plan Review';}
-      catch{const area=document.createElement('textarea');area.value=text;area.readOnly=true;button.after(area);area.focus();area.select();button.textContent='Select and copy this review';}
+    root.querySelectorAll('[data-company-details]').forEach(button=>button.onclick=()=>{expandedDecision=expandedDecision===button.dataset.companyDetails?'':button.dataset.companyDetails;render();if(expandedDecision)root.querySelector('.ic-decision-table-wrap').scrollLeft=0;});
+    root.querySelectorAll('[data-close-company-details]').forEach(button=>button.onclick=()=>{expandedDecision='';render();root.querySelector('[data-company-details="'+button.dataset.closeCompanyDetails+'"]')?.focus();});
+    root.querySelectorAll('[data-copy-company]').forEach(button=>button.onclick=async()=>{
+      const row=model.rows.find(r=>r.symbol===button.dataset.copyCompany),text=companyDecisionText(row,model.history);
+      try{await navigator.clipboard.writeText(text);button.innerHTML='<span aria-hidden="true">✓</span>';button.title='Copied — paste into Stocks Plan Review';button.setAttribute('aria-label',row.symbol+' copied — paste into Stocks Plan Review');}
+      catch{const area=document.createElement('textarea');area.className='ic-copy-fallback';area.setAttribute('aria-label','Select and copy '+row.symbol+' for Notion');area.value=text;area.readOnly=true;root.querySelector('.ic-decision-table-wrap').after(area);area.focus();area.select();button.title='Select and copy the text below the table';}
     });
     root.querySelectorAll('[data-plan-action-filter]').forEach(input=>input.onchange=()=>{actionFilter=[...root.querySelectorAll('[data-plan-action-filter]')].filter(el=>el.checked).map(el=>el.dataset.planActionFilter);render();});
     if(root.querySelector('[data-opportunity-category]'))root.querySelector('[data-opportunity-category]').onchange=e=>{categoryFilter=e.target.value;render();};
