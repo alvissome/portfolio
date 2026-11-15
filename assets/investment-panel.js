@@ -28,21 +28,71 @@ export function createInvestmentComponent(React,jsx){
     const root=React.useRef(null),controller=React.useRef(null),[view,setView]=React.useState('opportunities');
     React.useEffect(()=>{controller.current=mountInvestmentPanel(root.current,{state,research,storage,onCategoryChange,onViewChange:setView,onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance});return()=>controller.current?.destroy();},[uid]);
     React.useEffect(()=>controller.current?.update(state,research,onCategoryChange,onRefresh,onWatchlistAdd,onWatchlistRemove),[state,research,onCategoryChange,onRefresh,onWatchlistAdd,onWatchlistRemove]);
-    return jsx.jsxs('section',{className:'ic-cc-shell','aria-label':'Investment Command Centre',children:[jsx.jsx('div',{ref:root,className:'pf-panel investment-panel'}),view==='watchlist'&&!state.privacyMode&&jsx.jsx('div',{className:'ic-watchlist-host',children:researchPanel})]});
+    return jsx.jsxs('section',{className:'ic-cc-shell','aria-label':'Investment Command Centre',children:[jsx.jsx('div',{ref:root,className:'pf-panel investment-panel'})]});
   };
 }
 export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange,onViewChange=()=>{},onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
-  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',filter='opportunities',expandedDecision='',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
+  let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',watchStop=null,pendingCloud=null,cloudSnapshot='',draftDirty=false,akRefreshing=false,filter='opportunities',expandedDecision='',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
+  const stableJSON=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
   const show=n=>state.privacyMode?'S$•••':n==null?'—':'S$'+new Intl.NumberFormat('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
   const field=(name,label,value='',attrs='')=>`<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
+  const mergeCloud=cloud=>{
+    if(!alive)return;
+    storage.acceptCloud?.(cloud);
+    pendingCloud=null;draftDirty=false;
+    const saved=cloud.strategy||{};
+    cloudSnapshot=stableJSON(saved);
+    config={plans:{},funding:{},decisions:{},...saved};
+    loaded=true;error='';
+    onPlansChange?.(config.plans);
+    notice='CC changes updated automatically from cloud.';
+    render();
+  };
+  const cloudWarning=()=>{
+    if(!pendingCloud||!alive||state.privacyMode)return;
+    let warning=root.querySelector('[data-cc-cloud-conflict]');
+    if(!warning){
+      warning=root.ownerDocument.createElement('div');
+      warning.className='ic-cloud-conflict';
+      warning.setAttribute('data-cc-cloud-conflict','');
+      warning.setAttribute('role','alert');
+      warning.innerHTML='<strong>Newer CC decisions are available in the cloud.</strong> Your unsaved edits are preserved. <button type="button" data-cc-accept-cloud>Discard draft and load cloud changes</button>';
+      root.querySelector('.ic-title')?.after(warning);
+    }
+    warning.querySelector('[data-cc-accept-cloud]').onclick=()=>{
+      if(!globalThis.confirm||globalThis.confirm('Discard unsaved CC form edits and load the newest saved decisions?'))mergeCloud(pendingCloud);
+    };
+  };
+  const onDraftInput=event=>{
+    if(event.target?.closest?.('[data-plan],[data-decision-form],[data-settle-order],[data-fill],[data-cash-use]'))draftDirty=true;
+  };
+  root.addEventListener('input',onDraftInput);
+  root.addEventListener('change',onDraftInput);
+  function handleCloud(cloud){
+    if(!alive||busy)return;
+    const signature=stableJSON(cloud.strategy||{});
+    if(signature===cloudSnapshot){storage.acceptCloud?.(cloud);return;}
+    if(draftDirty){pendingCloud=cloud;cloudWarning();return;}
+    mergeCloud(cloud);
+  }
   async function reload(){
     if(busy)return;
-    try{const saved=await storage.load();if(alive){config={plans:{},funding:{},decisions:{},...saved};loaded=true;error='';onPlansChange?.(config.plans);render();}}catch(e){if(alive){loaded=false;error='Could not load saved plans: '+e.message;render();}}
+    try{
+      const saved=await storage.load();
+      if(!alive)return;
+      cloudSnapshot=stableJSON(saved);
+      pendingCloud=null;draftDirty=false;
+      config={plans:{},funding:{},decisions:{},...saved};
+      loaded=true;error='';onPlansChange?.(config.plans);render();
+      watchStop?.();
+      watchStop=storage.watch?.(handleCloud,cloudError=>{if(alive)console.warn('CC cloud synchronization interrupted:',cloudError.message);});
+    }catch(e){if(alive){loaded=false;error='Could not load saved plans: '+e.message;render();}}
   }
   async function save(next){
     if(!loaded||busy)throw Error('Wait for strategy data to finish loading or saving.');
+    if(pendingCloud)throw Error('A newer CC plan was saved elsewhere. Your draft is preserved; review the cloud-change warning before saving.');
     busy=true;
-    try{await storage.save(next);if(alive){config=next;onPlansChange?.(config.plans);notice='Saved. Preview only; no order or notification sent.';}}finally{busy=false;}
+    try{await storage.save(next);if(alive){config=next;cloudSnapshot=stableJSON(next);draftDirty=false;onPlansChange?.(config.plans);notice='Saved to cloud. Preview only; no order or notification sent.';}}catch(e){if(alive&&/unconfirmed|another tab|another action|changed in/i.test(e.message||'')){try{pendingCloud=await storage.readLatest?.();}catch{}cloudWarning();}throw e;}finally{busy=false;}
   }
   async function clearRebalancing(symbol){if(state.rebalancingSymbols?.[symbol]&&onRebalance){await onRebalance(symbol,false);state={...state,rebalancingSymbols:{...state.rebalancingSymbols,[symbol]:false}};}}
   function renderCashAllowance(model){
@@ -66,9 +116,9 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     const popup=oldDialog?.hasAttribute('open')?{ticker:oldDialog.querySelector('[name="ticker"]').value,category:oldDialog.querySelector('[name="category"]').value,focus:root.ownerDocument.activeElement?.name}:null;
     const symbols=[...new Set([...(state.holdings||[]).filter(h=>h.accountType==='Cash'&&!h.exited).map(h=>h.ticker),...(state.watchlist||[]).map(h=>h.symbol)])].filter(Boolean);
     selectedSymbol=preferredPlanSymbol(symbols,state,config.plans,selectedSymbol);
-    root.innerHTML=`<div class="ic-title"><div><h2>Investment Command Centre</h2><p>Your next investment decisions, using current holdings and the watchlist.</p></div><div class="ic-actions"><button type="button" class="ic-secondary" data-refresh-prices ${!refreshPrices||refreshing?'disabled':''}>${refreshing?'Refreshing…':'Refresh prices'}</button><button type="button" class="ic-secondary" data-reload-command>Reload saved decisions</button></div></div>
+    root.innerHTML=`<div class="ic-title"><div><h2>Investment Command Centre</h2><p>Your next investment decisions, using current holdings and the watchlist.</p></div><div class="ic-actions"><button type="button" class="ic-secondary" data-refresh-prices ${!refreshPrices||refreshing?'disabled':''}>${refreshing?'Refreshing…':'Refresh prices'}</button><button type="button" class="ic-secondary" data-refresh-ak ${research.sheetSyncBusy||akRefreshing?'disabled':''}>${research.sheetSyncBusy||akRefreshing?'Refreshing AK…':'Refresh AK sheets'}</button></div></div>
       <details data-section="strategy-rules" ${open.has('strategy-rules')?'open':''}><summary>Strategy rules</summary><p>Anchor: equal nibbles at every approved support. Core: 1.5% + 1.5% + up to 3% at the deepest three (6% ceiling). Selective: reassess 2–4% per eligible entry at the deepest two (4% company ceiling); buy less or skip when cash or alternatives warrant it. Anchor ceiling: 10%.</p></details>
-      ${!loaded?'<p>Loading saved plans and decisions…</p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
+      ${!loaded?'<p>Loading saved plans and decisions… <button type="button" data-retry-cloud>Retry</button></p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
       ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<details data-section="funding-breakdown" ${open.has('funding-breakdown')?'open':''}><summary>Portfolio and cash basis</summary><p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. CC cash used since import: ${show(model.allowance.spent)}. Pending order reservations: ${show(model.reserved)}. Available for other buys: <strong>${show(funding.available)}</strong>.</p></details>`:''}
       ${model.incompleteSales?'<p class="ic-meta">Some planned sales lack FX and are excluded from potential cash.</p>':''}
       ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter,expandedSymbol:expandedDecision})}
@@ -101,8 +151,20 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         </details>
 `;
     root.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{filter=button.dataset.commandFilter;onViewChange(filter);render();});
-    root.querySelector('[data-reload-command]').onclick=()=>reload();
-    root.querySelector('[data-refresh-prices]').onclick=async()=>{refreshing=true;render();try{await refreshPrices?.();notice='Prices refreshed. AK sheet sync is available under Watchlist → Research.';}catch(e){error=e.message;}finally{refreshing=false;render();}};
+    root.querySelector('[data-retry-cloud]')?.addEventListener('click',()=>reload());
+    root.querySelector('[data-refresh-ak]').onclick=async()=>{
+      if(akRefreshing||research.sheetSyncBusy)return;
+      akRefreshing=true;
+      const button=root.querySelector('[data-refresh-ak]');
+      button.disabled=true;button.textContent='Refreshing AK…';
+      try{
+        const status=await research.syncAkSheets(research.sheetSources);
+        notice='AK sheets checked: '+status.readable+' readable sources. IV, SL and reference costs update when published data changes.';
+        error='';
+      }catch(e){error='AK sheet refresh failed: '+e.message;}
+      finally{akRefreshing=false;if(alive)render();}
+    };
+    root.querySelector('[data-refresh-prices]').onclick=async()=>{refreshing=true;render();try{await refreshPrices?.();notice='Prices refreshed. AK references update separately with Refresh AK sheets.';}catch(e){error=e.message;}finally{refreshing=false;render();}};
     const selector=root.querySelector('[name="symbol"]');
     const get=name=>root.querySelector('[data-plan] [name="'+name+'"]');
     const overrides=()=>({...Object.fromEntries(['iv','s1','s2','s3','s4','s5','refCost'].map(key=>[key,get('override-'+key).value.trim()===''?'':String(amount(get('override-'+key).value)??get('override-'+key).value)])),levelSource:get('levelSource').value});
@@ -229,7 +291,6 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       await save(reconcileCashUse(config,state,{includedIds,confirmed:fd.get('confirmed')==='on',now:new Date().toISOString()}));
       notice='CC spending reconciled against the imported balance. Included spending is no longer deducted; unselected entries remain deducted.';
     });
-    root.querySelector('[data-reload-command]').onclick=()=>reload();
     root.querySelectorAll('[data-company-details]').forEach(button=>button.onclick=()=>{expandedDecision=expandedDecision===button.dataset.companyDetails?'':button.dataset.companyDetails;render();if(expandedDecision)root.querySelector('.ic-decision-table-wrap').scrollLeft=0;});
     root.querySelectorAll('[data-close-company-details]').forEach(button=>button.onclick=()=>{expandedDecision='';render();root.querySelector('[data-company-details="'+button.dataset.closeCompanyDetails+'"]')?.focus();});
     root.querySelectorAll('[data-copy-company]').forEach(button=>button.onclick=async()=>{
@@ -266,9 +327,10 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       notice='Final fill recorded. The reservation is replaced by cash actually used. CC can size other buys; StocksCafe remains the master record.';
     }));
     if(popup&&addDialog){addDialog.querySelector('[name="ticker"]').value=popup.ticker;addDialog.querySelector('[name="category"]').value=popup.category;if(addDialog.showModal)addDialog.showModal();else addDialog.setAttribute('open','');if(error){const message=root.ownerDocument.createElement('p');message.setAttribute('role','alert');message.className='pf-error';message.textContent=error;addDialog.querySelector('form').prepend(message);}addDialog.querySelector(popup.focus==='category'?'[name="category"]':'[name="ticker"]').focus();}
-    if(!loaded)root.querySelectorAll('button:not([data-reload-command])').forEach(button=>button.disabled=true);
+    if(!loaded)root.querySelectorAll('button:not([data-retry-cloud])').forEach(button=>button.disabled=true);
+    cloudWarning();
   }
   render();
   reload();
-  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices,nextAdd=addWatchlist,nextRemove=removeWatchlist){addWatchlist=nextAdd;removeWatchlist=nextRemove;state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;render();},destroy(){alive=false;root.innerHTML='';}};
+  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices,nextAdd=addWatchlist,nextRemove=removeWatchlist){addWatchlist=nextAdd;removeWatchlist=nextRemove;state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;if(!draftDirty||state.privacyMode)render();},destroy(){alive=false;watchStop?.();root.removeEventListener('input',onDraftInput);root.removeEventListener('change',onDraftInput);root.innerHTML='';}};
 }

@@ -30,15 +30,48 @@ export function createInvestmentStore({projectId,uid,getToken,fetch:request=glob
   const endpoint='https://firestore.googleapis.com/v1/'+name;
   let loaded=false,version=null,busy=false;
   const headers=async()=>({'Authorization':'Bearer '+await getToken(),'Content-Type':'application/json'});
+  const readCloud=async()=>{
+    const response=await request(endpoint,{headers:await headers(),cache:'no-store'});
+    if(response.status===404)return {strategy:{},updateTime:null};
+    if(!response.ok)throw Error('Could not load investment settings ('+response.status+').');
+    const doc=await response.json();
+    if(!doc.updateTime)throw Error('The cloud document has no version.');
+    return {strategy:decode(doc.fields?.settings?.mapValue?.fields?.investmentStrategy)||{},updateTime:doc.updateTime};
+  };
   return {
     async load(){
       if(busy)throw Error('Wait for the current save.');
-      const response=await request(endpoint,{headers:await headers(),cache:'no-store'});
-      if(response.status===404){version=null;loaded=true;return {};}
-      if(!response.ok)throw Error('Could not load investment settings ('+response.status+').');
-      const doc=await response.json();version=doc.updateTime;loaded=true;
-      if(!version)throw Error('The cloud document has no version.');
-      return decode(doc.fields?.settings?.mapValue?.fields?.investmentStrategy)||{};
+      const cloud=await readCloud();
+      version=cloud.updateTime;loaded=true;
+      return cloud.strategy;
+    },
+    // Watch remote changes without overwriting the version used by a pending
+    // local edit. The UI must explicitly accept each observed cloud revision.
+    watch(onChange,onError=()=>{}, {intervalMs=30000}={}){
+      let stopped=false,inFlight=false;
+      const check=async()=>{
+        if(stopped||inFlight||busy||!loaded||globalThis.document?.visibilityState==='hidden')return;
+        inFlight=true;
+        try{
+          const cloud=await readCloud();
+          if(!stopped&&!busy&&cloud.updateTime!==version)onChange(cloud);
+        }catch(error){if(!stopped)onError(error);}
+        finally{inFlight=false;}
+      };
+      const timer=setInterval(check,intervalMs);
+      const onFocus=()=>{void check();};
+      globalThis.window?.addEventListener?.('focus',onFocus);
+      globalThis.document?.addEventListener?.('visibilitychange',onFocus);
+      return ()=>{
+        stopped=true;clearInterval(timer);
+        globalThis.window?.removeEventListener?.('focus',onFocus);
+        globalThis.document?.removeEventListener?.('visibilitychange',onFocus);
+      };
+    },
+    async readLatest(){return readCloud();},
+    acceptCloud(cloud){
+      if(busy||!cloud||!Object.hasOwn(cloud,'updateTime'))return false;
+      version=cloud.updateTime;loaded=true;return true;
     },
     async save(strategy){
       if(!loaded)throw Error('Load cloud investment settings before saving.');
@@ -48,15 +81,15 @@ export function createInvestmentStore({projectId,uid,getToken,fetch:request=glob
       try{
         const write={update:{name,fields:{settings:encode({investmentStrategy:strategy})}},updateMask:{fieldPaths:['settings.investmentStrategy']},currentDocument:version?{updateTime:version}:{exists:false}};
         let response;
-        try{response=await request(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,{method:'POST',headers:await headers(),body:JSON.stringify({writes:[write]})});}catch(e){loaded=false;throw Error('Save outcome is unconfirmed. Reload saved decisions before another action.');}
+        try{response=await request(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,{method:'POST',headers:await headers(),body:JSON.stringify({writes:[write]})});}catch(e){loaded=false;throw Error('Save outcome is unconfirmed. Review the latest cloud data before another action.');}
         if(!response.ok){
           if([409,412].includes(response.status)||response.status===400){const error=await response.json().catch(()=>({}));if([409,412].includes(response.status)||error.error?.status==='FAILED_PRECONDITION'){
-            loaded=false;throw Error('Cloud data changed in another tab or device. Reload the Command Centre, review the latest cash and retry. No changes were saved.');
+            loaded=false;throw Error('Cloud data changed in another tab or device. Review the latest cloud decision before retrying. No changes were saved.');
           }}
           throw Error('Investment settings were not saved ('+response.status+').');
         }
         const result=await response.json();version=result.writeResults?.[0]?.updateTime;
-        if(!version){loaded=false;throw Error('Save outcome requires confirmation. Reload before another action.');}
+        if(!version){loaded=false;throw Error('Save outcome requires confirmation. Review the cloud data before another action.');}
       }finally{busy=false;}
     }
   };
