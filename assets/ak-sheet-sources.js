@@ -67,6 +67,24 @@ function sourceDate(rows) {
 }
 const aliases={conservativeIV:['conservativeiv','pessimisticiv','intrinsicvalueconservative'],baseIV:['baseiv','intrinsicvaluebasecase'],
   averageIV:['averageiv'],yieldIV:['intrinsicvalue5yieldprice','5yieldprice'],historicalPbIV:['intrinsicvalueptotbv'],adjustedPbIV:['intrinsicvaluebyadjustedpbv']};
+// Match price headings only in the correct AK source. 'Avg Price' in an
+// active portfolio means average acquisition cost; in Closed positions it
+// means average sale price. Never infer either from a ticker's IV or SL.
+const ACTIVE_COST_COLUMNS=new Set(['averagecost','avgcost','averagecostprice','avgcostprice',
+  'avgcostpershare','averagecostpershare','averagecostbasis','avgcostbasis',
+  'averagepurchaseprice','avgpurchaseprice','averagepurchasecost','avgpurchasecost',
+  'averagebuyprice','avgbuyprice','averagebuycost','avgbuycost',
+  'averageentryprice','avgentryprice','averageprice','avgprice']);
+const CLOSED_SELL_COLUMNS=new Set(['averagesellprice','avgsellprice','averagesellingprice',
+  'avgsellingprice','averageexitprice','avgexitprice','averagesoldprice',
+  'avgsoldprice','averagesaleprice','avgsaleprice','averageprice','avgprice']);
+function priceColumn(headers,source){
+  const names=source==='closed_positions'?CLOSED_SELL_COLUMNS:ACTIVE_COST_COLUMNS;
+  return headers.findIndex(header=>names.has(header)||
+    // Currency/adjustment annotations are common on exported headers.
+    [...names].some(name=>header===name+'usd'||header===name+'hkd'||
+      header===name+'sgd'||header===name+'adjusted'||header===name+'aftersplit'));
+}
 function number(value) {
   const s=String(value??'').trim();if(!s||/^(?:NA|N\/A|NONE|—|-)$/i.test(s))return null;
   const cleaned=s.replace(/(?:HK\$|S\$|US\$|\$|,|\s)/g,'');
@@ -86,13 +104,16 @@ export function parseAkSheet(text,source,{today=new Date().toISOString().slice(0
   const grid=parseSheetCSV(text),asOf=sourceDate(grid);if(asOf>today)throw Error('Sheet date is in the future.');
   const titles={closed_positions:['closedpositions','closedtrades','closedposition'],capital_gains:['capitalgainsportfolio','capitalgainportfolio','growthportfolio'],dividend:['dividendportfolio'],priority_watchlist:['prioritywatchlist'],secondary_watchlist:['secondarywatchlist']};
   if(!grid.slice(0,6).flat().some(cell=>titles[source].some(title=>norm(cell).includes(title))))throw Error('The list title does not match this source setting. Check the sheet or tab link.');
-  const rows=[];let columns=null;
+  const rows=[];let columns=null,costHeaderFound=false;
   for(const cells of grid){
     const headers=cells.map(norm),ticker=headers.indexOf('ticker'),currency=headers.indexOf('currency');
     const supports=[1,2,3,4,5].map(n=>headers.findIndex(h=>h==='supportlevel'+n||h==='sl'+n));
     if(ticker>=0&&(currency>=0||source==='closed_positions')&&(source==='closed_positions'||supports.every(n=>n>=0))){
-      columns={ticker,currency,supports,averageCost:headers.findIndex(h=>['averagecost','avgcost','averagecostprice','averagepurchaseprice','averagebuyprice'].includes(h)),averageSellPrice:headers.findIndex(h=>['averagesellprice','averagesellingprice','avgsellprice'].includes(h)),category:headers.findIndex(h=>['investmenttype','investmentcategory'].includes(h)),classification:headers.indexOf('classification'),
-        fields:Object.fromEntries(Object.entries(aliases).map(([key,names])=>[key,headers.findIndex(h=>names.includes(h))]))};continue;
+      columns={ticker,currency,supports,averageCost:source==='closed_positions'?-1:priceColumn(headers,source),averageSellPrice:source==='closed_positions'?priceColumn(headers,source):-1,category:headers.findIndex(h=>['investmenttype','investmentcategory'].includes(h)),classification:headers.indexOf('classification'),
+        fields:Object.fromEntries(Object.entries(aliases).map(([key,names])=>[key,headers.findIndex(h=>names.includes(h))]))};
+      costHeaderFound ||= source==='closed_positions'?columns.averageSellPrice>=0:
+        ['capital_gains','dividend'].includes(source)?columns.averageCost>=0:false;
+      continue;
     }
     if(!columns||!String(cells[columns.ticker]??'').trim())continue;
     const raw=String(cells[columns.ticker]).trim();
@@ -107,7 +128,7 @@ export function parseAkSheet(text,source,{today=new Date().toISOString().slice(0
   }
   if(!rows.length)throw Error('No benchmark rows found; previous reference retained.');
   if(new Set(rows.map(x=>x.symbol)).size!==rows.length)throw Error('Duplicate listings in this source need review.');
-  return {asOf,rows};
+  return {asOf,rows,costHeaderFound};
 }
 export function previousAkRows(records={}) {
   const rows=[];
@@ -140,7 +161,9 @@ export async function readAkSources(settings,records,{fetch:fetchImpl=globalThis
       if(!response.ok)throw Error([401,403].includes(response.status)?'Access required. Use a readable published sheet URL.':'The sheet could not be downloaded.');
       const text=await response.text();const parsed=parseAkSheet(text,source.key,{today});
       if(oldDate&&parsed.asOf<oldDate)throw Error('This sheet is older than the saved reference. Check the replacement URL.');
-      return {...base,asOf:parsed.asOf,status:comparable(previous)===comparable(parsed.rows)?'unchanged':'updated',message:null,rows:parsed.rows};
+      return {...base,asOf:parsed.asOf,costHeaderFound:parsed.costHeaderFound,
+        status:comparable(previous)===comparable(parsed.rows)?'unchanged':'updated',
+        message:null,rows:parsed.rows};
     }catch(error){return {...base,status:'unavailable',message:signal?.aborted?'Sync cancelled.':error?.message==='Failed to fetch'?'Unable to read this sheet. Check its published link and access.':String(error?.message||'Sheet unavailable.').slice(0,200),rows:previous};}
   }));
   const readable=results.filter(r=>['updated','unchanged'].includes(r.status));const rows=results.flatMap(r=>r.rows);
