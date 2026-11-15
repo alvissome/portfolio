@@ -2,16 +2,20 @@ import {researchProcessingLabel,researchComparisonLabel} from './research-panel.
 import {redistributeBudget} from './budget-redistribution.js?v=redistribution-20261115';
 import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides} from './investment-actions.js?v=plan-research-20261115';
 import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=redistribution-20261115';
-import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=redistribution-20261115';
+import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=compact-settings-20261115';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
 import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=redistribution-20261115';
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=redistribution-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-research-20261115';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=plan-research-20261115';
-export {resolvedCompany} from './investment-command-centre.js?v=plan-research-20261115';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=compact-settings-20261115';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=compact-settings-20261115';
+export {resolvedCompany} from './investment-command-centre.js?v=compact-settings-20261115';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export function revisitDate(date,months=1){
+  const [year,month,day]=date.split('-').map(Number),last=new Date(Date.UTC(year,month-1+months+1,0)).getUTCDate();
+  return new Date(Date.UTC(year,month-1+months,Math.min(day,last))).toISOString().slice(0,10);
+}
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
   return function InvestmentPanel({uid,state,research,storage,onCategoryChange,researchPanel,onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
@@ -71,24 +75,21 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         <form data-plan class="ic-compact-plan">
         <label>Company<select name="symbol">${symbols.map(s=>`<option value="${esc(s)}" ${s===selectedSymbol?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
         <label>Action<select name="action"><option value="buy">Buy</option><option value="sell">Sell</option><option value="hold">Hold</option></select></label>
-        <label>Revisit on<input type="date" name="revisitOn"></label>
+        <div class="ic-revisit-field"><label for="ic-revisit-on">Revisit on</label><div class="ic-revisit-picker"><input id="ic-revisit-on" type="date" name="revisitOn"><button type="button" class="ic-secondary" data-revisit-months="1">1M</button><button type="button" class="ic-secondary" data-revisit-months="3">3M</button></div></div>
         <label>Support<select name="stage"></select></label>
         ${field('entry','Entry price','','type="text" inputmode="decimal" required')}
         ${field('quantity','Quantity (shares)','','type="text" inputmode="numeric" required')}
         <label class="ic-native-estimate">Estimated purchase<output data-native-estimate>—</output><small data-sgd-estimate></small></label>
         <label class="ic-plan-remarks-field">Decision / remarks<textarea name="remarks" maxlength="2000" rows="1" placeholder="Thesis, alternatives or reason to wait"></textarea></label>
         ${field('reviewedAt','Reviewed',today(),`type="date" max="${today()}" required`)}
-        <label class="ic-plan-approval" title="I reviewed the business, IV, trading currency, support ladder and ceiling. Any material news has been resolved."><input type="checkbox" name="approved" required> Plan reviewed</label>
+        <label class="ic-plan-approval" title="I reviewed the business, IV, trading currency, support ladder and ceiling. Any material news has been resolved."><input type="checkbox" name="approved" required><span>Plan reviewed</span></label>
         <button ${!loaded?'disabled':''}>Save plan</button>
         <details class="ic-plan-settings" data-section="plan-settings" ${open.has('plan-settings')?'open':''}><summary>Plan settings</summary><div class="ic-settings-body">
-          <label data-rebase-control><input type="checkbox" name="redistribute"> Redistribute remaining budget from selected support</label>${field('rebaseBudget','Remaining budget to redistribute (SGD)','','type="text" inputmode="decimal"')}<p data-rebase-control>Explicit review only. Anchor: equal remaining shares; Core: retain 1:1:2 weights; Selective: independent 2–4% proposals within one total budget. Higher unfilled supports are skipped. Resolve pending orders first. Saving the plan approves this redistribution.</p>
-          ${field('ceiling','Company ceiling (%)','','type="number" min="0.01" max="100" step="0.01" required')}
+          <label class="ic-redistribute" data-rebase-control><input type="checkbox" name="redistribute"><strong>Redistribute remaining budget from selected support</strong></label>${field('rebaseBudget','Remaining budget to redistribute (SGD)','','type="text" inputmode="decimal"')}<p data-rebase-control>Explicit review only. Anchor: equal remaining shares; Core: retain 1:1:2 weights; Selective: independent 2–4% proposals within one total budget. Higher unfilled supports are skipped. Resolve pending orders first. Saving the plan approves this redistribution.</p>
           ${field('budget','Total Anchor addition budget (SGD)','','type="text" inputmode="decimal"')}
           <label class="ic-sale-completed"><input type="checkbox" name="saleCompleted"> Sale completed · exclude potential proceeds</label>
-          <div class="ic-plan-research"><h4>Research and valuation</h4><label>Level source<select name="levelSource"><option value="ak">AK sheets · independent fallback</option><option value="independent">Independent reconstruction</option></select></label><label>IV method<select name="methodFamily">${[['auto','Auto method'],['stock','Company DCF'],['bank','Bank'],['reit','REIT'],['fund','Fund / ETF']].map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label><button type="button" data-recalculate>Recalculate</button><p data-plan-research-status></p></div><div class="ic-research-overrides"><p>IV and supports: blank values follow AK sheets, then independent calculation. Enter a value to override it for this plan.</p>${['iv','s1','s2','s3','s4','s5','refCost'].map(key=>field('override-'+key,key==='iv'?'IV':key==='refCost'?'Ref cost':key.toUpperCase(),'','type="text" inputmode="decimal"')).join('')}</div>
-          ${field('lot','Order increment (shares)',1,'type="number" min="1" step="1" required')}
-          <p>Defaults follow your game plan. Quantity is editable; use an increment of 1 for whole-share orders when supported.</p>
-          <div data-plan-levels></div><div class="ic-plan-prefill" data-plan-prefill></div>
+          <div class="ic-plan-research">${field('ceiling','Company ceiling (%)','','type="number" min="0.01" max="100" step="0.01" required')}<label>Level source<select name="levelSource"><option value="ak">AK sheets · independent fallback</option><option value="independent">Independent reconstruction</option></select></label><label>IV method<select name="methodFamily">${[['auto','Auto method'],['stock','Company DCF'],['bank','Bank'],['reit','REIT'],['fund','Fund / ETF']].map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label><button type="button" data-recalculate>Recalculate</button><p data-plan-research-status></p></div><div class="ic-research-overrides"><p>IV and supports: blank values follow AK sheets, then independent calculation. Enter a value to override it for this plan.</p>${['iv','s1','s2','s3','s4','s5','refCost'].map(key=>field('override-'+key,key==='iv'?'IV':key==='refCost'?'Ref cost':key.toUpperCase(),'','type="text" inputmode="decimal"')).join('')}</div>
+          <div class="ic-plan-prefill" data-plan-prefill></div>
           <p class="ic-footnote">Saving a plan records your proposed entry, quantity and remarks. Cash is reserved only when you record a committed order. Dated reviews are in My decisions, with Copy for Notion for the <a href="${NOTION_REVIEW_URL}" target="_blank" rel="noopener">Stocks Plan Review log</a>.</p>
         </div></details></form>
         <p class="ic-meta" data-plan-feedback></p>
@@ -102,7 +103,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     const overrides=()=>({...Object.fromEntries(['iv','s1','s2','s3','s4','s5','refCost'].map(key=>[key,get('override-'+key).value.trim()===''?'':String(amount(get('override-'+key).value)??get('override-'+key).value)])),levelSource:get('levelSource').value});
     const currentDraft=()=>{
       const saved=config.plans[selector.value],company=resolvedCompany(state,research,selector.value,{...saved,action:get('action').value,researchOverrides:overrides()});
-      let draft=planDraft(company,saved,funding,{ceiling:get('ceiling').value,addBudget:amount(get('budget').value),selectivePercents:[4,4],lotSize:get('lot').value});
+      let draft=planDraft(company,saved,funding,{ceiling:get('ceiling').value,addBudget:amount(get('budget').value),selectivePercents:[4,4],lotSize:1});
       if(get('action').value==='buy'&&get('redistribute').checked&&get('stage').value&&amount(get('rebaseBudget').value)!==null)draft=redistributeBudget(draft,{startKey:get('stage').value,budget:amount(get('rebaseBudget').value),room:draft.room,base:draft.base,hasPending:Object.values(config.decisions||{}).some(d=>d.symbol===selector.value&&d.status==='ordered'),now:today()});
       return {company,saved,draft};
     };
@@ -113,10 +114,9 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       const record=research?.records?.[company.symbol];root.querySelector('[data-plan-research-status]').textContent='IV: '+researchProcessingLabel(record,'iv')+' · '+researchComparisonLabel(record,'iv').text+' | SL: '+researchProcessingLabel(record,'supports')+' · '+researchComparisonLabel(record,'supports').text+' | Displayed IV: '+(company.sources.iv||'unavailable')+'; numeric overrides take precedence. Ref cost: '+company.refCostLabel;
       root.querySelectorAll('[data-rebase-control]').forEach(el=>el.hidden=!buy);get('redistribute').closest('label').hidden=!buy;get('redistribute').disabled=!buy;get('rebaseBudget').closest('label').hidden=!buy||!get('redistribute').checked;get('rebaseBudget').disabled=!buy||!get('redistribute').checked;
       get('entry').closest('label').firstChild.textContent=action==='sell'?'Sale price':'Entry price';
-      root.querySelector('[data-plan-levels]').textContent=`Current ${money(company.quote?.close,company.currency)} · ${STRATEGY_CATEGORIES[company.category]||'Unassigned'} · IV ${money(company.iv,company.currency)} · `+company.levels.map(l=>`${l.key.toUpperCase()} ${money(l.price,company.currency)}`).join(' · ');
-      for(const key of ['stage','ceiling','budget','lot']){get(key).disabled=!buy||(key==='budget'&&company.category!=='anchor');get(key).required=buy&&key!=='stage'&&(key!=='budget'||company.category==='anchor');get(key).closest('label').hidden=!buy||(key==='budget'&&company.category!=='anchor');}
+      for(const key of ['stage','ceiling','budget']){get(key).disabled=!buy||(key==='budget'&&company.category!=='anchor');get(key).required=buy&&key!=='stage'&&(key!=='budget'||company.category==='anchor');get(key).closest('label').hidden=!buy||(key==='budget'&&company.category!=='anchor');}
       for(const key of ['entry','quantity']){get(key).required=!hold;get(key).disabled=hold;get(key).closest('label').hidden=hold;}
-      get('revisitOn').closest('label').hidden=!hold;get('revisitOn').required=hold;get('revisitOn').disabled=!hold;
+      get('revisitOn').closest('.ic-revisit-field').hidden=!hold;get('revisitOn').required=hold;get('revisitOn').disabled=!hold;
       get('saleCompleted').closest('label').hidden=action!=='sell';root.querySelector('.ic-native-estimate').hidden=hold;
       root.querySelector('[data-plan] > button').disabled=!loaded||(buy&&!company.category);
       if(!buy){
@@ -134,42 +134,40 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         stageSelector.innerHTML=draft.stages.map(s=>`<option value="${esc(s.key)}">${esc(s.key.toUpperCase())} · ${esc(money(s.price,company.currency))}${s.completed?' · completed':''}</option>`).join('');stageSelector.dataset.symbol=stageSignature;
         stageSelector.value=(draft.stages.some(s=>s.key===saved?.plannedEntryKey)?saved.plannedEntryKey:entryDraft(draft,company,funding).stage?.key)||'';
       }
-      const initial=executionNow();
-      if(get('entry').value==='')get('entry').value=initial.entry==null?'':money(initial.entry,company.currency);
+      if(get('entry').value==='')get('entry').value=company.quote?.close>0?money(company.quote.close,company.currency):'';
       const execution=executionNow();
       if(get('quantity').value==='')get('quantity').value=quantityText(execution.units);
       const sized=executionNow();
       root.querySelector('[data-native-estimate]').textContent=sized.spend==null?'—':money(sized.units*sized.entry,company.currency);
       root.querySelector('[data-sgd-estimate]').textContent=company.currency==='SGD'||sized.spend==null?'':'≈ '+money(sized.spend,'SGD');
       root.querySelector('[data-plan-feedback]').textContent=[...sized.issues,...(draft.missing.length?draft.missing:[])].join(' ');
-      root.querySelector('[data-plan-prefill]').innerHTML=`<dl class="ic-plan-facts"><div><dt>Portfolio base</dt><dd>${show(draft.base)}</dd></div><div><dt>Current holding · ${quantityText(company.shares)} shares</dt><dd>${show(draft.holding)}</dd></div><div><dt>Room below ceiling</dt><dd>${show(draft.room)}</dd></div><div><dt>IV</dt><dd>${esc(money(company.iv,company.currency))}</dd></div></dl><p class="ic-meta">${esc(draft.budgetSource)}. Remaining stage allowance and shared cash cap the quantity.</p>${renderPlanBreakdown(draft,company,funding,sized)}`;
+      root.querySelector('[data-plan-prefill]').innerHTML=`<dl class="ic-plan-facts"><div><dt>Current holding · ${quantityText(company.shares)} shares</dt><dd>${show(draft.holding)}</dd></div><div><dt>Room below ceiling</dt><dd>${show(draft.room)}</dd></div><div><dt>Current price</dt><dd>${esc(money(company.quote?.close,company.currency))}</dd></div><div><dt>IV</dt><dd>${esc(money(company.iv,company.currency))}</dd></div></dl><p class="ic-meta">${esc(draft.budgetSource)}. Remaining stage allowance and shared cash cap the quantity.</p>${renderPlanBreakdown(draft,company,funding,sized)}`;
       return sized;
     };
     const showLevels=()=>{
       try{
         selectedSymbol=selector.value;
         const saved=config.plans[selectedSymbol],company=resolvedCompany(state,research,selectedSymbol,saved),draft=planDraft(company,saved,funding);
-        get('levelSource').value=saved?.researchOverrides?.levelSource||(state.watchlist||[]).find(w=>w.symbol===selectedSymbol)?.levelSource||'ak';const record=research?.records?.[selectedSymbol];get('methodFamily').value=record?.methodFamilySource==='user'?record.methodFamily:'auto';get('action').value=saved?planAction(saved):'buy';get('revisitOn').value=saved?.revisitOn||new Date(Date.now()+90*86400000).toISOString().slice(0,10);get('revisitOn').min=new Date(Date.now()+86400000).toISOString().slice(0,10);get('saleCompleted').checked=saved?.sale?.completed===true;
+        get('levelSource').value=saved?.researchOverrides?.levelSource||(state.watchlist||[]).find(w=>w.symbol===selectedSymbol)?.levelSource||'ak';const record=research?.records?.[selectedSymbol];get('methodFamily').value=record?.methodFamilySource==='user'?record.methodFamily:'auto';get('action').value=saved?planAction(saved):'buy';get('revisitOn').value=saved?.revisitOn||revisitDate(today());get('revisitOn').min=new Date(Date.parse(today()+'T00:00:00Z')+86400000).toISOString().slice(0,10);get('saleCompleted').checked=saved?.sale?.completed===true;
         for(const key of ['iv','s1','s2','s3','s4','s5','refCost']){const input=get('override-'+key);input.value=company.manualValues[key]??'';input.placeholder=key==='priceCurrency'?company.currency||'Auto':key==='refCost'?(company.refCost>0?money(company.refCost,company.currency):'AK reference unavailable'):money(key==='iv'?company.iv:company.levels.find(l=>l.key===key)?.price,company.currency);}
-        root.querySelector('[data-plan-levels]').textContent=`Current ${money(company.quote?.close,company.currency)} · ${STRATEGY_CATEGORIES[company.category]||'Unassigned'} · IV ${money(company.iv,company.currency)} · `+company.levels.map(l=>`${l.key.toUpperCase()} ${money(l.price,company.currency)}`).join(' · ');
         get('ceiling').value=draft.ceiling??'';get('ceiling').max=({anchor:10,core:6,selective:4}[company.category]||100);
         get('budget').value=draft.addBudget==null?'':money(draft.addBudget,'SGD');get('budget').disabled=company.category!=='anchor';get('budget').required=company.category==='anchor';get('budget').readOnly=company.category==='anchor'&&saved?.category==='anchor'&&saved.stages.length>0;get('budget').closest('label').hidden=company.category!=='anchor';
-        get('lot').value=draft.lotSize??'';get('remarks').value=saved?.remarks||'';get('entry').value='';get('quantity').value='';get('stage').dataset.symbol='';
+        get('remarks').value=saved?.remarks||'';get('entry').value=saved&&planAction(saved)==='buy'&&saved.currency===company.currency&&saved.stages?.find(s=>s.key===saved.plannedEntryKey)?.entryPrice>0?money(saved.stages.find(s=>s.key===saved.plannedEntryKey).entryPrice,company.currency):'';get('quantity').value='';get('stage').dataset.symbol='';
         get('redistribute').checked=false;get('rebaseBudget').value=draft.room==null?'':money(draft.room,'SGD');get('approved').checked=false;showDraftDetails();
         const edits=draftEdits[selectedSymbol];if(edits)for(const[key,value]of Object.entries(edits)){if(get(key)){if(get(key).type==='checkbox')get(key).checked=value;else get(key).value=value;}}
         root.querySelector('[data-plan] > button').disabled=!loaded||(get('action').value==='buy'&&!company.category);
         showDraftDetails();
-        if(!draft.lotSize)root.querySelector('.ic-plan-settings').open=true;
       }catch(e){root.querySelector('[data-plan-feedback]').textContent=e.message;}
     };
     const rememberDraft=()=>{draftEdits[selectedSymbol]=Object.fromEntries([...root.querySelectorAll('[data-plan] input:not([readonly]),[data-plan] textarea,[data-plan] select[name="stage"],[data-plan] select[name="action"],[data-plan] select[name="levelSource"]')].filter(input=>input.name).map(input=>[input.name,input.type==='checkbox'?input.checked:input.value]));};
     selector.onchange=showLevels;showLevels();
     get('levelSource').onchange=()=>{get('stage').dataset.symbol='';get('entry').value='';get('quantity').value='';showDraftDetails();rememberDraft();};
     const requestResearch=async()=>{try{if(!research?.request)throw Error('Research is not ready. Reload and retry.');await research.request({symbol:selector.value,securityId:selector.value,currency:currentDraft().company.currency},{force:true,methodFamily:get('methodFamily').value});notice='Research requested; previous values remain until results arrive.';}catch(e){error=e.message;}render();};get('methodFamily').onchange=requestResearch;root.querySelector('[data-recalculate]').onclick=requestResearch;
+    root.querySelectorAll('[data-revisit-months]').forEach(button=>button.onclick=()=>{get('revisitOn').value=revisitDate(today(),Number(button.dataset.revisitMonths));rememberDraft();});
     get('action').onchange=()=>{get('entry').value='';get('quantity').value='';get('stage').dataset.symbol='';showDraftDetails();rememberDraft();};
     get('stage').onchange=()=>{get('entry').value='';get('quantity').value='';showDraftDetails();rememberDraft();};
     root.querySelectorAll('[data-plan] input,[data-plan] textarea').forEach(input=>{
-      input.oninput=()=>{if(['entry','ceiling','budget','lot','redistribute','rebaseBudget'].includes(input.name)||input.name.startsWith('override-'))get('quantity').value='';try{showDraftDetails();rememberDraft();}catch(e){root.querySelector('[data-plan-feedback]').textContent=e.message;}};
+      input.oninput=()=>{if(['entry','ceiling','budget','redistribute','rebaseBudget'].includes(input.name)||input.name.startsWith('override-'))get('quantity').value='';try{showDraftDetails();rememberDraft();}catch(e){root.querySelector('[data-plan-feedback]').textContent=e.message;}};
       input.onchange=()=>{showDraftDetails();rememberDraft();};
       input.onblur=()=>{const sized=get('action').value==='buy'?executionNow():{};if(input.name==='entry'&&amount(input.value)!==null)input.value=money(amount(input.value),currentDraft().company.currency);if(input.name==='budget'&&amount(input.value)!==null)input.value=money(amount(input.value),'SGD');if(input.name==='quantity'&&sized.requestedUnits!==null&&sized.requestedUnits<=sized.maximumUnits)input.value=quantityText(sized.units);showDraftDetails();rememberDraft();};
     });
@@ -203,8 +201,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       fresh=reviewPurchasePlan(previous,fresh);
       if(fd.get('redistribute')==='on'){const draft=planDraft(c,fresh,funding);fresh=redistributeBudget(fresh,{startKey:fd.get('stage'),budget:amount(fd.get('rebaseBudget')),room:draft.room,base:funding.base,hasPending:Object.values(config.decisions||{}).some(d=>d.symbol===symbol&&d.status==='ordered'),now:new Date().toISOString()});}
       fresh.action='buy';fresh.researchOverrides=researchOverrides;
-      fresh.lotSize=Number(fd.get('lot'));fresh.oddLots=false;fresh.rounding='down';fresh.remarks=String(fd.get('remarks')||'').slice(0,2000);
-      if(!Number.isInteger(fresh.lotSize)||fresh.lotSize<1)throw Error('Confirm the share increment for this order.');
+      fresh.lotSize=1;fresh.oddLots=false;fresh.rounding='down';fresh.remarks=String(fd.get('remarks')||'').slice(0,2000);
       const approvedDraft=planDraft(c,fresh,funding,{lotSize:fresh.lotSize}),execution=entryDraft(approvedDraft,c,funding,{stageKey:fd.get('stage'),entryPrice:amount(fd.get('entry')),quantity:amount(fd.get('quantity')),increment:fresh.lotSize,useStageAllowance:true});
       if(amount(fd.get('entry'))===null||amount(fd.get('quantity'))===null)throw Error('Enter a valid entry price and whole-share quantity.');
       if(execution.issues.length)throw Error(execution.issues.join(' '));

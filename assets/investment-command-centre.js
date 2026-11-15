@@ -107,7 +107,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
   const incompleteSales=rows.filter(r=>r.sale&&r.sale.sgd===null).length;
   const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol])=>({symbol,category:'selective'}));
   return {decisionColumns:{...state.watchlistColumnVisibility,...config.decisionColumns},rows,visible,history,archivedPlans,inactiveCategories,potentialSales,incompleteSales,potentialCash:displayFunding?Math.max(0,displayFunding.committed-displayFunding.liabilities-displayFunding.pending-allowance.spent+potentialSales):null,funding,displayFunding,fundingError,reserved,allowance,
-    stats:{attention:rows.filter(r=>(!r.plan||r.manuallyRebalancing)&&r.lists.includes('balance')).length,opportunities:rows.filter(r=>r.openOpportunity).length,setup:rows.filter(r=>!r.plan&&r.lists.includes('data')).length,planSet:rows.filter(r=>r.plan).length,
+    stats:{attention:rows.filter(r=>!r.plan&&r.lists.includes('balance')).length,opportunities:rows.filter(r=>r.openOpportunity).length,setup:rows.filter(r=>!r.plan&&r.lists.includes('data')).length,planSet:rows.filter(r=>r.plan).length,
       pendingOrders:decisions.filter(d=>d.status==='ordered').length,decisions:decisions.length},
     totalSuggested:visible.filter(r=>r.status==='eligible').reduce((n,r)=>n+r.result.amount,0)};
 }

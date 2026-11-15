@@ -77,7 +77,7 @@ export function renderCommandCentre(model,{show,today,filter='opportunities',cat
   if(categorySort==='distance')ranked.sort((a,b)=>(Math.abs(a.distanceToEntry??Infinity))-(Math.abs(b.distanceToEntry??Infinity)));
   return ranked;
  };
- const pending=all.filter(r=>(!r.plan||(filter==='balance'&&r.manuallyRebalancing))&&((filter==='balance'&&r.manuallyRebalancing)||!['dismissed','deferred'].includes(r.status)));
+ const pending=all.filter(r=>!r.plan&&((filter==='balance'&&r.manuallyRebalancing)||!['dismissed','deferred'].includes(r.status)));
  const selected=filter==='all'?all:filter==='decisions'?all.filter(r=>r.plan&&actionFilter.includes(r.action||'buy')):pending.filter(r=>r.lists?.includes(filter));
  const sorted=sort(subset(selected));
  const cards=rows=>`<div class="ic-card-list">${rows.map(r=>renderOpportunityCard(r,{show,today})).join('')}</div>`;
