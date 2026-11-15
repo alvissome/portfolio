@@ -68,6 +68,7 @@ export function createInvestmentStore({projectId,uid,getToken,fetch:request=glob
         globalThis.document?.removeEventListener?.('visibilitychange',onFocus);
       };
     },
+    async readLatest(){return readCloud();},
     acceptCloud(cloud){
       if(busy||!cloud||!Object.hasOwn(cloud,'updateTime'))return false;
       version=cloud.updateTime;loaded=true;return true;
@@ -80,15 +81,15 @@ export function createInvestmentStore({projectId,uid,getToken,fetch:request=glob
       try{
         const write={update:{name,fields:{settings:encode({investmentStrategy:strategy})}},updateMask:{fieldPaths:['settings.investmentStrategy']},currentDocument:version?{updateTime:version}:{exists:false}};
         let response;
-        try{response=await request(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,{method:'POST',headers:await headers(),body:JSON.stringify({writes:[write]})});}catch(e){loaded=false;throw Error('Save outcome is unconfirmed. Reload saved decisions before another action.');}
+        try{response=await request(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,{method:'POST',headers:await headers(),body:JSON.stringify({writes:[write]})});}catch(e){loaded=false;throw Error('Save outcome is unconfirmed. Review the latest cloud data before another action.');}
         if(!response.ok){
           if([409,412].includes(response.status)||response.status===400){const error=await response.json().catch(()=>({}));if([409,412].includes(response.status)||error.error?.status==='FAILED_PRECONDITION'){
-            loaded=false;throw Error('Cloud data changed in another tab or device. Reload the Command Centre, review the latest cash and retry. No changes were saved.');
+            loaded=false;throw Error('Cloud data changed in another tab or device. Review the latest cloud decision before retrying. No changes were saved.');
           }}
           throw Error('Investment settings were not saved ('+response.status+').');
         }
         const result=await response.json();version=result.writeResults?.[0]?.updateTime;
-        if(!version){loaded=false;throw Error('Save outcome requires confirmation. Reload before another action.');}
+        if(!version){loaded=false;throw Error('Save outcome requires confirmation. Review the cloud data before another action.');}
       }finally{busy=false;}
     }
   };
