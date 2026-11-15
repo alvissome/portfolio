@@ -291,7 +291,6 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       await save(reconcileCashUse(config,state,{includedIds,confirmed:fd.get('confirmed')==='on',now:new Date().toISOString()}));
       notice='CC spending reconciled against the imported balance. Included spending is no longer deducted; unselected entries remain deducted.';
     });
-    root.querySelector('[data-reload-command]').onclick=()=>reload();
     root.querySelectorAll('[data-company-details]').forEach(button=>button.onclick=()=>{expandedDecision=expandedDecision===button.dataset.companyDetails?'':button.dataset.companyDetails;render();if(expandedDecision)root.querySelector('.ic-decision-table-wrap').scrollLeft=0;});
     root.querySelectorAll('[data-close-company-details]').forEach(button=>button.onclick=()=>{expandedDecision='';render();root.querySelector('[data-company-details="'+button.dataset.closeCompanyDetails+'"]')?.focus();});
     root.querySelectorAll('[data-copy-company]').forEach(button=>button.onclick=async()=>{
