@@ -76,3 +76,7 @@ test('deferred notification timing never changes Hold action or suppresses an ov
 test('invalid research overrides are rejected for every non-Buy plan rather than silently saved',()=>{
  for(const researchOverrides of [{iv:'bad'},{s1:-1},{priceCurrency:'US'},{unknown:1}])assert.throws(()=>save('hold',{revisitOn:'2026-12-15',researchOverrides}));
 });
+
+test('a changed listing currency requires sale-price review and excludes conditional proceeds',()=>{
+ const p=save('sell'),changed={...company,currency:'HKD',fx:.17};assert.equal(previewActionPlan(p,changed,{today}).status,'review');assert.equal(potentialSale(p,changed),null);
+});

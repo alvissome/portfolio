@@ -45,6 +45,7 @@ export function previewActionPlan(plan,company,{today}){
   return {status:due?'review':'hold',amount:0,reasons:[due?'Hold review is due. Reopen the plan and check the business, IV and entry decision.':'Hold until '+plan.revisitOn+'; no purchase or cash reservation.']};
  }
  if(action==='sell'){
+  if(plan.currency&&plan.currency!==company.currency)return {status:'review',amount:null,reasons:['Trading currency changed. Re-enter the sale price in the current listing currency and save the plan.']};
   const sale=plan.sale;
   if(sale?.completed)return {status:'hold',amount:0,reasons:['Sale marked completed. Import StocksCafe to update official holdings and cash.']};
   if(!(sale?.price>0)||!Number.isInteger(sale?.quantity)||sale.quantity<=0||sale.quantity>company.shares)return {status:'review',amount:null,reasons:['Review the sale quantity against the current imported Cash holding.']};
@@ -53,7 +54,7 @@ export function previewActionPlan(plan,company,{today}){
  return {status:'review',amount:null,reasons:['Choose a valid Buy, Sell or Hold plan action.']};
 }
 export function potentialSale(plan,company){
- if(planAction(plan)!=='sell'||plan.sale?.completed)return null;
+ if(planAction(plan)!=='sell'||plan.sale?.completed||plan.currency&&plan.currency!==company.currency)return null;
  const {price,quantity}=plan.sale||{};
  if(!(price>0)||!Number.isFinite(price)||!Number.isInteger(quantity)||quantity<=0||quantity>company.shares)return null;
  const native=price*quantity,sgd=company.fx>0?native*company.fx:null;
