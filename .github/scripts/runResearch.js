@@ -81,6 +81,9 @@ async function main() {
   ]);
   initializeApp({credential: cert(serviceAccount), projectId: PERSONAL_PROJECT});
   const db = getFirestore();
+  const {GoogleAuth}=await import('google-auth-library');
+  const sheetsAuth=new GoogleAuth({credentials:serviceAccount,scopes:['https://www.googleapis.com/auth/spreadsheets.readonly']});
+  const getSheetsToken=()=>sheetsAuth.getAccessToken();
   const userRefs = await db.collection('users').listDocuments();
   const counters = {portfolios: 0, pending: 0, claimed: 0, completed: 0, partial: 0, failed: 0, staleDiscarded: 0, ivMethods: {}, ivUnavailable: {}};
   for (const user of userRefs) {
@@ -89,7 +92,7 @@ async function main() {
     if (!snap.exists) continue;
     counters.portfolios++;
     if (!dryRun && snap.data().akPublishedTableRequest?.id) {
-      await processPublishedTables(db, ref, snap.data().akPublishedTableRequest, FieldPath);
+      await processPublishedTables(db, ref, snap.data().akPublishedTableRequest, FieldPath, getSheetsToken);
     }
     const requests = prioritizeRequests(Object.entries(snap.data().researchBySecurity || {}).filter(([,record]) => needsProcessing(prepareValuationUpgrade(prepareSecRecovery(record, !!process.env.SEC_CONTACT_EMAIL)))));
     counters.pending += requests.length;

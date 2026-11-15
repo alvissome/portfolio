@@ -61,6 +61,36 @@ export async function readPublishedTable(key, link, {fetchImpl=fetch, now=new Da
   throw Error('The published worksheet table could not be read.');
 }
 
+// Sheets values are independently authorized by Google for the worker identity.
+export async function readNativeSheet(key, link, getToken, {fetchImpl=fetch,now=new Date()}={}) {
+  const feed = new URL(googleSheetFeed(link));
+  const match = feed.pathname.match(/^\/spreadsheets\/d\/([A-Za-z0-9_-]+)\/export$/);
+  if (!match) throw Error('Expected a native Google Sheets viewer link.');
+  const base='https://sheets.googleapis.com/v4/spreadsheets/'+match[1];
+  const token=await getToken();
+  const options={headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)};
+  const read=async url=>{
+    const response=await fetchImpl(url,options);
+    if (!response.ok) {
+      const body=await response.json().catch(()=>({}));
+      const disabled=body.error?.details?.some(d=>d.reason==='SERVICE_DISABLED');
+      if (disabled) throw Error('Enable Google Sheets API in the personal alvissome-portfolio Google Cloud project, then sync again.');
+      if ([401,403,404].includes(response.status)) throw Error('Google Sheets API did not grant the personal cloud worker access to this sheet.');
+      throw Error('Google Sheets API request failed (HTTP '+response.status+').');
+    }
+    return response.json();
+  };
+  const meta=await read(base+'?fields=sheets(properties(sheetId,title,index))');
+  const gid=feed.searchParams.get('gid');
+  const tabs=(meta.sheets??[]).map(s=>s.properties);
+  const tab=gid===null?tabs.find(t=>t.index===0):tabs.find(t=>String(t.sheetId)===gid);
+  if(!tab)throw Error('The selected worksheet tab was not found.');
+  const range="'"+tab.title.replaceAll("'","''")+"'!A1:AZ2001";
+  const values=await read(base+'/values/'+encodeURIComponent(range)+'?valueRenderOption=FORMATTED_VALUE');
+  if(!Array.isArray(values.values)||values.values.length>2000)throw Error('Missing or oversized worksheet values.');
+  return {...parseAkSheet(values.values,key,{today:sgDay(now)}),readVia:'sheets_api'};
+}
+
 function entryRow(symbol, entry) {
   return {symbol,...entry,supportLevels:entry.supports,
     ...Object.fromEntries((entry.variants??[]).map(v=>[v.key,v.value]))};
@@ -85,7 +115,7 @@ export function reconcilePublished(data, job, results, finishedAt) {
     const old=previous.filter(row=>row.source===key && tracked.has(row.symbol));
     item.status=comparable(rows)===comparable(old)?'unchanged':'updated';
     Object.assign(item,{asOf:result.asOf,costHeaderFound:result.costHeaderFound,checkedAt:finishedAt,
-      dateBasis:result.dateBasis??'sheet',skippedRows:result.skippedRows??0,message:null,readVia:'published_table'});
+      dateBasis:result.dateBasis??'sheet',skippedRows:result.skippedRows??0,message:null,readVia:result.readVia??'published_table'});
     for(const row of rows) matched.add(row.symbol);
     bySource.set(key,new Map(rows.map(row=>[row.symbol,row])));
   }
@@ -111,12 +141,18 @@ export function reconcilePublished(data, job, results, finishedAt) {
   return {changed,status};
 }
 
-export async function processPublishedTables(db,ref,job,FieldPath) {
+export async function processPublishedTables(db,ref,job,FieldPath,getSheetsToken) {
   if (!Array.isArray(job.tracked) || job.tracked.length>2000 || !Array.isArray(job.freshMatches)) return;
   const results={};
   await Promise.all(AK_SOURCES.filter(s=>job.sources?.[s.key]).map(async ({key})=>{
-    try {results[key]=await readPublishedTable(key,googleSheetFeed(job.sources[key]));}
-    catch {results[key]={error:'Could not read or validate the published table. Previous values retained.'};}
+    try {
+      const published=publishedTableUrl(job.sources[key]);
+      results[key]=published ? await readPublishedTable(key,job.sources[key])
+        : await readNativeSheet(key,job.sources[key],getSheetsToken);
+    } catch (error) {
+      const known=/^(Enable Google Sheets API|Google Sheets API |The selected worksheet|Missing or oversized)/.test(error.message);
+      results[key]={error:known ? error.message : 'Could not read or validate the worksheet. Previous values retained.'};
+    }
   }));
   await db.runTransaction(async tx=>{
     const data=(await tx.get(ref)).data();

@@ -96,6 +96,7 @@ function priceColumn(headers,source){
 function number(value) {
   const s=String(value??'').trim();if(!s||/^(?:NA|N\/A|NONE|—|-)$/i.test(s))return null;
   const cleaned=s.replace(/(?:HK\$|S\$|US\$|\$|,|\s)/g,'');
+  if (/^[-–—]$/.test(cleaned)) return null;
   if(!/^\d+(?:\.\d+)?$/.test(cleaned)||!(Number(cleaned)>0))throw Error('A support or IV cell is not a positive number.');
   return Number(cleaned);
 }
