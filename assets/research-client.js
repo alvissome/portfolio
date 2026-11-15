@@ -1,7 +1,7 @@
 import {manualReferenceRows} from './ak-viewer.js';
 import {normalizeValuationSettings, IV_POLICY_VERSION} from './valuation-settings.js';
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
-import {publishedTableUrl,akSourceDefaults,normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-published-table-20261115';
+import {publishedTableUrl,akSourceDefaults,normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-native-values-20261115';
 
 export const RESEARCH_MODEL_VERSION = 'ak-reconstruction-v1';
 const PARTS = ['iv', 'supports'];
@@ -386,13 +386,11 @@ export function createResearchController({load, write, now = () => new Date().to
       const tables = {};
       for (const [key, item] of Object.entries(result.statuses)) {
         if (item.status !== 'unavailable' || !item.url) continue;
-        if (publishedTableUrl(item.url)) {
-          tables[key] = item.url;
-          item.status = 'queued';
-          item.message = 'The personal research worker will check the published table on its next run.';
-        } else if (/access|download|failed to fetch/i.test(item.message)) {
-          item.message += ' The edit link opens the viewer. Sync requires Google to allow the data feed.';
-        }
+        tables[key] = item.url;
+        item.status = 'queued';
+        item.message = publishedTableUrl(item.url)
+          ? 'The personal research worker will check the published table on its next run.'
+          : 'The personal research worker will read the worksheet through Google Sheets API on its next run.';
       }
       const queued = Object.keys(tables).length;
       status.queued = queued;

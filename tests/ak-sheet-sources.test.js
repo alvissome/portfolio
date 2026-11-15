@@ -123,7 +123,7 @@ test('one sync matches tracked holdings and watchlist rows and retains a blocked
   const status=await controller.syncAkSheets();
   assert.equal(status.tracked,3);
   assert.equal(status.matched,2);
-  assert.equal(status.sources.capital_gains.status,'unavailable');
+  assert.equal(status.sources.capital_gains.status,'queued');
   for(const symbol of ['HELD','WATCH'])assert.equal(controller.getState().records[symbol].reference.iv.value,20);
   assert.equal(controller.getState().records.EXAMPLE.reference.asOf,'2026-11-03');
   controller.close();

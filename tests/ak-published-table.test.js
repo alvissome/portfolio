@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {publishedTableUrl,parseAkSheet} from '../assets/ak-sheet-sources.js';
-import {tableGrid,reconcilePublished,readPublishedTable} from '../.github/scripts/research-ak-published.mjs';
+import {tableGrid,reconcilePublished,readPublishedTable,readNativeSheet} from '../.github/scripts/research-ak-published.mjs';
 const prefix='https://docs.google.com/spreadsheets/d/e/abcdefghijklmnopqrstuvwxyz';
 const link=prefix+'/pub?output=csv&single=true&gid=42';
 const day='2026-11-15T10:00:00.000Z';
@@ -35,14 +35,28 @@ test('worker resolves a queued published history for exact tracked tickers',()=>
   assert.deepEqual(stale.changed,{});assert.equal(stale.status.sources.closed_positions.status,'unavailable');
 });
 
-test('Sync queues a published page with a blocked CSV and keeps native edit links unavailable',async()=>{
+test('Sync queues a published page with a blocked CSV and queues native edit links for the Sheets API',async()=>{
   const {createResearchController}=await import('../assets/research-client.js');
   const writes=[];
   const controller=createResearchController({load:async()=>({}),write:async patch=>writes.push(patch),
     uuid:()=> 'test',sheetFetch:async()=>({ok:false,status:403})});
   const status=await controller.syncAkSheets({closed_positions:link,capital_gains:'https://docs.google.com/spreadsheets/d/abcdefghijklmnopqrstuvwxyz/edit?rm=minimal'});
   assert.equal(status.sources.closed_positions.status,'queued');
-  assert.equal(status.sources.capital_gains.status,'unavailable');
-  assert.deepEqual(Object.keys(writes.at(-1).akPublishedTableRequest.sources),['closed_positions']);
+  assert.equal(status.sources.capital_gains.status,'queued');
+  assert.deepEqual(Object.keys(writes.at(-1).akPublishedTableRequest.sources),['capital_gains','closed_positions']);
   controller.close();
+});
+
+test('native values reader resolves the requested gid and parses a quoted tab and accounting dash',async()=>{
+  const urls=[];
+  const payloads=[{sheets:[{properties:{sheetId:7,title:"AK's",index:1}}]},
+    {values:[['Capital Gains Portfolio','Updated','3 Nov 26'],['Ticker','Currency','SL1','SL2','SL3','SL4','SL5','Base IV','Average Cost'],['EXAMPLE-US','USD','18','','','','','20','$ - ']]}];
+  const result=await readNativeSheet('capital_gains','https://docs.google.com/spreadsheets/d/abcdefghijklmnopqrstuvwxyz/edit?gid=7',async()=>'fixture',{
+    now:new Date(day),fetchImpl:async(url,options)=>{urls.push(url);assert.equal(options.headers.Authorization,'Bearer fixture');return Response.json(payloads.shift());}});
+  assert.match(decodeURIComponent(urls[1]),/'AK''s'!A1:AZ2001/);
+  assert.equal(result.rows[0].averageCost,null);assert.equal(result.rows[0].baseIV,20);
+});
+test('disabled API gives an actionable private status',async()=>{
+  await assert.rejects(readNativeSheet('dividend','https://docs.google.com/spreadsheets/d/abcdefghijklmnopqrstuvwxyz/edit',async()=>'fixture',
+    {fetchImpl:async()=>Response.json({error:{details:[{reason:'SERVICE_DISABLED'}]}},{status:403})}),/Enable Google Sheets API/);
 });
