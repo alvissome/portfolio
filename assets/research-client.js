@@ -1,3 +1,4 @@
+import {manualReferenceRows} from './ak-viewer.js';
 import {normalizeValuationSettings, IV_POLICY_VERSION} from './valuation-settings.js';
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
 import {normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-cost-headers-20261115';
@@ -260,7 +261,7 @@ export function createResearchController({load, write, now = () => new Date().to
       catch (error) {if (paused || closed) break; throw error;}
     }
   };
-  const importSnapshot = async input => {
+  const importSnapshot = async (input, singleSymbol = null) => {
     if (paused || closed) throw new Error('Research is paused during backup restore.');
     if (!state.hydrated) await refresh();
     if (paused || closed) throw new Error('Research is paused during backup restore.');
@@ -275,7 +276,7 @@ export function createResearchController({load, write, now = () => new Date().to
       if(a.referenceKey!==JSON.stringify([symbol,a.referenceAsOf,parsed.references[symbol].supports]))throw Error('Backdated assessment must match the imported levels.');
       if(a.confidence==='high'&&(!a.technicalReviewed||!a.nearbyCutoffsStable||!a.fullFit||a.missingCount!==0||a.extraCount!==0||!(a.referenceCount>0)||a.matchedCount!==a.referenceCount))throw Error('High confidence requires complete fit and reviewed evidence.');
     }
-    if(!parsed.metadata.complete)for(const security of universe){
+    if(!singleSymbol&&!parsed.metadata.complete)for(const security of universe){
       if(!parsed.references[security.symbol]&&state.records[security.symbol]?.reference?.present===false){
         parsed.references[security.symbol]={present:null,snapshotId:parsed.metadata.id,capturedAt:parsed.metadata.capturedAt,
           reason:'Some reference lists are unavailable; absence is not confirmed.'};
@@ -306,7 +307,7 @@ export function createResearchController({load, write, now = () => new Date().to
     try {
       // One atomic nested merge imports the references and their provenance;
       // generated results, request identities and portfolio arrays are absent.
-      await persist({researchBySecurity: patchRecords, researchReferenceSnapshotMeta: metadata});
+      await persist(singleSymbol ? {researchBySecurity: patchRecords} : {researchBySecurity: patchRecords, researchReferenceSnapshotMeta: metadata});
     } catch (error) {
       const rollback = {...state.records};
       for (const [symbol, previousReference] of previousReferences) {
@@ -321,14 +322,25 @@ export function createResearchController({load, write, now = () => new Date().to
       publish({records:rollback,error:'Reference import was not saved. Please retry.'});
       throw error;
     }
-    publish({referenceMeta: metadata, error: ''});
+    if (!singleSymbol) publish({referenceMeta: metadata, error: ''});
     // Existing results need a fresh guarded comparison against this vintage.
     for (const security of universe) {
+      if (singleSymbol && security.symbol !== singleSymbol) continue;
       if (paused || closed) break;
       try {await request(security, {force: true});}
       catch (error) {if (paused || closed) break; throw error;}
     }
     return metadata;
+  };
+  const saveManualReference = async (symbol, source, values, expectedId) => {
+    if (!state.hydrated || !universe.some(row => row.symbol === symbol)) throw Error('Choose a tracked ticker.');
+    if (!['capital_gains','dividend','priority_watchlist','secondary_watchlist'].includes(source)) throw Error('Choose an active AK list.');
+    const current = state.records[symbol]?.reference;
+    if ((current?.snapshotId ?? '') !== expectedId) throw Error('The reference changed. Reopen the ticker before saving.');
+    const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now()));
+    if (!date(values.asOf) || values.asOf > today) throw Error('Enter the date shown on the sheet.');
+    const rows = manualReferenceRows(symbol, current, source, values);
+    return importSnapshot({snapshotId:'manual-'+uuid(), retrievedAt:now(), rows}, symbol);
   };
   const pause = async () => {
     paused = true;
@@ -373,7 +385,7 @@ export function createResearchController({load, write, now = () => new Date().to
     return sheetSync;
   };
   return {getState: () => state, subscribe(listener) {listeners.add(listener); return () => listeners.delete(listener);},
-    refresh, request, ensure, importSnapshot,saveSheetSources,syncAkSheets,pause, resume, close() {closed = true;sourceEpoch++;sourceAbort?.abort();listeners.clear();}};
+    refresh, request, ensure, importSnapshot,saveManualReference,saveSheetSources,syncAkSheets,pause, resume, close() {closed = true;sourceEpoch++;sourceAbort?.abort();listeners.clear();}};
 }
 
 export function createResearchHook(React, {load, write}) {
@@ -391,7 +403,7 @@ export function createResearchHook(React, {load, write}) {
     }, [controller]);
     React.useEffect(() => {if (loaded) controller.ensure(securities);}, [controller, loaded, signature, state.hydrated]);
     React.useEffect(() => {onResolvedNames?.(state.records);}, [state.records, onResolvedNames]);
-    return {...state, request: (security, options) => controller.request(security, options),
+    return {...state, trackedSymbols:securities.map(row => row.symbol), saveManualReference:controller.saveManualReference, request: (security, options) => controller.request(security, options),
       refresh: controller.refresh, importSnapshot: controller.importSnapshot,saveSheetSources:controller.saveSheetSources,syncAkSheets:controller.syncAkSheets,
       pause: controller.pause, resume: controller.resume};
   };
