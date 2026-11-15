@@ -90,7 +90,13 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const sale=potentialSale(plan,company);
     const row={...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
       changedDecision:history.some(d=>d.context!==context&&['deferred','dismissed','reviewed'].includes(d.status))};
-    return {...row,...commandQueueState(row,{today,now})};
+    const queued={...row,...commandQueueState(row,{today,now})};
+    const ladder=company.levels||[];
+    if(ladder.some((l,i)=>i&&l.price>=ladder[i-1].price))queued.dataReasons.push({key:'ladder',label:'Support ladder is not descending',kind:'data'});
+    const approaching=queued.quoteFresh&&queued.distanceToEntry!==null&&queued.distanceToEntry>0&&queued.distanceToEntry<=5;
+    queued.lists=[...(item.held&&queued.quoteFresh&&(row.priceMet||approaching)?['opportunities']:[]),...(item.watchlisted&&!item.held?['watchlist']:[]),...(item.held&&(queued.overIV||queued.concentration)?['balance']:[]),...(queued.dataReasons.length?['data']:[])];
+    queued.approaching=approaching;queued.openOpportunity=!plan&&queued.lists.includes('opportunities');
+    return queued;
   });
   const archivedPlans=Object.values(config.plans||{}).filter(p=>!active.has(p.symbol));
   const history=decisions.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')||(b.sequence||0)-(a.sequence||0)).map(d=>({...d,active:active.has(d.symbol),contextCurrent:rows.some(r=>r.symbol===d.symbol&&r.context===d.context)}));
@@ -99,7 +105,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
   const incompleteSales=rows.filter(r=>r.sale&&r.sale.sgd===null).length;
   const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol])=>({symbol,category:'selective'}));
   return {decisionColumns:{...state.watchlistColumnVisibility,...config.decisionColumns},rows,visible,history,archivedPlans,inactiveCategories,potentialSales,incompleteSales,potentialCash:displayFunding?Math.max(0,displayFunding.committed-displayFunding.liabilities-displayFunding.pending-allowance.spent+potentialSales):null,funding,displayFunding,fundingError,reserved,allowance,
-    stats:{attention:rows.filter(r=>r.reviewReasons.length).length,opportunities:rows.filter(r=>r.openOpportunity).length,setup:rows.filter(r=>r.dataReasons.length).length,planSet:rows.filter(r=>r.planSet).length,
+    stats:{attention:rows.filter(r=>!r.plan&&r.lists.includes('balance')).length,opportunities:rows.filter(r=>r.openOpportunity).length,setup:rows.filter(r=>!r.plan&&r.lists.includes('data')).length,planSet:rows.filter(r=>r.plan).length,
       pendingOrders:decisions.filter(d=>d.status==='ordered').length,decisions:decisions.length},
     totalSuggested:visible.filter(r=>r.status==='eligible').reduce((n,r)=>n+r.result.amount,0)};
 }
