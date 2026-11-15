@@ -94,3 +94,8 @@
 /* Clipboard glyphs must not inherit the performance chart SVG minimum height. */
 .investment-panel .ic-copy-notion svg{display:block;flex:none;width:16px;height:16px;min-width:0;min-height:0;max-width:16px;max-height:16px}
 .ic-decision-table>tbody>tr[data-decision-row]>td:last-child{vertical-align:middle}
+
+/* Cloud changes never silently replace unsaved CC input. */
+.investment-panel .ic-cloud-conflict{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:8px 0 14px;padding:11px 13px;border:1px solid #e6c98b;border-radius:8px;background:#fffaf0;color:#594011;font-size:12px;line-height:1.45}
+.investment-panel .ic-cloud-conflict strong{font-weight:700}
+.investment-panel .ic-cloud-conflict button{font-size:12px;font-weight:600;padding:6px 9px;border:1px solid #ba9752;border-radius:6px;background:white;color:#624619}
