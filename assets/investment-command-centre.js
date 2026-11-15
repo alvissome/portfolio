@@ -1,9 +1,9 @@
-import {commandQueueState,companyCeiling} from './command-queue.js?v=cc-queue-currency-20261115';
+import {commandQueueState,companyCeiling} from './command-queue.js?v=redistribution-20261115';
 import {planAction,previewActionPlan,potentialSale} from './investment-actions.js?v=cc-queue-currency-20261115';
-import {cashAllowance,recordCashUse} from './cc-cash-allowance.js?v=cc-cash-budget-20261114';
+import {cashAllowance,recordCashUse} from './cc-cash-allowance.js?v=redistribution-20261115';
 import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
-import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=cc-cash-budget-20261114';
+import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=redistribution-20261115';
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
 const date=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value));
 const positive=n=>Number.isFinite(Number(n))&&Number(n)>0;

@@ -1,4 +1,5 @@
-import {purchaseSchedule,RULE_VERSION} from './investment-strategy.js?v=cc-cash-budget-20261114';
+import {remainingRedistribution} from './budget-redistribution.js?v=redistribution-20261115';
+import {purchaseSchedule,RULE_VERSION} from './investment-strategy.js?v=redistribution-20261115';
 const number=value=>value===null||value===undefined||String(value).trim()===''||!Number.isFinite(Number(value))?null:Number(value);
 const cents=n=>Math.floor((n+1e-9)*100)/100;
 const choose=(overrides,key,fallback)=>Object.hasOwn(overrides,key)?overrides[key]:fallback;
@@ -31,9 +32,9 @@ export function planDraft(company,saved,funding,overrides={}){
   const frozen=saved?.category===category&&saved.ruleVersion===RULE_VERSION&&samePercents&&saved.stages.length===schedule.length&&saved.stages.every((s,i)=>s.key===schedule[i].key);
   stages=schedule.map((stage,i)=>({...stage,portfolioPct:selective?selectivePercents[i]:stage.portfolioPct??null,
    budget:frozen?saved.stages[i].budget:anchor?(addBudget!==null?cents(addBudget/schedule.length):null):base!==null&&(!selective||selectivePercents[i]!==null)?cents(base*(selective?selectivePercents[i]:stage.portfolioPct)/100):null,
-   spent:saved?.stages?.find(s=>s.key===stage.key)?.spent??0,completed:saved?.stages?.find(s=>s.key===stage.key)?.completed??false,purchaseBudget:saved?.stages?.find(s=>s.key===stage.key)?.purchaseBudget??null,entryPrice:saved?.stages?.find(s=>s.key===stage.key)?.entryPrice??null,purchaseQuantity:saved?.stages?.find(s=>s.key===stage.key)?.purchaseQuantity??null,frozen:!!frozen}));
+   skipped:saved?.stages?.find(s=>s.key===stage.key)?.skipped??false,spent:saved?.stages?.find(s=>s.key===stage.key)?.spent??0,completed:saved?.stages?.find(s=>s.key===stage.key)?.completed??false,purchaseBudget:saved?.stages?.find(s=>s.key===stage.key)?.purchaseBudget??null,entryPrice:saved?.stages?.find(s=>s.key===stage.key)?.entryPrice??null,purchaseQuantity:saved?.stages?.find(s=>s.key===stage.key)?.purchaseQuantity??null,frozen:!!frozen}));
  }catch(e){scheduleError=e.message;if(category)missing.push('Review the support ladder: '+e.message);}
- return {category,base,holding,ceiling,room,addBudget,selectivePercents,feeReserve,lotSize,stages,missing,scheduleError,
+ return {redistribution:saved?.redistribution??null,archivedStages:saved?.archivedStages||[],category,base,holding,ceiling,room,addBudget,selectivePercents,feeReserve,lotSize,stages,missing,scheduleError,
   budgetSource:savedBudget!==null?'Saved approved budget — unchanged by ordinary reviews':anchor?'Draft maximum room below the company ceiling — editable, not a compulsory target':selective?'Dynamic 2–4% spending range per entry, capped at 4% per company; reassess cash and competing opportunities':'Category schedule from the game plan',
   lotSource:saved?.lotSize!=null?'Saved approved lot size':metadataLot>0?'Listing metadata':usSingleShare?'US listing: whole-share estimate; confirm before approving':'Not specified'};
 }
@@ -47,7 +48,7 @@ export function entryDraft(draft,company,funding,{stageKey,budget,increment=draf
  const unused=draft.stages.filter(s=>!s.completed&&s.budget!==null&&remaining(s)>0);
  const stage=draft.stages.find(s=>s.key===stageKey)||unused.filter(s=>company.quote?.close>0&&company.quote.close<=s.price).at(-1)||unused[0]||draft.stages[0];
  if(!stage)return {stage:null,capacity:null,requested:null,amount:null,units:null,lots:null,spend:null,entry:null,increment:null,issues:['No approved support is available.']};
- const capacity=stage.budget!==null&&draft.room!==null&&funding?.available!=null?cents(Math.max(0,Math.min(stage.completed?0:remaining(stage),draft.room,funding.available))):null;
+ const capacity=stage.budget!==null&&draft.room!==null&&funding?.available!=null?cents(Math.max(0,Math.min(stage.completed?0:remaining(stage),draft.room,funding.available,remainingRedistribution(draft)))):null;
  const saved=useStageAllowance||stage.purchaseBudget==null?capacity:Math.max(0,stage.purchaseBudget-(stage.spent||0));
  const requested=number(budget)==null?capacity!==null?Math.min(saved??capacity,capacity):null:number(budget);
  const amount=requested!==null&&capacity!==null?Math.min(Math.max(0,requested),capacity):null;

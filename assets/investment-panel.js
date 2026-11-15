@@ -1,14 +1,15 @@
+import {redistributeBudget} from './budget-redistribution.js?v=redistribution-20261115';
 import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides} from './investment-actions.js?v=cc-queue-currency-20261115';
-import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=cc-cash-budget-20261114';
-import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=support-boxes-20261115';
+import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=redistribution-20261115';
+import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=redistribution-20261115';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
-import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=cc-actions-20261115';
-import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=cc-actions-20261115';
+import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review.js?v=redistribution-20261115';
+import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=redistribution-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
-import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=cc-cash-budget-20261114';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=cc-workflow-20261115';
+import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=redistribution-20261115';
 import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=cc-workflow-20261115';
-export {resolvedCompany} from './investment-command-centre.js?v=cc-workflow-20261115';
+export {resolvedCompany} from './investment-command-centre.js?v=redistribution-20261115';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
@@ -78,6 +79,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         <label class="ic-plan-approval" title="I reviewed the business, IV, trading currency, support ladder and ceiling. Any material news has been resolved."><input type="checkbox" name="approved" required> Plan reviewed</label>
         <button ${!loaded?'disabled':''}>Save plan</button>
         <details class="ic-plan-settings" data-section="plan-settings" ${open.has('plan-settings')?'open':''}><summary>Plan settings</summary><div class="ic-settings-body">
+          <label data-rebase-control><input type="checkbox" name="redistribute"> Redistribute remaining budget from selected support</label>${field('rebaseBudget','Remaining budget to redistribute (SGD)','','type="text" inputmode="decimal"')}<p data-rebase-control>Explicit review only. Anchor: equal remaining shares; Core: retain 1:1:2 weights; Selective: independent 2–4% proposals within one total budget. Higher unfilled supports are skipped. Resolve pending orders first. Saving the plan approves this redistribution.</p>
           ${field('ceiling','Company ceiling (%)','','type="number" min="0.01" max="100" step="0.01" required')}
           ${field('budget','Total Anchor addition budget (SGD)','','type="text" inputmode="decimal"')}
           <label class="ic-sale-completed"><input type="checkbox" name="saleCompleted"> Sale completed · exclude potential proceeds</label>
@@ -98,12 +100,15 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     const overrides=()=>Object.fromEntries(['iv','s1','s2','s3','s4','s5','refCost'].map(key=>[key,get('override-'+key).value.trim()===''?'':String(amount(get('override-'+key).value)??get('override-'+key).value)]));
     const currentDraft=()=>{
       const saved=config.plans[selector.value],company=resolvedCompany(state,research,selector.value,{...saved,researchOverrides:overrides()});
-      return {company,saved,draft:planDraft(company,saved,funding,{ceiling:get('ceiling').value,addBudget:amount(get('budget').value),selectivePercents:[4,4],lotSize:get('lot').value})};
+      let draft=planDraft(company,saved,funding,{ceiling:get('ceiling').value,addBudget:amount(get('budget').value),selectivePercents:[4,4],lotSize:get('lot').value});
+      if(get('action').value==='buy'&&get('redistribute').checked&&get('stage').value&&amount(get('rebaseBudget').value)!==null)draft=redistributeBudget(draft,{startKey:get('stage').value,budget:amount(get('rebaseBudget').value),room:draft.room,base:draft.base,hasPending:Object.values(config.decisions||{}).some(d=>d.symbol===selector.value&&d.status==='ordered'),now:today()});
+      return {company,saved,draft};
     };
     const executionNow=()=>{const {company,draft}=currentDraft();return entryDraft(draft,company,funding,{stageKey:get('stage').value,entryPrice:amount(get('entry').value),quantity:amount(get('quantity').value),increment:draft.lotSize,useStageAllowance:true});};
     const showDraftDetails=()=>{
       const {company,saved,draft}=currentDraft(),stageSelector=get('stage'),action=get('action').value;
       const buy=action==='buy',hold=action==='hold';
+      root.querySelectorAll('[data-rebase-control]').forEach(el=>el.hidden=!buy);get('redistribute').closest('label').hidden=!buy;get('redistribute').disabled=!buy;get('rebaseBudget').closest('label').hidden=!buy||!get('redistribute').checked;get('rebaseBudget').disabled=!buy||!get('redistribute').checked;
       get('entry').closest('label').firstChild.textContent=action==='sell'?'Sale price':'Entry price';
       root.querySelector('[data-plan-levels]').textContent=`Current ${money(company.quote?.close,company.currency)} · ${STRATEGY_CATEGORIES[company.category]||'Unassigned'} · IV ${money(company.iv,company.currency)} · `+company.levels.map(l=>`${l.key.toUpperCase()} ${money(l.price,company.currency)}`).join(' · ');
       for(const key of ['stage','ceiling','budget','lot']){get(key).disabled=!buy||(key==='budget'&&company.category!=='anchor');get(key).required=buy&&key!=='stage'&&(key!=='budget'||company.category==='anchor');get(key).closest('label').hidden=!buy||(key==='budget'&&company.category!=='anchor');}
@@ -147,7 +152,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         get('ceiling').value=draft.ceiling??'';get('ceiling').max=({anchor:10,core:6,selective:4}[company.category]||100);
         get('budget').value=draft.addBudget==null?'':money(draft.addBudget,'SGD');get('budget').disabled=company.category!=='anchor';get('budget').required=company.category==='anchor';get('budget').readOnly=company.category==='anchor'&&saved?.category==='anchor'&&saved.stages.length>0;get('budget').closest('label').hidden=company.category!=='anchor';
         get('lot').value=draft.lotSize??'';get('remarks').value=saved?.remarks||'';get('entry').value='';get('quantity').value='';get('stage').dataset.symbol='';
-        get('approved').checked=false;showDraftDetails();
+        get('redistribute').checked=false;get('rebaseBudget').value=draft.room==null?'':money(draft.room,'SGD');get('approved').checked=false;showDraftDetails();
         const edits=draftEdits[selectedSymbol];if(edits)for(const[key,value]of Object.entries(edits)){if(get(key)){if(get(key).type==='checkbox')get(key).checked=value;else get(key).value=value;}}
         root.querySelector('[data-plan] button').disabled=!loaded||(get('action').value==='buy'&&!company.category);
         showDraftDetails();
@@ -159,7 +164,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     get('action').onchange=()=>{get('entry').value='';get('quantity').value='';get('stage').dataset.symbol='';showDraftDetails();rememberDraft();};
     get('stage').onchange=()=>{get('entry').value='';get('quantity').value='';showDraftDetails();rememberDraft();};
     root.querySelectorAll('[data-plan] input,[data-plan] textarea').forEach(input=>{
-      input.oninput=()=>{if(['entry','ceiling','budget','lot'].includes(input.name)||input.name.startsWith('override-'))get('quantity').value='';try{showDraftDetails();rememberDraft();}catch(e){root.querySelector('[data-plan-feedback]').textContent=e.message;}};
+      input.oninput=()=>{if(['entry','ceiling','budget','lot','redistribute','rebaseBudget'].includes(input.name)||input.name.startsWith('override-'))get('quantity').value='';try{showDraftDetails();rememberDraft();}catch(e){root.querySelector('[data-plan-feedback]').textContent=e.message;}};
       input.onchange=()=>{showDraftDetails();rememberDraft();};
       input.onblur=()=>{const sized=get('action').value==='buy'?executionNow():{};if(input.name==='entry'&&amount(input.value)!==null)input.value=money(amount(input.value),currentDraft().company.currency);if(input.name==='budget'&&amount(input.value)!==null)input.value=money(amount(input.value),'SGD');if(input.name==='quantity'&&sized.requestedUnits!==null&&sized.requestedUnits<=sized.maximumUnits)input.value=quantityText(sized.units);showDraftDetails();rememberDraft();};
     });
@@ -190,7 +195,9 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       }
       let fresh=createPurchasePlan({symbol,category:c.category,selectivePercents:[4,4],levels:c.levels,base:funding.base,ceilingPct:fd.get('ceiling'),addBudget:previous?.category==='anchor'&&previous.stages.length>0?previous.stages.reduce((n,s)=>n+s.budget,0):amount(fd.get('budget')),iv:c.iv,currency:c.currency,reviewedAt:fd.get('reviewedAt'),id:previous?.id||crypto.randomUUID()});
       if(fresh.reviewedAt>today())throw Error('A review cannot be dated in the future.');
-      fresh=reviewPurchasePlan(previous,fresh);fresh.action='buy';fresh.researchOverrides=researchOverrides;
+      fresh=reviewPurchasePlan(previous,fresh);
+      if(fd.get('redistribute')==='on'){const draft=planDraft(c,fresh,funding);fresh=redistributeBudget(fresh,{startKey:fd.get('stage'),budget:amount(fd.get('rebaseBudget')),room:draft.room,base:funding.base,hasPending:Object.values(config.decisions||{}).some(d=>d.symbol===symbol&&d.status==='ordered'),now:new Date().toISOString()});}
+      fresh.action='buy';fresh.researchOverrides=researchOverrides;
       fresh.lotSize=Number(fd.get('lot'));fresh.oddLots=false;fresh.rounding='down';fresh.remarks=String(fd.get('remarks')||'').slice(0,2000);
       if(!Number.isInteger(fresh.lotSize)||fresh.lotSize<1)throw Error('Confirm the share increment for this order.');
       const approvedDraft=planDraft(c,fresh,funding,{lotSize:fresh.lotSize}),execution=entryDraft(approvedDraft,c,funding,{stageKey:fd.get('stage'),entryPrice:amount(fd.get('entry')),quantity:amount(fd.get('quantity')),increment:fresh.lotSize,useStageAllowance:true});

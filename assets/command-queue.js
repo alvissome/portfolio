@@ -1,4 +1,4 @@
-import {RULE_VERSION} from './investment-strategy.js?v=cc-cash-budget-20261114';
+import {RULE_VERSION} from './investment-strategy.js?v=redistribution-20261115';
 export function companyCeiling(plan,category){
  const cap={anchor:10,core:6,selective:4}[category];
  return Math.min(Number(plan?.ceilingPct)>0?Number(plan.ceilingPct):Infinity,cap??Infinity);
