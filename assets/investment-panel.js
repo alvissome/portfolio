@@ -1,5 +1,3 @@
-import {savedViewerLinks} from './ak-viewer.js';
-import {AK_SOURCES} from './ak-sheet-sources.js?v=ak-cost-headers-20261115';
 import {researchProcessingLabel,researchComparisonLabel} from './research-panel.js?v=plan-research-20261115';
 import {redistributeBudget} from './budget-redistribution.js?v=redistribution-20261115';
 import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides} from './investment-actions.js?v=plan-research-20261115';
@@ -118,9 +116,9 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     const popup=oldDialog?.hasAttribute('open')?{ticker:oldDialog.querySelector('[name="ticker"]').value,category:oldDialog.querySelector('[name="category"]').value,focus:root.ownerDocument.activeElement?.name}:null;
     const symbols=[...new Set([...(state.holdings||[]).filter(h=>h.accountType==='Cash'&&!h.exited).map(h=>h.ticker),...(state.watchlist||[]).map(h=>h.symbol)])].filter(Boolean);
     selectedSymbol=preferredPlanSymbol(symbols,state,config.plans,selectedSymbol);
-    root.innerHTML=`<div class="ic-title"><div><h2>Investment Command Centre</h2><p>Your next investment decisions, using current holdings and the watchlist.</p></div><div class="ic-actions"><button type="button" class="ic-secondary" data-refresh-prices ${!refreshPrices||refreshing?'disabled':''}>${refreshing?'Refreshing…':'Refresh prices'}</button><a class="ic-secondary" data-open-ak target="_blank" rel="noopener noreferrer" href="${esc(savedViewerLinks(research).capital_gains || AK_SOURCES[0].portal)}">Open AK sheet</a></div></div>
+    root.innerHTML=`<div class="ic-title"><div><h2>Investment Command Centre</h2><p>Your next investment decisions, using current holdings and the watchlist.</p></div><div class="ic-actions"><button type="button" class="ic-secondary" data-refresh-prices ${!refreshPrices||refreshing?'disabled':''}>${refreshing?'Refreshing…':'Refresh prices'}</button><button type="button" class="ic-secondary" data-sync-ak ${!research?.hydrated||research.sheetSyncBusy?'disabled':''}>${research?.sheetSyncBusy?'Syncing…':'Sync AK sheets'}</button></div></div>
       <details data-section="strategy-rules" ${open.has('strategy-rules')?'open':''}><summary>Strategy rules</summary><p>Anchor: equal nibbles at every approved support. Core: 1.5% + 1.5% + up to 3% at the deepest three (6% ceiling). Selective: reassess 2–4% per eligible entry at the deepest two (4% company ceiling); buy less or skip when cash or alternatives warrant it. Anchor ceiling: 10%.</p></details>
-      ${!loaded?'<p>Loading saved plans and decisions… <button type="button" data-retry-cloud>Retry</button></p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
+      <span data-ak-feedback role="status"></span>${!loaded?'<p>Loading saved plans and decisions… <button type="button" data-retry-cloud>Retry</button></p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
       ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<details data-section="funding-breakdown" ${open.has('funding-breakdown')?'open':''}><summary>Portfolio and cash basis</summary><p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. CC cash used since import: ${show(model.allowance.spent)}. Pending order reservations: ${show(model.reserved)}. Available for other buys: <strong>${show(funding.available)}</strong>.</p></details>`:''}
       ${model.incompleteSales?'<p class="ic-meta">Some planned sales lack FX and are excluded from potential cash.</p>':''}
       ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter,expandedSymbol:expandedDecision})}
@@ -154,6 +152,21 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
 `;
     root.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{filter=button.dataset.commandFilter;onViewChange(filter);render();});
     root.querySelector('[data-retry-cloud]')?.addEventListener('click',()=>reload());
+    root.querySelector('[data-sync-ak]').onclick=async event=>{
+      const button=event.currentTarget;
+      button.disabled=true;
+      button.textContent='Syncing…';
+      const feedback=root.querySelector('[data-ak-feedback]');
+      try {
+        const status=await research.syncAkSheets();
+        notice=`${status.matched} of ${status.tracked} tracked tickers found in ${status.readable} readable AK lists. See Settings → Data for source dates.`;
+        error='';
+      } catch(e) {error=e.message;notice='';}
+      finally {
+        if(alive && !draftDirty)render();
+        else if(alive){button.disabled=false;button.textContent='Sync AK sheets';feedback.textContent=error||notice;}
+      }
+    };
     root.querySelector('[data-refresh-prices]').onclick=async()=>{refreshing=true;render();try{await refreshPrices?.();notice='Prices refreshed.';}catch(e){error=e.message;}finally{refreshing=false;render();}};
     const selector=root.querySelector('[name="symbol"]');
     const get=name=>root.querySelector('[data-plan] [name="'+name+'"]');

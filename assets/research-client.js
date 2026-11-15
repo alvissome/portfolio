@@ -1,7 +1,7 @@
 import {manualReferenceRows} from './ak-viewer.js';
 import {normalizeValuationSettings, IV_POLICY_VERSION} from './valuation-settings.js';
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
-import {normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-cost-headers-20261115';
+import {akSourceDefaults,normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-cost-headers-20261115';
 
 export const RESEARCH_MODEL_VERSION = 'ak-reconstruction-v1';
 const PARTS = ['iv', 'supports'];
@@ -370,12 +370,16 @@ export function createResearchController({load, write, now = () => new Date().to
       if(paused||closed)throw Error('Research is paused during backup restore.');
       if(!state.hydrated)await refresh();
       if(!state.hydrated||paused||closed)throw Error('Load research before syncing sheets.');
-      const normalized=await saveSheetSources(settings??state.sheetSources);
+      const normalized=await saveSheetSources(settings ?? {...akSourceDefaults(state.referenceMeta), ...state.sheetSources});
       if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
       sourceAbort=new AbortController();publish({sheetSyncBusy:true});
       const result=await readAkSources(normalized,state.records,{fetch:sheetFetch,now:new Date(now()),signal:sourceAbort.signal});
       if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
-      const status={checkedAt:now(),readable:result.readable,complete:result.snapshot.complete,sources:result.statuses};
+      const tracked = new Set(universe.map(row => row.symbol));
+      const matched = new Set(result.snapshot.rows.filter(row =>
+        tracked.has(row.symbol) && ['updated','unchanged'].includes(result.statuses[row.source]?.status)
+      ).map(row => row.symbol));
+      const status={checkedAt:now(),readable:result.readable,tracked:tracked.size,matched:matched.size,complete:result.snapshot.complete,sources:result.statuses};
       if(result.changed&&result.readable)await importSnapshot(result.snapshot);
       if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
       await persist({researchSheetSyncStatus:status});publish({sheetSyncStatus:status});

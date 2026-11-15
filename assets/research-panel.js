@@ -2,7 +2,6 @@ import {akReferenceCost} from './ak-reference-cost.js?v=plan-research-20261115';
 import {createValuationEditor} from './valuation-editor.js';
 import {researchColumns,visibleResearchColumns} from './research-columns.js?v=plan-research-20261115';
 import {prioritizeUniverse, planTrackInWatchlist} from './research-core.js';
-import {createAkSheetControls} from './ak-sheet-controls.js?v=plan-research-20261115';
 import {planAkLevelCopy} from './ak-sheet-sources.js?v=plan-research-20261115';
 
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
@@ -70,7 +69,6 @@ export function researchComparisonLabel(record, part) {
  */
 export function createResearchComponents(React) {
   const h = React.createElement;
-  const AkSheetControls=createAkSheetControls(React);
   const ValuationEditor=createValuationEditor(React);
   function ResearchColumnSettings({scope='holdings',visibility={},onChange}){
     return h('div',{className:'research-column-settings','aria-label':scope==='holdings'?'Holdings research columns':'Watchlist research columns'},
@@ -223,10 +221,9 @@ export function createResearchComponents(React) {
             onClick:()=>importReference(pastedReference,true)}, 'Import pasted reference'))),
         research.referenceMeta ? h('small', null, `Reference dates: ${(research.referenceMeta.dates ?? []).join(', ')}`) : null,
         importMessage ? h('span', {role:'status'}, importMessage) : null) : null;
-    const layout=parts=>h('div',{className:'research-toolbar-grid'},
-      h('div',{className:'research-toolbar-primary'},levelControl,parts?.sync,parts?.checked),
-      h('div',{className:'research-toolbar-secondary'},parts?.settings,maintenance),parts?.messages);
-    const toolbar=scope==='watchlist'&&research?.syncAkSheets?h(AkSheetControls,{research,onSynced:()=>setLevelSource('ak'),renderLayout:layout}):layout();
+    const toolbar=h('div',{className:'research-toolbar-grid'},
+      h('div',{className:'research-toolbar-primary'},levelControl),
+      h('div',{className:'research-toolbar-secondary'},maintenance));
 
 
     return h('div', {className:'research-panel'},
