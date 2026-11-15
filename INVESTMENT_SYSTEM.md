@@ -275,3 +275,7 @@ Validation: 356 Node tests pass. Mounted interactions cover row expansion/collap
 Manage controls are single-line buttons. Stage completion/pending-order counts move into expanded company details; row padding and clipboard controls are smaller. Notes show at most two lines in the table, with full text in their tooltip and expanded company details. The category and sort controls share a flex toolbar with the view tabs, align right on desktop and wrap on narrow screens.
 
 Validation: 356 Node tests and the existing mounted execution/clipboard harness pass. Browser layout remains unverified.
+
+### Notion icon height and footer — 15 November 2026
+
+The clipboard SVG explicitly resets the shared performance chart minimum height (180px) to zero and constrains its dimensions to 16px. The table cell remains middle-aligned. The generated Perplexity footer component now returns null, and its generator/author credits were removed from the HTML head. Validation: existing 356 Node tests and mounted interactions pass; browser rendering remains unverified.
