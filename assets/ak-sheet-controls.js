@@ -1,42 +1,59 @@
-import {AK_SOURCES,previousAkRows,akSourceDefaults} from './ak-sheet-sources.js?v=ak-cost-headers-20261115';
+import {AK_SOURCES} from './ak-sheet-sources.js?v=ak-cost-headers-20261115';
+import {savedViewerLinks} from './ak-viewer.js';
 
-export function createAkSheetControls(React){
-  const h=React.createElement;
-  return function AkSheetControls({research,onSynced,renderLayout}){
-    const [urls,setUrls]=React.useState(()=>({...akSourceDefaults(research.referenceMeta),...research.sheetSources}));
-    const [dirty,setDirty]=React.useState(false),[message,setMessage]=React.useState(''),[error,setError]=React.useState('');
-    const [saving,setSaving]=React.useState(false);
-    React.useEffect(()=>{if(!dirty)setUrls({...akSourceDefaults(research.referenceMeta),...research.sheetSources});},[research.sheetSources,research.referenceMeta,dirty]);
-    const busy=research.sheetSyncBusy||saving;
-    const run=async sync=>{setError('');setMessage('');setSaving(true);try{
-      if(sync){const status=await research.syncAkSheets(urls);setMessage(`${status.readable} lists read (closed positions optional). Saved values remain for unavailable lists.`);onSynced?.();}
-      else{await research.saveSheetSources(urls);setMessage('Sheet links saved.');}
-      setDirty(false);
-    }catch(e){setError(e?.message||'Sheet sync failed. Previous values remain.');}finally{setSaving(false);}};
-    const old=previousAkRows(research.records);
-    const sync=h('div',{className:'research-controls'},
-        h('button',{type:'button',className:'research-track',disabled:busy||!research.hydrated||!Object.values(urls).some(Boolean),onClick:()=>run(true)},busy?'Syncing AK sheets…':'Sync AK sheets'),
-        h('small',null,'Refreshes the AK view. Saved plans and manual overrides are kept.'));
-    const settings=h('details',{className:'research-details'},h('summary',null,'AK sheet settings'),
-        h('p',null,'Use the embedded Google Sheets links. Replace a link here when AK changes a sheet. Subscription passwords are not stored.'),
-        ...AK_SOURCES.map(source=>{
-          const status=research.sheetSyncStatus?.sources?.[source.key];
-          const date=status?.asOf??old.filter(r=>r.source===source.key).map(r=>r.asOf).sort().at(-1);
-          const age=date?Math.floor((Date.now()-Date.parse(date))/86400000):null;
-          const state={updated:'Updated',unchanged:'Same sheet date / values',unavailable:'Access or link needs attention',not_configured:'Link not configured'}[status?.status]??'Not checked';
-          const costWarning=status?.costHeaderFound===false&&['capital_gains','dividend','closed_positions'].includes(source.key)
-            ?' · '+(source.key==='closed_positions'?'Average sell price':'Average cost')+' column not recognized in this sheet': '';
-          return h('div',{key:source.key,style:{margin:'9px 0'}},h('label',{style:{display:'block'}},`${source.label} sheet URL`,
-            h('input',{'aria-label':`${source.label} sheet URL`,type:'url',value:urls[source.key]??'',disabled:busy,placeholder:'https://docs.google.com/spreadsheets/…',
-              onChange:e=>{setDirty(true);setUrls(x=>({...x,[source.key]:e.target.value}));},style:{display:'block',width:'100%',maxWidth:'650px',fontSize:'11px',padding:'5px'}})),
-            h('small',null,`Sheet date: ${date??'not known'} · ${state}${costWarning}${age>45?' · Older than 45 days — check for a replacement sheet':''}`),
-            status?.message?h('small',{style:{display:'block'}},status.message):null,
-            h('a',{href:source.portal,target:'_blank',rel:'noopener noreferrer',style:{fontSize:'11px',marginLeft:'8px'}},'Open UIP page'));
-        }),
-        h('button',{type:'button',className:'research-track',disabled:busy||!research.hydrated,onClick:()=>run(false)},'Save sheet links'));
-    const checked=research.sheetSyncStatus?.checkedAt?h('small',null,`Last sheet check: ${new Date(research.sheetSyncStatus.checkedAt).toLocaleString('en-SG',{timeZone:'Asia/Singapore',timeZoneName:'short'})}`):null;
-    const messages=h('div',null,message?h('p',{role:'status',style:{fontSize:'11px'}},message):null,
-      error?h('p',{role:'alert',className:'research-error'},error):null);
-    return renderLayout?renderLayout({sync,settings,checked,messages}):h('div',{className:'ak-sheet-controls'},sync,settings,checked,messages);
+export function createAkSheetControls(React) {
+  const h = React.createElement;
+  const active = AK_SOURCES.filter(source => source.key !== 'closed_positions');
+  const fields = [['iv','IV'],['cost','AK average cost'], ...[1,2,3,4,5].map(n => ['s'+n,'S'+n])];
+  function TickerEditor({research, symbol, source}) {
+    const reference = research.records[symbol]?.reference;
+    const entry = reference?.entries?.find(row => row.source === source);
+    const ivKey = entry?.methodFamily === 'bank' ? 'adjustedPbIV' : entry?.methodFamily === 'reit' ? 'historicalPbIV' : 'baseIV';
+    const [version,setVersion] = React.useState(reference?.snapshotId ?? '');
+    const [values,setValues] = React.useState(() => ({
+      currency:entry?.currency ?? reference?.currency ?? research.records[symbol]?.instrument?.currency ?? '',
+      asOf:entry?.asOf ?? '', iv:entry?.variants?.find(v => v.key === ivKey)?.value ?? '', cost:entry?.averageCost ?? '',
+      ...Object.fromEntries((entry?.supports ?? []).map((v,i) => ['s'+(i+1),v]))
+    }));
+    const [busy,setBusy] = React.useState(false), [message,setMessage] = React.useState('');
+    const input = (key,label,type) => h('label',{key,style:{display:'inline-grid',margin:'4px'}},label,
+      h('input',{type,value:values[key] ?? '',disabled:busy,step:type==='number'?'any':undefined,
+        onChange:e => setValues({...values,[key]:e.target.value}),style:{width:type==='date'?'10em':'7em'}}));
+    const save = async () => {
+      setBusy(true);setMessage('');
+      try {
+        const result = await research.saveManualReference(symbol,source,values,version);
+        setVersion(result.id);setMessage('Saved AK reference for '+symbol+'.');
+      } catch (error) {setMessage(error.message);}
+      finally {setBusy(false);}
+    };
+    return h('div',null,input('asOf','Sheet date','date'),input('currency','Currency','text'),
+      ...fields.map(([key,label]) => input(key,label,'number')),
+      h('button',{type:'button',className:'research-track',onClick:save,disabled:busy || !research.hydrated},'Save ticker values'),
+      h('small',{role:'status'},message));
+  }
+  return function AkSheetControls({research,renderLayout}) {
+    const [draft,setDraft] = React.useState(null),[message,setMessage] = React.useState(''),[busy,setBusy] = React.useState(false);
+    const [symbol,setSymbol] = React.useState(''),[source,setSource] = React.useState('capital_gains');
+    const links = savedViewerLinks(research), urls = draft ?? links;
+    const save = async () => {
+      setBusy(true);setMessage('');
+      try {await research.saveSheetSources(urls);setDraft(null);setMessage('Viewer links saved.');}
+      catch (error) {setMessage(error.message);}
+      finally {setBusy(false);}
+    };
+    const open = (key,label) => h('a',{href:links[key] || AK_SOURCES.find(s=>s.key===key).portal,target:'_blank',rel:'noopener noreferrer'},label);
+    const settings = h('div',null,h('details',null,h('summary',null,'AK sheet links'),
+      ...AK_SOURCES.map(s=>h('div',{key:s.key},h('label',null,s.label,
+        h('input',{type:'url',value:urls[s.key] || '',disabled:busy,'aria-label':s.label+' sheet URL',
+          onChange:e=>setDraft({...urls,[s.key]:e.target.value}),style:{display:'block',width:'100%'}})),open(s.key,'Open sheet'))),
+      h('button',{type:'button',className:'research-track',onClick:save,disabled:busy || !draft || !research.hydrated},'Save sheet links')),
+      h('details',null,h('summary',null,'Update tracked ticker'),h('label',null,'AK list ',
+        h('select',{value:source,onChange:e=>setSource(e.target.value)},...active.map(s=>h('option',{key:s.key,value:s.key},s.label)))),
+      ' ',open(source,'Open sheet'),' ',h('label',null,'Ticker ',h('select',{value:symbol,onChange:e=>setSymbol(e.target.value)},
+        h('option',{value:''},'Choose ticker'),...[...(research.trackedSymbols ?? [])].sort().map(s=>h('option',{key:s,value:s},s)))),
+      symbol && h(TickerEditor,{key:symbol+'/'+source,research,symbol,source})));
+    const messages = h('small',{role:'status'},message);
+    return renderLayout ? renderLayout({settings,messages}) : h('div',null,settings,messages);
   };
 }
