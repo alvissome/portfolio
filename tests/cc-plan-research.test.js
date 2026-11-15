@@ -39,9 +39,9 @@ test('rebalancing flag round-trips the production cloud serializer independently
  const state={holdings:[],watchlist:[],cash:{},strategyCategories:{},rebalancingSymbols:{EXAMPLE:true}};const saved=context.save(state);assert.equal(saved.settings.rebalancingSymbols.EXAMPLE,true);assert.equal(context.load(saved).rebalancingSymbols.EXAMPLE,true);assert.equal(context.load(saved).watchlist.length,0);
 });
 
-test('an explicit flag reopens a saved plan only in Rebalancing, while retaining My decisions',async()=>{
+test('saved plans stay exclusively in My decisions even with a retained rebalancing flag',async()=>{
  const {renderCommandCentre}=await import('../assets/investment-command-view.js');const now=Date.parse('2026-11-15T02:00:00Z');
  const s={strategyCategories:{EXAMPLE:'core'},holdings:[{ticker:'EXAMPLE',accountType:'Cash',currency:'USD',shares:1}],watchlist:[],priceCache:{EXAMPLE:{close:150,timestamp:now}},fxRates:{USD:1.3},cash:{brokers:10000,growth:0,dividend:0},rebalancingSymbols:{EXAMPLE:true}};
  const c={plans:{EXAMPLE:{id:'p',symbol:'EXAMPLE',action:'hold',category:'core',currency:'USD',iv:200,stages:[],revisitOn:'2027-01-01'}},decisions:{},funding:{}};
- const model=buildCommandCentre(s,{records:{EXAMPLE:record()}},c,{today:'2026-11-15',now});assert.match(renderCommandCentre(model,{show:String,today:'2026-11-15',filter:'balance'}),/data-opportunity="EXAMPLE"/);assert.doesNotMatch(renderCommandCentre(model,{show:String,today:'2026-11-15',filter:'opportunities'}),/data-opportunity="EXAMPLE"/);assert.match(renderCommandCentre(model,{show:String,today:'2026-11-15',filter:'decisions'}),/data-decision-row="EXAMPLE"/);
+ const model=buildCommandCentre(s,{records:{EXAMPLE:record()}},c,{today:'2026-11-15',now});assert.equal(model.stats.attention,0);assert.doesNotMatch(renderCommandCentre(model,{show:String,today:'2026-11-15',filter:'balance'}),/data-opportunity="EXAMPLE"/);assert.doesNotMatch(renderCommandCentre(model,{show:String,today:'2026-11-15',filter:'opportunities'}),/data-opportunity="EXAMPLE"/);assert.match(renderCommandCentre(model,{show:String,today:'2026-11-15',filter:'decisions'}),/data-decision-row="EXAMPLE"/);
 });
