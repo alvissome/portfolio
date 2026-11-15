@@ -9,7 +9,7 @@ import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaul
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
 import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-clarity-20261115';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=decision-tools-20261115';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=compact-toolbar-20261115';
 export {resolvedCompany} from './investment-command-centre.js?v=plan-clarity-20261115';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function revisitDate(date,months=1){

@@ -78,3 +78,15 @@
 @media(max-width:750px){.ic-company-execution .ic-stage-history{grid-template-columns:minmax(0,1fr)}.ic-company-execution{padding:12px}.ic-company-execution .ic-history header{flex-wrap:wrap}}
 
 .ic-company-execution{box-sizing:border-box;width:min(100%,1100px,calc(100vw - 80px))}
+
+/* Compact default decision rows; details keep their full forms and notes. */
+.ic-decision-table>tbody>tr[data-decision-row]>td{padding:6px 9px;vertical-align:middle}
+.ic-decision-table>tbody>tr[data-decision-row] small{margin-top:2px;line-height:1.25}
+.investment-panel .ic-company-manage{padding:4px 7px;font-size:11px;line-height:18px}
+.investment-panel .ic-copy-notion{width:28px;height:28px;padding:5px}
+.ic-decision-table .ic-table-notes{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;line-height:1.35}
+.ic-command-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 16px;margin:16px 0}
+.ic-command-toolbar>.ic-tabs{margin:0;min-width:0}
+.ic-command-toolbar>.category-controls{margin:0 0 0 auto;flex-wrap:nowrap;min-width:0;max-width:100%}
+.ic-command-toolbar>.category-controls label{min-width:0}
+@media(max-width:650px){.ic-command-toolbar>.category-controls{margin-left:0;flex-wrap:wrap}.ic-command-toolbar{gap:10px}.ic-command-toolbar>.category-controls select{max-width:100%}}
