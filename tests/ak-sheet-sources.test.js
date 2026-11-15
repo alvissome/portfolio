@@ -128,3 +128,14 @@ test('one sync matches tracked holdings and watchlist rows and retains a blocked
   assert.equal(controller.getState().records.EXAMPLE.reference.asOf,'2026-11-03');
   controller.close();
 });
+
+test('closed sale history uses individual sale dates and resolves repeated disposals without averaging',()=>{
+  const sheet=['Closed Positions','Company,Ticker,Currency,Average Buy Price,Sold Date,Average Sell Price',
+    'First,AAA-US,USD,10,1 Nov 2026,14','Second,BBB-US,USD,8,2 Nov 2026,10',
+    'First,AAA-US,USD,9,15 Oct 2026,13','Second,BBB-US,USD,9,2 Nov 2026,12',
+    'Foreign,UNKNOWN,#N/A,9,5 Nov 2026,14'].join('\n');
+  const result=parseAkSheet(sheet,'closed_positions',{today:'2026-11-15'});
+  assert.equal(result.asOf,'2026-11-02');
+  assert.equal(result.skippedRows,1);
+  assert.deepEqual(result.rows.map(r=>[r.symbol,r.asOf,r.averageSellPrice]),[['AAA','2026-11-01',14],['BBB','2026-11-02',null]]);
+});

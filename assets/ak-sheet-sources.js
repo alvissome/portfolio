@@ -101,15 +101,17 @@ function listedSymbol(value) {
 }
 export function parseAkSheet(text,source,{today=new Date().toISOString().slice(0,10)}={}) {
   if(!AK_SOURCES.some(x=>x.key===source))throw Error('Unknown AK list.');
-  const grid=parseSheetCSV(text),asOf=sourceDate(grid);if(asOf>today)throw Error('Sheet date is in the future.');
+  const grid=parseSheetCSV(text);
+  const saleHistory=source==='closed_positions' && grid.some(row=>row.some(cell=>norm(cell)==='solddate')&&row.some(cell=>norm(cell)==='ticker'));
+  const asOf=saleHistory?null:sourceDate(grid);if(asOf>today)throw Error('Sheet date is in the future.');
   const titles={closed_positions:['closedpositions','closedtrades','closedposition'],capital_gains:['capitalgainsportfolio','capitalgainportfolio','growthportfolio'],dividend:['dividendportfolio'],priority_watchlist:['prioritywatchlist'],secondary_watchlist:['secondarywatchlist']};
   if(!grid.slice(0,6).flat().some(cell=>titles[source].some(title=>norm(cell).includes(title))))throw Error('The list title does not match this source setting. Check the sheet or tab link.');
-  const rows=[];let columns=null,costHeaderFound=false;
+  const rows=[];let columns=null,costHeaderFound=false,skippedRows=0;
   for(const cells of grid){
     const headers=cells.map(norm),ticker=headers.indexOf('ticker'),currency=headers.indexOf('currency');
     const supports=[1,2,3,4,5].map(n=>headers.findIndex(h=>h==='supportlevel'+n||h==='sl'+n));
     if(ticker>=0&&(currency>=0||source==='closed_positions')&&(source==='closed_positions'||supports.every(n=>n>=0))){
-      columns={ticker,currency,supports,averageCost:source==='closed_positions'?-1:priceColumn(headers,source),averageSellPrice:source==='closed_positions'?priceColumn(headers,source):-1,category:headers.findIndex(h=>['investmenttype','investmentcategory'].includes(h)),classification:headers.indexOf('classification'),
+      columns={ticker,currency,soldDate:headers.indexOf('solddate'),supports,averageCost:source==='closed_positions'?-1:priceColumn(headers,source),averageSellPrice:source==='closed_positions'?priceColumn(headers,source):-1,category:headers.findIndex(h=>['investmenttype','investmentcategory'].includes(h)),classification:headers.indexOf('classification'),
         fields:Object.fromEntries(Object.entries(aliases).map(([key,names])=>[key,headers.findIndex(h=>names.includes(h))]))};
       costHeaderFound ||= source==='closed_positions'?columns.averageSellPrice>=0:
         ['capital_gains','dividend'].includes(source)?columns.averageCost>=0:false;
@@ -117,16 +119,34 @@ export function parseAkSheet(text,source,{today=new Date().toISOString().slice(0
     }
     if(!columns||!String(cells[columns.ticker]??'').trim())continue;
     const raw=String(cells[columns.ticker]).trim();
-    if(!/^[A-Za-z0-9.\-]+-(?:US|SG|SGX|HK|UK)$/.test(raw)&&!['USD','SGD','HKD','GBP'].includes(String(cells[columns.currency]).trim()))continue;
-    const curr=String(cells[columns.currency]??'').trim().toUpperCase()||(source==='closed_positions'?({'US':'USD','SG':'SGD','SGX':'SGD','HK':'HKD','UK':'GBP'}[raw.split('-').at(-1)]||''):'');if(!['USD','SGD','HKD','GBP'].includes(curr))throw Error('A listing currency is missing or unsupported.');
+    if(!/^[A-Za-z0-9.\-]+-(?:US|SG|SGX|HK|UK)$/.test(raw)&&!['USD','SGD','HKD','GBP'].includes(String(cells[columns.currency]).trim())){if(saleHistory)skippedRows++;continue;}
+    const curr=String(cells[columns.currency]??'').trim().toUpperCase()||(source==='closed_positions'?({'US':'USD','SG':'SGD','SGX':'SGD','HK':'HKD','UK':'GBP'}[raw.split('-').at(-1)]||''):'');if(saleHistory&&!['USD','SGD','HKD','GBP'].includes(curr)){skippedRows++;continue;}
+    if(!['USD','SGD','HKD','GBP'].includes(curr))throw Error('A listing currency is missing or unsupported.');
     const supportLevels=columns.supports.map(i=>number(cells[i])).filter(v=>v!==null);
     if(supportLevels.some((v,i)=>i&&v>=supportLevels[i-1]))throw Error('Support levels are not in descending order; review the sheet layout.');
-    rows.push({symbol:listedSymbol(raw),source,asOf,currency:curr,supportLevels,averageCost:columns.averageCost<0?null:number(cells[columns.averageCost]),averageSellPrice:columns.averageSellPrice<0?null:number(cells[columns.averageSellPrice]),
+    let rowDate=asOf;
+    if(saleHistory){
+      try {rowDate=sourceDate([[cells[columns.soldDate]]]);} catch {skippedRows++;continue;}
+      if(rowDate>today)throw Error('A sold date is in the future.');
+    }
+    rows.push({symbol:listedSymbol(raw),source,asOf:rowDate,currency:curr,supportLevels,averageCost:columns.averageCost<0?null:number(cells[columns.averageCost]),averageSellPrice:columns.averageSellPrice<0?null:number(cells[columns.averageSellPrice]),
       category:columns.category>=0?String(cells[columns.category]??'').trim()||null:null,
       classification:columns.classification>=0?String(cells[columns.classification]??'').trim()||null:null,
       ...Object.fromEntries(Object.entries(columns.fields).map(([key,index])=>[key,index<0?null:number(cells[index])]))});
   }
   if(!rows.length)throw Error('No benchmark rows found; previous reference retained.');
+  if(saleHistory){
+    const latest=new Map();
+    for(const row of rows){
+      const prior=latest.get(row.symbol);
+      if(!prior||row.asOf>prior.asOf)latest.set(row.symbol,row);
+      else if(row.asOf===prior.asOf&&(row.averageSellPrice!==prior.averageSellPrice||row.currency!==prior.currency)){
+        prior.averageSellPrice=null;
+      }
+    }
+    const latestRows=[...latest.values()];
+    return {asOf:rows.map(r=>r.asOf).sort().at(-1),rows:latestRows,costHeaderFound,skippedRows,dateBasis:'sale'};
+  }
   if(new Set(rows.map(x=>x.symbol)).size!==rows.length)throw Error('Duplicate listings in this source need review.');
   return {asOf,rows,costHeaderFound};
 }
@@ -161,7 +181,7 @@ export async function readAkSources(settings,records,{fetch:fetchImpl=globalThis
       if(!response.ok)throw Error([401,403].includes(response.status)?'Access required. Use a readable published sheet URL.':'The sheet could not be downloaded.');
       const text=await response.text();const parsed=parseAkSheet(text,source.key,{today});
       if(oldDate&&parsed.asOf<oldDate)throw Error('This sheet is older than the saved reference. Check the replacement URL.');
-      return {...base,asOf:parsed.asOf,costHeaderFound:parsed.costHeaderFound,
+      return {...base,asOf:parsed.asOf,costHeaderFound:parsed.costHeaderFound,...(parsed.dateBasis?{dateBasis:parsed.dateBasis,skippedRows:parsed.skippedRows}:{}),
         status:comparable(previous)===comparable(parsed.rows)?'unchanged':'updated',
         message:null,rows:parsed.rows};
     }catch(error){return {...base,status:'unavailable',message:signal?.aborted?'Sync cancelled.':error?.message==='Failed to fetch'?'Unable to read this sheet. Check its published link and access.':String(error?.message||'Sheet unavailable.').slice(0,200),rows:previous};}

@@ -1,7 +1,7 @@
 import {manualReferenceRows} from './ak-viewer.js';
 import {normalizeValuationSettings, IV_POLICY_VERSION} from './valuation-settings.js';
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
-import {akSourceDefaults,normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-cost-headers-20261115';
+import {akSourceDefaults,normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-sale-history-20261115';
 
 export const RESEARCH_MODEL_VERSION = 'ak-reconstruction-v1';
 const PARTS = ['iv', 'supports'];

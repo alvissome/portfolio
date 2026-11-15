@@ -64,10 +64,12 @@ export function createAkSheetControls(React) {
         status?.checkedAt && h('span',{className:'text-xs text-gray-500'},'Last checked '+new Date(status.checkedAt).toLocaleString('en-SG',{timeZone:'Asia/Singapore'}))),
       h('div',{className:'space-y-2'},...AK_SOURCES.map(list=>{
         const checked=status?.sources?.[list.key],date=latestDate(list.key);
-        const state={updated:'Updated',unchanged:'Up to date',unavailable:'Could not refresh',not_configured:'Link missing'}[checked?.status] ?? (links[list.key]?'Ready to sync':'Link missing');
+        const state={updated:'Updated',unchanged:'Checked · No changes',unavailable:'Refresh failed',not_configured:'Link missing'}[checked?.status] ?? (links[list.key]?'Ready to sync':'Link missing');
         return h('div',{key:list.key,className:'flex items-center justify-between gap-3'},
           h('div',null,h('div',{className:'text-sm text-gray-800'},list.label),
-            h('p',{className:'text-xs text-gray-500',title:checked?.message ?? ''},state+(date?' · Sheet dated '+date:''))),
+            h('p',{className:'text-xs text-gray-500',title:checked?.message ?? ''},state+(date?(checked?.status==='unavailable'?' · Last saved date ':checked?.dateBasis==='sale'?' · Latest imported sale ':' · Sheet dated ')+date:'')),
+            checked?.status==='unavailable' && h('p',{className:'text-xs text-gray-500'},checked.message),
+            checked?.skippedRows>0 && h('p',{className:'text-xs text-gray-500'},checked.skippedRows+' rows omitted: check listing, currency or sale date.')),
           open(list.key,'Open sheet'));
       })),
       h('details',{className:sectionClass},h('summary',{className:summaryClass},'Edit sheet links'),
