@@ -35,9 +35,57 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
   let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',watchStop=null,pendingCloud=null,cloudSnapshot='',draftDirty=false,akRefreshing=false,filter='opportunities',expandedDecision='',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
   const show=n=>state.privacyMode?'S$•••':n==null?'—':'S$'+new Intl.NumberFormat('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
   const field=(name,label,value='',attrs='')=>`<label>${label}<input name="${name}" value="${esc(value)}" ${attrs}></label>`;
+  const mergeCloud=cloud=>{
+    if(!alive)return;
+    storage.acceptCloud?.(cloud);
+    pendingCloud=null;draftDirty=false;
+    const saved=cloud.strategy||{};
+    cloudSnapshot=JSON.stringify(saved);
+    config={plans:{},funding:{},decisions:{},...saved};
+    loaded=true;error='';
+    onPlansChange?.(config.plans);
+    notice='CC changes updated automatically from cloud.';
+    render();
+  };
+  const cloudWarning=()=>{
+    if(!pendingCloud||!alive||state.privacyMode)return;
+    let warning=root.querySelector('[data-cc-cloud-conflict]');
+    if(!warning){
+      warning=root.ownerDocument.createElement('div');
+      warning.className='ic-cloud-conflict';
+      warning.setAttribute('data-cc-cloud-conflict','');
+      warning.setAttribute('role','alert');
+      warning.innerHTML='<strong>Newer CC decisions are available in the cloud.</strong> Your unsaved edits are preserved. <button type="button" data-cc-accept-cloud>Discard draft and load cloud changes</button>';
+      root.querySelector('.ic-title')?.after(warning);
+    }
+    warning.querySelector('[data-cc-accept-cloud]').onclick=()=>{
+      if(!globalThis.confirm||globalThis.confirm('Discard unsaved CC form edits and load the newest saved decisions?'))mergeCloud(pendingCloud);
+    };
+  };
+  const onDraftInput=event=>{
+    if(event.target?.closest?.('[data-plan],[data-decision-form],[data-settle-order],[data-fill],[data-cash-use]'))draftDirty=true;
+  };
+  root.addEventListener('input',onDraftInput);
+  root.addEventListener('change',onDraftInput);
+  function handleCloud(cloud){
+    if(!alive||busy)return;
+    const signature=JSON.stringify(cloud.strategy||{});
+    if(signature===cloudSnapshot){storage.acceptCloud?.(cloud);return;}
+    if(draftDirty){pendingCloud=cloud;cloudWarning();return;}
+    mergeCloud(cloud);
+  }
   async function reload(){
     if(busy)return;
-    try{const saved=await storage.load();if(alive){config={plans:{},funding:{},decisions:{},...saved};loaded=true;error='';onPlansChange?.(config.plans);render();}}catch(e){if(alive){loaded=false;error='Could not load saved plans: '+e.message;render();}}
+    try{
+      const saved=await storage.load();
+      if(!alive)return;
+      cloudSnapshot=JSON.stringify(saved);
+      pendingCloud=null;draftDirty=false;
+      config={plans:{},funding:{},decisions:{},...saved};
+      loaded=true;error='';onPlansChange?.(config.plans);render();
+      watchStop?.();
+      watchStop=storage.watch?.(handleCloud,cloudError=>{if(alive)console.warn('CC cloud synchronization interrupted:',cloudError.message);});
+    }catch(e){if(alive){loaded=false;error='Could not load saved plans: '+e.message;render();}}
   }
   async function save(next){
     if(!loaded||busy)throw Error('Wait for strategy data to finish loading or saving.');
@@ -102,7 +150,19 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         </details>
 `;
     root.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{filter=button.dataset.commandFilter;onViewChange(filter);render();});
-    root.querySelector('[data-reload-command]').onclick=()=>reload();
+    root.querySelector('[data-retry-cloud]')?.addEventListener('click',()=>reload());
+    root.querySelector('[data-refresh-ak]').onclick=async()=>{
+      if(akRefreshing||research.sheetSyncBusy)return;
+      akRefreshing=true;
+      const button=root.querySelector('[data-refresh-ak]');
+      button.disabled=true;button.textContent='Refreshing AK…';
+      try{
+        const status=await research.syncAkSheets(research.sheetSources);
+        notice='AK sheets checked: '+status.readable+' readable sources. IV, SL and reference costs update when published data changes.';
+        error='';
+      }catch(e){error='AK sheet refresh failed: '+e.message;}
+      finally{akRefreshing=false;if(alive)render();}
+    };
     root.querySelector('[data-refresh-prices]').onclick=async()=>{refreshing=true;render();try{await refreshPrices?.();notice='Prices refreshed. AK references update separately with Refresh AK sheets.';}catch(e){error=e.message;}finally{refreshing=false;render();}};
     const selector=root.querySelector('[name="symbol"]');
     const get=name=>root.querySelector('[data-plan] [name="'+name+'"]');
