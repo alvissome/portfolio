@@ -1,4 +1,4 @@
-import {planAction} from './investment-actions.js?v=cc-actions-20261115';
+import {planAction} from './investment-actions.js?v=cc-queue-currency-20261115';
 import {money} from './investment-format.js?v=compact-price-20261114';
 import {selectCategoryRows} from './strategy-categories.js?v=entry-sizing-20261114';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';

@@ -1,4 +1,4 @@
-import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides} from './investment-actions.js?v=cc-actions-20261115';
+import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides} from './investment-actions.js?v=cc-queue-currency-20261115';
 import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=cc-cash-budget-20261114';
 import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=cc-actions-20261115';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
@@ -6,9 +6,9 @@ import {recordPlanReview,reviewText,NOTION_REVIEW_URL} from './investment-review
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=cc-actions-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=cc-cash-budget-20261114';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=cc-queue-20261115';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=cc-queue-20261115';
-export {resolvedCompany} from './investment-command-centre.js?v=cc-queue-20261115';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=cc-queue-currency-20261115';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=cc-queue-currency-20261115';
+export {resolvedCompany} from './investment-command-centre.js?v=cc-queue-currency-20261115';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
@@ -112,7 +112,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       get('saleCompleted').closest('label').hidden=action!=='sell';root.querySelector('.ic-native-estimate').hidden=hold;
       root.querySelector('[data-plan] button').disabled=!loaded||(buy&&!company.category);
       if(!buy){
-        if(!hold&&get('entry').value==='')get('entry').value=money(saved?.sale?.price??company.quote?.close,company.currency);
+        if(!hold&&get('entry').value==='')get('entry').value=money(saved?.currency&&saved.currency!==company.currency?company.quote?.close:saved?.sale?.price??company.quote?.close,company.currency);
         if(!hold&&get('quantity').value==='')get('quantity').value=quantityText(saved?.sale?.quantity??Math.floor(company.shares));
         const units=amount(get('quantity').value),entry=amount(get('entry').value),spend=units!==null&&entry!==null?units*entry:null;
         root.querySelector('[data-native-estimate]').textContent=spend===null?'—':money(spend,company.currency);root.querySelector('[data-sgd-estimate]').textContent=spend!==null&&company.fx>0&&company.currency!=='SGD'?'Potential ≈ '+money(spend*company.fx,'SGD'):'';
