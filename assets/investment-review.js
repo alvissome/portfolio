@@ -4,9 +4,9 @@ export function recordPlanReview(config,plan,{id,now,holding=null,base=null,shar
  if(!id||config.decisions?.[id])throw Error('A unique review identity is required.');
  const sequence=(config.decisionSequence||0)+1;
  const record={id,sequence,symbol:plan.symbol,planId:plan.id,status:'plan-reviewed',updatedAt:now,
-  action:plan.action||'buy',revisitOn:plan.revisitOn||null,sale:plan.sale||null,note:String(plan.remarks||'').slice(0,2000),category:plan.category,ceilingPct:plan.ceilingPct??null,ruleVersion:plan.ruleVersion??null,
+  redistribution:plan.redistribution??null,action:plan.action||'buy',revisitOn:plan.revisitOn||null,sale:plan.sale||null,note:String(plan.remarks||'').slice(0,2000),category:plan.category,ceilingPct:plan.ceilingPct??null,ruleVersion:plan.ruleVersion??null,
   reviewedAt:plan.reviewedAt,iv:plan.iv,currency:plan.currency,holding,base,shares,
-  stages:plan.stages.map(s=>({key:s.key,price:s.price,budget:s.budget,purchaseBudget:s.purchaseBudget??s.budget,entryPrice:s.entryPrice??null,quantity:s.purchaseQuantity??null})),context:''};
+  stages:plan.stages.map(s=>({skipped:s.skipped===true,key:s.key,price:s.price,budget:s.budget,purchaseBudget:s.purchaseBudget??s.budget,entryPrice:s.entryPrice??null,quantity:s.purchaseQuantity??null})),context:''};
  return {...config,decisionSequence:sequence,plans:{...config.plans,[plan.symbol]:plan},decisions:{...config.decisions,[id]:record}};
 }
 export function reviewText(review){

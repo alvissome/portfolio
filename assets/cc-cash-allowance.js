@@ -1,4 +1,4 @@
-import {recordStageFill} from './investment-strategy.js?v=cc-cash-budget-20261114';
+import {recordStageFill} from './investment-strategy.js?v=redistribution-20261115';
 // CC planning deductions only. Never changes portfolio balances, holdings or cash flows.
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
 export function cashImportBasis(state){
