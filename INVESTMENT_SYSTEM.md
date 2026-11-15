@@ -269,3 +269,9 @@ The last table column contains a clipboard icon for each ticker. It copies the s
 The preceding Manage column opens a single company detail row: Buy uses Stages & fills, while Hold/Sell uses History & orders. Fill forms and pending-order cancellation/final-settlement controls are scoped to that company; the row stays open after saves. Stage completion and pending-order counts are visible in the table. The repeated Purchase stages and fills → ticker → Purchase stages and actual fills disclosure hierarchy is removed. History for tickers not represented by a saved table plan remains separately available, so removed-ticker orders can still be settled.
 
 Validation: 356 Node tests pass. Mounted interactions cover row expansion/collapse, clipboard content, order cancellation, final-fill settlement, retention of the open row after saves, and unchanged StocksCafe master holdings/cash. Browser layout and signed-in live writes were not exercised.
+
+### Compact decision rows and shared toolbar — 15 November 2026
+
+Manage controls are single-line buttons. Stage completion/pending-order counts move into expanded company details; row padding and clipboard controls are smaller. Notes show at most two lines in the table, with full text in their tooltip and expanded company details. The category and sort controls share a flex toolbar with the view tabs, align right on desktop and wrap on narrow screens.
+
+Validation: 356 Node tests and the existing mounted execution/clipboard harness pass. Browser layout remains unverified.
