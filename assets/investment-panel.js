@@ -159,7 +159,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       const feedback=root.querySelector('[data-ak-feedback]');
       try {
         const status=await research.syncAkSheets();
-        notice=`${status.matched} of ${status.tracked} tracked tickers found in ${status.readable} readable AK lists. See Settings → Data for source dates.`;
+        notice=`${status.matched} of ${status.tracked} tracked tickers found in ${status.readable} readable AK lists. ${status.queued?status.queued+' published lists queued for the personal research worker. ':''}See Settings → Data for source dates.`;
         error='';
       } catch(e) {error=e.message;notice='';}
       finally {
