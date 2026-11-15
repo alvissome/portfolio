@@ -428,10 +428,10 @@ test('research column settings hide matching headers and cells and never offer C
  tree=runtime.render(runtime.components.ResearchPanel,{...props,scope:'watchlist',watchlist:[{symbol:'EXAMPLE'}]});
  assert.ok(!nodes(tree,'th').some(n=>n.props['data-column']==='track'));
 });
-test('research controls place source and sync on the left, settings and maintenance on the right',()=>{
+test('research controls retain level selection and show viewer and ticker settings without a CSV sync',()=>{
  const runtime=host();const tree=runtime.render(runtime.components.ResearchPanel,{scope:'watchlist',watchlist:[{symbol:'EXAMPLE'}],research:{records:{},hydrated:true,syncAkSheets:async()=>({readable:4}),sheetSyncStatus:{checkedAt:'2026-11-12T12:48:13Z'},sheetSources:{},referenceMeta:{dates:['2026-11-03']}}});
  const groups=nodes(tree,'div');
  const left=groups.find(n=>n.props.className==='research-toolbar-primary'),right=groups.find(n=>n.props.className==='research-toolbar-secondary');
- assert.ok(content(left).includes('Displayed levels'));assert.ok(content(left).includes('Sync AK sheets'));assert.ok(!content(left).includes('AK sheet settings'));
- assert.ok(content(right).includes('AK sheet settings'));assert.ok(content(right).includes('Refresh status'));assert.ok(content(left).includes('Last sheet check'));assert.ok(!content(right).includes('Last sheet check'));
+ assert.ok(content(left).includes('Displayed levels'));assert.ok(!content(left).includes('Sync AK sheets'));assert.ok(!content(left).includes('AK sheet settings'));
+ assert.ok(content(right).includes('AK sheet links'));assert.ok(content(right).includes('Update tracked ticker'));assert.ok(content(right).includes('Refresh status'));assert.ok(!content(left).includes('Last sheet check'));assert.ok(!content(right).includes('Last sheet check'));
 });
