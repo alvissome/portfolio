@@ -58,3 +58,23 @@
 .investment-panel form.ic-compact-plan>.ic-plan-approval>input{display:block;align-self:center;position:static;transform:none;vertical-align:middle;margin:0;width:15px;height:15px}
 @media(max-width:900px){.investment-panel .ic-plan-research,.investment-panel .ic-plan-research:has(>label[hidden]){grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:420px){.investment-panel .ic-plan-research,.investment-panel .ic-plan-research:has(>label[hidden]){grid-template-columns:minmax(0,1fr)}}
+
+/* Per-company execution stays with its table row; clipboard export is always last. */
+.investment-panel .ic-copy-notion{display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;padding:6px}
+.investment-panel .ic-company-manage{font-size:11px;padding:6px 8px;white-space:nowrap}
+.ic-decision-table .ic-company-detail-row>td{white-space:normal;text-align:left;padding:0;border-bottom:1px solid #dbe5ed}
+.ic-company-execution{background:#f8fafc;padding:16px;min-width:0;max-width:100%}
+.ic-company-execution>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.investment-panel .ic-company-execution h4{font-size:14px;font-weight:650}
+.investment-panel .ic-company-execution h5{font-size:12px;font-weight:600;margin-top:16px}
+.ic-company-execution .ic-stage-history{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.investment-panel .ic-company-execution .ic-stage-history form{background:white;border:1px solid #dce4ec;border-radius:8px;padding:12px;align-items:end;min-width:0}
+.ic-company-execution .ic-stage-history form>strong{flex-basis:100%}
+.ic-company-execution .ic-stage-history form>label{min-width:0;max-width:100%}
+.ic-company-execution .ic-stage-history>p{grid-column:1/-1}
+.ic-company-execution .ic-history{margin:10px 0 0}
+.ic-company-execution .ic-history article{background:white}
+.investment-panel .ic-copy-fallback{display:block;width:100%;min-height:180px;box-sizing:border-box;margin-top:10px;font-size:12px}
+@media(max-width:750px){.ic-company-execution .ic-stage-history{grid-template-columns:minmax(0,1fr)}.ic-company-execution{padding:12px}.ic-company-execution .ic-history header{flex-wrap:wrap}}
+
+.ic-company-execution{box-sizing:border-box;width:min(100%,1100px,calc(100vw - 80px))}

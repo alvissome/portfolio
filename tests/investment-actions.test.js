@@ -55,7 +55,7 @@ test('saved plans leave Watchlist and remain in the latest-plan table',()=>{
  c.decisions={defer:{id:'defer',symbol:'AAA',status:'deferred',context:m.rows[0].context,until:'2026-12-01',updatedAt:'2026-11-15T02:00:00Z'}};m=model(s,c);
  const watch=renderCommandCentre(m,{show:String,today,filter:'watchlist'});assert.doesNotMatch(watch,/data-opportunity="AAA"/);assert.doesNotMatch(watch,/data-opportunity="BBB"/);assert.match(watch,/data-add-watchlist/);assert.doesNotMatch(watch,/<table/);
  const table=renderCommandCentre(m,{show:String,today,filter:'decisions'});for(const label of ['Ticker','Company','Action','Close','Avg Price','BValue','IV','Ref cost','Current SL','Notes'])assert.ok(table.includes('>'+label+'<'),label);
- assert.equal((table.match(/data-decision-row="AAA"/g)||[]).length,1);assert.match(table,/HOLD/);assert.match(table,/2026-12-15/);assert.match(table,/US\$80.00/);assert.match(table,/Synthetic &lt;note&gt;/);assert.match(table,/Decision history and orders/);
+ assert.equal((table.match(/data-decision-row="AAA"/g)||[]).length,1);assert.match(table,/HOLD/);assert.match(table,/2026-12-15/);assert.match(table,/US\$80.00/);assert.match(table,/Synthetic &lt;note&gt;/);assert.match(table,/Decision history & orders/);
  const core=renderCommandCentre(m,{show:String,today,filter:'watchlist',categoryFilter:'core'});assert.doesNotMatch(core,/data-opportunity="AAA"/);assert.doesNotMatch(core,/data-opportunity="BBB"/);
 });
 test('non-Buy review snapshots copy the explicit action and preserve dated decisions',()=>{
