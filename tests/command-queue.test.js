@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildCommandCentre,resolvedCompany} from '../assets/investment-command-centre.js';
+import {buildCommandCentre,resolvedCompany,addDecision} from '../assets/investment-command-centre.js';
 import {createPurchasePlan,fundingSignature} from '../assets/investment-strategy.js';
 import {renderCommandCentre} from '../assets/investment-command-view.js';
 const today='2026-11-15',now=Date.parse(today+'T02:00:00Z');
@@ -59,4 +59,22 @@ test('decision table supports combined action filters and shows planned quantity
  const m=build(s,c);const html=renderCommandCentre(m,{show:String,today,filter:'decisions',actionFilter:['buy','sell']});
  assert.match(html,/Next SL/);assert.match(html,/Quantity/);assert.match(html,/Entry \/ sale price/);assert.match(html,/US\$119.00/);assert.match(html,/>3<\/td>/);assert.match(html,/data-decision-row="AAA"/);assert.doesNotMatch(html,/data-decision-row="BBB"/);assert.match(html,/Purchase stages and fills/);assert.match(html,/Record pending order/);
  const none=renderCommandCentre(m,{show:String,today,filter:'decisions',actionFilter:[]});assert.doesNotMatch(none,/data-decision-row=/);
+});
+
+test('opportunity summary matches visible cards and separates reached from approaching with category filters',()=>{
+ const s=base();s.holdings=['AAA','BBB'].map(ticker=>({ticker,accountType:'Cash',shares:1,currency:'USD'}));s.priceCache.BBB.close=121;
+ let c=config(s),m=build(s,c);
+ assert.equal(m.stats.opportunities,2);
+ let html=renderCommandCentre(m,{show:String,today});
+ assert.match(html,/Open opportunities<\/span><strong>2<\/strong><small>1 price reached · 1 approaching support/);
+ assert.equal((html.match(/data-opportunity=/g)||[]).length,2);
+ assert.match(html,/Approaching support · set up plan/);
+ html=renderCommandCentre(m,{show:String,today,categoryFilter:'core'});
+ assert.match(html,/Open opportunities<\/span><strong>1<\/strong><small>0 price reached · 1 approaching support/);
+ assert.equal((html.match(/data-opportunity=/g)||[]).length,1);
+ c=addDecision(c,m.rows.find(r=>r.symbol==='AAA'),{kind:'dismissed',id:'dismiss',today,now:today+'T02:00:00Z'});
+ m=build(s,c);assert.equal(m.stats.opportunities,1);
+ html=renderCommandCentre(m,{show:String,today});assert.equal((html.match(/data-opportunity=/g)||[]).length,1);assert.match(html,/Open opportunities<\/span><strong>1/);
+ c=addDecision(c,m.rows.find(r=>r.symbol==='BBB'),{kind:'deferred',id:'defer',until:'2026-12-01',today,now:today+'T02:00:00Z'});
+ m=build(s,c);assert.equal(m.stats.opportunities,0);html=renderCommandCentre(m,{show:String,today});assert.doesNotMatch(html,/data-opportunity=/);assert.match(html,/Open opportunities<\/span><strong>0/);
 });

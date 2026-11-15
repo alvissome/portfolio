@@ -2,7 +2,7 @@ import {createAkSheetControls} from './ak-sheet-controls.js?v=plan-research-2026
 import {normalizeResearchColumnSettings} from './research-columns.js?v=plan-research-20261115';
 import {createInvestmentStore} from './investment-store.js';
 import {normalizeStrategyCategories,chooseStrategyCategory,createStrategyCategorySelect,createCategoryControls,selectCategoryRows,categoryRank,reconcileStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
-import {createInvestmentComponent} from './investment-panel.js?v=compact-settings-20261115';
+import {createInvestmentComponent} from './investment-panel.js?v=plan-clarity-20261115';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
 import {createResearchComponents} from './research-panel.js?v=plan-research-20261115';
 import {createResearchHook,mergeResolvedWatchlistNames} from './research-client.js?v=plan-research-20261115';
