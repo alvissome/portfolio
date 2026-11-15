@@ -1,7 +1,7 @@
 import {manualReferenceRows} from './ak-viewer.js';
 import {normalizeValuationSettings, IV_POLICY_VERSION} from './valuation-settings.js';
 import {prioritizeUniverse, normalizeSupports} from './research-core.js';
-import {akSourceDefaults,normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-sale-history-20261115';
+import {publishedTableUrl,akSourceDefaults,normalizeAkSourceSettings,readAkSources} from './ak-sheet-sources.js?v=ak-published-table-20261115';
 
 export const RESEARCH_MODEL_VERSION = 'ak-reconstruction-v1';
 const PARTS = ['iv', 'supports'];
@@ -194,7 +194,8 @@ export function createResearchController({load, write, now = () => new Date().to
           if (local?.requestedAt && incoming.requestedAt && incoming.requestedAt < local.requestedAt) continue;
           let record = incoming;
           const imported = imports.get(symbol);
-          if (imported && incoming.reference?.snapshotId !== imported.snapshotId) record = {...record, reference: imported};
+          const newerTable=incoming.reference?.snapshotId?.startsWith('pub-') && incoming.reference.capturedAt>imported?.capturedAt;
+          if (imported && !newerTable && incoming.reference?.snapshotId !== imported.snapshotId) record = {...record, reference: imported};
           else if (imported) imports.delete(symbol);
           next[symbol] = record;
           if (pending.get(symbol) === incoming.requestId) pending.delete(symbol);
@@ -382,8 +383,24 @@ export function createResearchController({load, write, now = () => new Date().to
       const status={checkedAt:now(),readable:result.readable,tracked:tracked.size,matched:matched.size,complete:result.snapshot.complete,sources:result.statuses};
       if(result.changed&&result.readable)await importSnapshot(result.snapshot);
       if(epoch!==sourceEpoch||paused||closed)throw Error('Sheet sync was cancelled during restore.');
-      await persist({researchSheetSyncStatus:status});publish({sheetSyncStatus:status});
-      if(!result.readable)throw Error('No sheet could be read. Saved references have been kept. Check the source links and access.');
+      const tables = {};
+      for (const [key, item] of Object.entries(result.statuses)) {
+        if (item.status !== 'unavailable' || !item.url) continue;
+        if (publishedTableUrl(item.url)) {
+          tables[key] = item.url;
+          item.status = 'queued';
+          item.message = 'The personal research worker will check the published table on its next run.';
+        } else if (/access|download|failed to fetch/i.test(item.message)) {
+          item.message += ' The edit link opens the viewer. Sync requires Google to allow the data feed.';
+        }
+      }
+      const queued = Object.keys(tables).length;
+      status.queued = queued;
+      const job = queued ? {id:uuid(), checkedAt:status.checkedAt, sources:tables,
+        tracked:[...tracked], freshMatches:[...matched]} : null;
+      await persist({researchSheetSyncStatus:status,akPublishedTableRequest:job});
+      publish({sheetSyncStatus:status});
+      if(!result.readable&&!queued)throw Error('No sheet could be read. Saved references have been kept. Check the source links and access.');
       return status;
     })().finally(()=>{sheetSync=null;sourceAbort=null;publish({sheetSyncBusy:false});});
     return sheetSync;

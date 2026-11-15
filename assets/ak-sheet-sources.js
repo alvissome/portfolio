@@ -24,6 +24,14 @@ export function googleSheetFeed(value) {
   if(gid!==null)feed.searchParams.set('gid',gid);
   return feed.href;
 }
+export function publishedTableUrl(value) {
+  const feed = new URL(googleSheetFeed(value));
+  if (!feed.pathname.includes('/d/e/')) return null;
+  const table = new URL(feed.origin + feed.pathname.replace('/spreadsheets/d/e/', '/spreadsheets/u/0/d/e/').replace(/\/pub$/, '/pubhtml/sheet'));
+  table.searchParams.set('headers','false');
+  if (feed.searchParams.has('gid')) table.searchParams.set('gid',feed.searchParams.get('gid'));
+  return table.href;
+}
 export function normalizeAkSourceSettings(settings={}) {
   const result=Object.fromEntries(AK_SOURCES.map(({key})=>[key,settings[key]?.trim()?googleSheetFeed(settings[key]):'']));
   const populated=Object.values(result).filter(Boolean);
@@ -32,7 +40,7 @@ export function normalizeAkSourceSettings(settings={}) {
 }
 export function akSourceDefaults(metadata={}){
   return Object.fromEntries(AK_SOURCES.map(({key})=>{
-    const source=metadata.sources?.[key];let value='';
+    const source=metadata?.sources?.[key];let value='';
     try{value=source?.publishedId?googleSheetFeed(`https://docs.google.com/spreadsheets/d/e/${source.publishedId}/pub${source.gid!=null?'?gid='+source.gid:''}`):source?.url?googleSheetFeed(source.url):'';}catch{}
     return [key,value];
   }));
@@ -101,7 +109,7 @@ function listedSymbol(value) {
 }
 export function parseAkSheet(text,source,{today=new Date().toISOString().slice(0,10)}={}) {
   if(!AK_SOURCES.some(x=>x.key===source))throw Error('Unknown AK list.');
-  const grid=parseSheetCSV(text);
+  const grid=Array.isArray(text)?text:parseSheetCSV(text);
   const saleHistory=source==='closed_positions' && grid.some(row=>row.some(cell=>norm(cell)==='solddate')&&row.some(cell=>norm(cell)==='ticker'));
   const asOf=saleHistory?null:sourceDate(grid);if(asOf>today)throw Error('Sheet date is in the future.');
   const titles={closed_positions:['closedpositions','closedtrades','closedposition'],capital_gains:['capitalgainsportfolio','capitalgainportfolio','growthportfolio'],dividend:['dividendportfolio'],priority_watchlist:['prioritywatchlist'],secondary_watchlist:['secondarywatchlist']};
@@ -168,7 +176,7 @@ export function planAkLevelCopy(watchlist,symbol,reference,{instrument}={}) {
   if(reference.supports.length>5||reference.supports.some((v,i)=>!Number.isFinite(v)||v<=0||(i&&v>=reference.supports[i-1])))throw Error('AK support ordering needs review.');
   return {id:row.id,patch:Object.fromEntries([1,2,3,4,5].map((n,i)=>['s'+n,reference.supports[i]===undefined?'':String(reference.supports[i])]))};
 }
-function comparable(rows) {return JSON.stringify(rows.map(r=>({symbol:r.symbol,source:r.source,asOf:r.asOf,currency:r.currency,supportLevels:r.supportLevels,
+export function comparable(rows) {return JSON.stringify(rows.map(r=>({symbol:r.symbol,source:r.source,asOf:r.asOf,currency:r.currency,supportLevels:r.supportLevels,
   averageCost:r.averageCost??null,averageSellPrice:r.averageSellPrice??null,category:r.category??null,classification:r.classification??null,...Object.fromEntries(Object.keys(aliases).map(k=>[k,r[k]??null]))})).sort((a,b)=>(a.source+a.symbol).localeCompare(b.source+b.symbol)));}
 export async function readAkSources(settings,records,{fetch:fetchImpl=globalThis.fetch,now=new Date(),signal}={}) {
   const urls=normalizeAkSourceSettings(settings),old=previousAkRows(records),today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);

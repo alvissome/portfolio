@@ -1,3 +1,4 @@
+import {processPublishedTables} from './research-ak-published.mjs';
 import {IV_POLICY_VERSION} from '../../assets/valuation-settings.js';
 /** Personal-only research queue consumer. No alerts, email or trading actions. */
 import {randomUUID} from 'node:crypto';
@@ -87,6 +88,9 @@ async function main() {
     const snap = await ref.get();
     if (!snap.exists) continue;
     counters.portfolios++;
+    if (!dryRun && snap.data().akPublishedTableRequest?.id) {
+      await processPublishedTables(db, ref, snap.data().akPublishedTableRequest, FieldPath);
+    }
     const requests = prioritizeRequests(Object.entries(snap.data().researchBySecurity || {}).filter(([,record]) => needsProcessing(prepareValuationUpgrade(prepareSecRecovery(record, !!process.env.SEC_CONTACT_EMAIL)))));
     counters.pending += requests.length;
     for (const [symbol, observed] of requests) {
