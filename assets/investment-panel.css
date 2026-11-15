@@ -90,3 +90,7 @@
 .ic-command-toolbar>.category-controls{margin:0 0 0 auto;flex-wrap:nowrap;min-width:0;max-width:100%}
 .ic-command-toolbar>.category-controls label{min-width:0}
 @media(max-width:650px){.ic-command-toolbar>.category-controls{margin-left:0;flex-wrap:wrap}.ic-command-toolbar{gap:10px}.ic-command-toolbar>.category-controls select{max-width:100%}}
+
+/* Clipboard glyphs must not inherit the performance chart SVG minimum height. */
+.investment-panel .ic-copy-notion svg{display:block;flex:none;width:16px;height:16px;min-width:0;min-height:0;max-width:16px;max-height:16px}
+.ic-decision-table>tbody>tr[data-decision-row]>td:last-child{vertical-align:middle}
