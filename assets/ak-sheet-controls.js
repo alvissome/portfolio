@@ -24,10 +24,12 @@ export function createAkSheetControls(React){
           const date=status?.asOf??old.filter(r=>r.source===source.key).map(r=>r.asOf).sort().at(-1);
           const age=date?Math.floor((Date.now()-Date.parse(date))/86400000):null;
           const state={updated:'Updated',unchanged:'Same sheet date / values',unavailable:'Access or link needs attention',not_configured:'Link not configured'}[status?.status]??'Not checked';
+          const costWarning=status?.costHeaderFound===false&&['capital_gains','dividend','closed_positions'].includes(source.key)
+            ?' · '+(source.key==='closed_positions'?'Average sell price':'Average cost')+' column not recognized in this sheet': '';
           return h('div',{key:source.key,style:{margin:'9px 0'}},h('label',{style:{display:'block'}},`${source.label} sheet URL`,
             h('input',{'aria-label':`${source.label} sheet URL`,type:'url',value:urls[source.key]??'',disabled:busy,placeholder:'https://docs.google.com/spreadsheets/…',
               onChange:e=>{setDirty(true);setUrls(x=>({...x,[source.key]:e.target.value}));},style:{display:'block',width:'100%',maxWidth:'650px',fontSize:'11px',padding:'5px'}})),
-            h('small',null,`Sheet date: ${date??'not known'} · ${state}${age>45?' · Older than 45 days — check for a replacement sheet':''}`),
+            h('small',null,`Sheet date: ${date??'not known'} · ${state}${costWarning}${age>45?' · Older than 45 days — check for a replacement sheet':''}`),
             status?.message?h('small',{style:{display:'block'}},status.message):null,
             h('a',{href:source.portal,target:'_blank',rel:'noopener noreferrer',style:{fontSize:'11px',marginLeft:'8px'}},'Open UIP page'));
         }),
