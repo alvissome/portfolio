@@ -91,7 +91,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     if(!loaded||busy)throw Error('Wait for strategy data to finish loading or saving.');
     if(pendingCloud)throw Error('A newer CC plan was saved elsewhere. Your draft is preserved; review the cloud-change warning before saving.');
     busy=true;
-    try{await storage.save(next);if(alive){config=next;cloudSnapshot=JSON.stringify(next);draftDirty=false;onPlansChange?.(config.plans);notice='Saved to cloud. Preview only; no order or notification sent.';}}finally{busy=false;}
+    try{await storage.save(next);if(alive){config=next;cloudSnapshot=JSON.stringify(next);draftDirty=false;onPlansChange?.(config.plans);notice='Saved to cloud. Preview only; no order or notification sent.';}}catch(e){if(alive&&/unconfirmed|another tab|another action|changed in/i.test(e.message||'')){try{pendingCloud=await storage.readLatest?.();}catch{}cloudWarning();}throw e;}finally{busy=false;}
   }
   async function clearRebalancing(symbol){if(state.rebalancingSymbols?.[symbol]&&onRebalance){await onRebalance(symbol,false);state={...state,rebalancingSymbols:{...state.rebalancingSymbols,[symbol]:false}};}}
   function renderCashAllowance(model){
@@ -332,5 +332,5 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
   }
   render();
   reload();
-  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices,nextAdd=addWatchlist,nextRemove=removeWatchlist){addWatchlist=nextAdd;removeWatchlist=nextRemove;state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;render();},destroy(){alive=false;watchStop?.();root.removeEventListener('input',onDraftInput);root.removeEventListener('change',onDraftInput);root.innerHTML='';}};
+  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices,nextAdd=addWatchlist,nextRemove=removeWatchlist){addWatchlist=nextAdd;removeWatchlist=nextRemove;state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;if(!draftDirty||state.privacyMode)render();},destroy(){alive=false;watchStop?.();root.removeEventListener('input',onDraftInput);root.removeEventListener('change',onDraftInput);root.innerHTML='';}};
 }
