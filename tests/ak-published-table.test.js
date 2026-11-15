@@ -34,3 +34,15 @@ test('worker resolves a queued published history for exact tracked tickers',()=>
   const stale=reconcilePublished({...data,researchSheetSources:{}},job,{closed_positions:parsed},day);
   assert.deepEqual(stale.changed,{});assert.equal(stale.status.sources.closed_positions.status,'unavailable');
 });
+
+test('Sync queues a published page with a blocked CSV and keeps native edit links unavailable',async()=>{
+  const {createResearchController}=await import('../assets/research-client.js');
+  const writes=[];
+  const controller=createResearchController({load:async()=>({}),write:async patch=>writes.push(patch),
+    uuid:()=> 'test',sheetFetch:async()=>({ok:false,status:403})});
+  const status=await controller.syncAkSheets({closed_positions:link,capital_gains:'https://docs.google.com/spreadsheets/d/abcdefghijklmnopqrstuvwxyz/edit?rm=minimal'});
+  assert.equal(status.sources.closed_positions.status,'queued');
+  assert.equal(status.sources.capital_gains.status,'unavailable');
+  assert.deepEqual(Object.keys(writes.at(-1).akPublishedTableRequest.sources),['closed_positions']);
+  controller.close();
+});

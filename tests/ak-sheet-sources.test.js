@@ -112,7 +112,7 @@ test('generic dividend conservative/base labels do not assert an unverified DCF 
 test('one sync matches tracked holdings and watchlist rows and retains a blocked source',async()=>{
   const priority=url.replace('gid=123','gid=77');
   const controller=createResearchController({
-    load:async()=>({researchBySecurity:records,researchSheetSources:{capital_gains:url},
+    load:async()=>({researchBySecurity:records,researchSheetSources:{capital_gains:'https://docs.google.com/spreadsheets/d/ExampleSpreadsheetIdentifier000000/edit'},
       researchReferenceSnapshotMeta:{sources:{priority_watchlist:{url:priority}}}}),
     write:async()=>{}, now:()=>now.toISOString(),
     sheetFetch:async link=>new URL(link).searchParams.get('gid')==='77'
