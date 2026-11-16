@@ -54,8 +54,8 @@ export function createAkSheetControls(React) {
         (record.reference?.entries ?? []).filter(e=>e.source===key).map(e=>e.asOf));
       return [status?.sources?.[key]?.asOf,...dates].filter(Boolean).sort().at(-1);
     };
-    const settings = h('div',{className:'space-y-3'},
-      h('div',{className:'flex items-center justify-between gap-3'},
+    const settings = h('div',{className:'ak-settings space-y-3'},
+      h('div',{className:'ak-sync flex items-center justify-between gap-3'},
         h('button',{type:'button',className:buttonClass,disabled:busy||research.sheetSyncBusy||!research.hydrated||!!draft,
           onClick:async()=>{setMessage('');try {
             const result=await research.syncAkSheets();
@@ -65,12 +65,15 @@ export function createAkSheetControls(React) {
       h('div',{className:'space-y-2'},...AK_SOURCES.map(list=>{
         const checked=status?.sources?.[list.key],date=latestDate(list.key);
         const state={updated:'Updated',unchanged:'Checked · No changes',unavailable:'Refresh failed',queued:'Queued · Checking worksheet',not_configured:'Link missing'}[checked?.status] ?? (links[list.key]?'Ready to sync':'Link missing');
-        return h('div',{key:list.key,className:'flex items-center justify-between gap-3'},
-          h('div',null,h('div',{className:'text-sm text-gray-800'},list.label),
+        return h('div',{key:list.key,className:'ak-source'},
+          h('div',{className:'text-sm text-gray-800'},list.label),open(list.key,'Open sheet'),
+          h('div',{className:'ak-source-status'},
             h('p',{className:'text-xs text-gray-500',title:checked?.message ?? ''},state+(date?(checked?.status==='unavailable'?' · Last saved date ':checked?.dateBasis==='sale'?' · Latest imported sale ':' · Sheet dated ')+date:'')),
             ['queued','unavailable'].includes(checked?.status) && h('p',{className:'text-xs text-gray-500'},checked.message),
-            checked?.skippedRows>0 && h('p',{className:'text-xs text-gray-500'},checked.skippedRows+' rows omitted: check listing, currency or sale date.')),
-          open(list.key,'Open sheet'));
+            checked?.skippedRows>0 && h('details',{className:'ak-omissions text-xs'},
+              h('summary',null,checked.skippedRows+(checked.skippedRows===1?' row omitted':' rows omitted')),
+              checked.skippedRowDetails?.length ? h('ul',null,...checked.skippedRowDetails.map(({row,reason})=>
+                h('li',{key:row},'Row '+row+' · '+reason))) : h('p',null,'Sync AK sheets to load row numbers.'))));
       })),
       h('details',{className:sectionClass},h('summary',{className:summaryClass},'Edit sheet links'),
         h('div',{className:'space-y-3 mt-3'},...AK_SOURCES.map(list=>h('label',{key:list.key,className:labelClass},list.label,

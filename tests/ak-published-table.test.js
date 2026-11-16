@@ -14,9 +14,9 @@ test('only published links resolve to Google table pages and preserve the tab',(
 });
 test('public table cells preserve columns, line breaks and merged title spans',()=>{
   const merged={...el('td',text('Closed Positions')),attrs:[{name:'colspan',value:'2'}]};
-  const grid=tableGrid(el('html',el('table',el('tbody',el('tr',el('th',text('1')),merged),
+  const grid=tableGrid(el('html',el('table',el('tbody',el('tr',el('th',text('A'))),el('tr',el('th',text('2')),merged),
     el('tr',el('td',text('Average'),el('br'),text('Sell Price')),el('td',text('USD')))))));
-  assert.deepEqual(grid,[['Closed Positions',''],['Average Sell Price','USD']]);
+  assert.deepEqual(grid,[[],['Closed Positions',''],['Average Sell Price','USD']]);
 });
 test('published reader does not follow an external redirect',async()=>{
   let count=0;await assert.rejects(readPublishedTable('dividend',link,{fetchImpl:async()=>{

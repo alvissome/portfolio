@@ -99,3 +99,20 @@
 .investment-panel .ic-cloud-conflict{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:8px 0 14px;padding:11px 13px;border:1px solid #e6c98b;border-radius:8px;background:#fffaf0;color:#594011;font-size:12px;line-height:1.45}
 .investment-panel .ic-cloud-conflict strong{font-weight:700}
 .investment-panel .ic-cloud-conflict button{font-size:12px;font-weight:600;padding:6px 9px;border:1px solid #ba9752;border-radius:6px;background:white;color:#624619}
+
+.ak-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: .75rem;
+}
+.ak-source > a { white-space: nowrap; }
+.ak-source-status { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.ak-omissions summary { cursor: pointer; color: #1a3a5c; padding: .375rem 0; }
+.ak-omissions li { margin: .25rem 0; }
+@media (max-width: 540px) {
+  .ak-settings .ak-sync { flex-direction: column; align-items: flex-start; gap: .375rem; }
+  .ak-source { border-bottom: 1px solid #f3f4f6; padding-bottom: .375rem; }
+  .ak-source > a { padding: .375rem 0; }
+  .ak-settings input, .ak-settings select { min-width: 0; max-width: 100%; }
+}
