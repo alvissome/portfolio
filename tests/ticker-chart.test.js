@@ -10,7 +10,7 @@ test('chart periods count sessions and clamp calendar month boundaries',()=>{
 });
 test('shared ticker history is filled once, reused across tabs and retained on failed refresh',async()=>{
   const docs=new Map(),collection={doc:key=>({get:async()=>({data:()=>docs.get(key)}),set:async(v,options)=>docs.set(key,{...(options?.merge?docs.get(key):{}),...v})})};
-  const data={holdings:[{ticker:'MSFT',accountType:'Cash'}],watchlist:[{symbol:'MSFT'}]};
+  const data={holdings:{cashPosition:{ticker:'MSFT',accountType:'Cash'}},watchlist:[{symbol:'MSFT'}]};
   const history={instrument:{currency:'USD'},history:{source:'test'},bars:[{date:'2026-11-12',close:20}]};
   const fail=()=>{throw Error('Unexpected data call');};
   await refreshCharts(collection,data,new Map([['MSFT',history]]),fail,new Date('2026-11-13'));
