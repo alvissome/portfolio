@@ -116,3 +116,15 @@
   .ak-source > a { padding: .375rem 0; }
   .ak-settings input, .ak-settings select { min-width: 0; max-width: 100%; }
 }
+
+.ic-opportunity .ic-chart-button { background:transparent; border:1px solid #cbd5e1; border-radius:5px; color:#245578; font:inherit; font-size:14px; padding:1px 6px; vertical-align:middle; cursor:pointer; }
+.ticker-chart { position:fixed; inset:0; margin:auto; width:min(29rem,calc(100% - 1.5rem)); max-height:90dvh; overflow:auto; border:1px solid #dce2e8; border-radius:12px; padding:1rem; background:white; color:#19314a; box-shadow:0 12px 45px #17304730; }
+.ticker-chart::backdrop { background:#16283d66; }
+.ticker-chart header,.ticker-chart nav,.ticker-chart .chart-dates { display:flex; align-items:center; gap:.5rem; }
+.ticker-chart header,.ticker-chart .chart-dates { justify-content:space-between; }
+.ticker-chart button { padding:.35rem .7rem; border-radius:6px; cursor:pointer; }
+.ticker-chart button[aria-pressed=true] { background:#193a5c; color:white; }
+.ticker-chart p,.ticker-chart nav { margin:.5rem 0; }
+.ticker-chart svg,.ticker-chart input { width:100%; display:block; }
+.ticker-chart output,.ticker-chart small { display:block; margin-top:.35rem; }
+.ticker-chart small,.ticker-chart .chart-dates,.ticker-chart [data-status] { font-size:.78rem; color:#526175; }

@@ -39,6 +39,16 @@ export function createInvestmentStore({projectId,uid,getToken,fetch:request=glob
     return {strategy:decode(doc.fields?.settings?.mapValue?.fields?.investmentStrategy)||{},updateTime:doc.updateTime};
   };
   return {
+    async loadChart(symbol){
+      if(!/^[A-Z0-9][A-Z0-9.^=-]{0,29}$/i.test(symbol))throw Error('Invalid ticker.');
+      const url=endpoint.replace(/performance$/,'tickerChart-'+encodeURIComponent(symbol));
+      const response=await request(url,{headers:await headers(),cache:'no-store'});
+      if(response.status===404)return null;
+      if(!response.ok)throw Error('Price history read failed.');
+      const record=decode({mapValue:{fields:(await response.json()).fields}});
+      if(record.symbol!==symbol)throw Error('Unexpected listing.');
+      return record;
+    },
     async load(){
       if(busy)throw Error('Wait for the current save.');
       const cloud=await readCloud();
