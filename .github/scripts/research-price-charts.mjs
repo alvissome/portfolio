@@ -1,5 +1,5 @@
 const validSymbol=s=>typeof s==='string' && /^[A-Z0-9][A-Z0-9.^=-]{0,29}$/i.test(s);
-export async function refreshCharts(collection,data,reused,fetchHistory,now=new Date()){
+export async function refreshCharts(collection,data,reused,fetchHistory,now=new Date(),deadline=Infinity){
   const stored=Object.values(data.holdings||{});
   const holdings=stored.length?stored:Object.entries(data.classifications||{}).map(([ticker,fields])=>({...fields,ticker}));
   const symbols=[...new Set([...holdings.filter(h=>h.accountType==='Cash'&&!h.exited).map(h=>h.ticker),
@@ -11,7 +11,8 @@ export async function refreshCharts(collection,data,reused,fetchHistory,now=new 
   if(!due.length)return 0;
   const nextCheck=Object.fromEntries(symbols.filter(s=>previous[s]).map(s=>[s,previous[s]]));
   let updated=0;
-  for(const symbol of due.slice(0,4)){
+  for(const symbol of due){
+    if(Date.now()>=deadline)break;
     const history=reused.get(symbol) || await fetchHistory(symbol);
     const bars=history?.bars?.filter(b=>Date.parse(b.date)>=+now-200*86400000);
     const ref=collection.doc('tickerChart-'+symbol);
