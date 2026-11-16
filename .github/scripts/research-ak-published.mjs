@@ -27,6 +27,7 @@ export function tableGrid(document) {
   const grid=[];
   for(const row of rows){
     const heading=row.childNodes.find(node=>node.tagName==="th");
+    if(heading?.attrs?.some(a=>a.name==="class" && a.value.split(/\s+/).includes("freezebar-cell")))continue;
     const label=heading && cellText(heading).trim();
     const numbered=label && /^\d+$/.test(label);
     if(!numbered && !row.childNodes.some(node=>node.tagName==="td"))continue;
