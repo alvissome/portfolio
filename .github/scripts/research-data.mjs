@@ -371,17 +371,7 @@ export async function fetchResearchData(symbol, {fetch:fetchImpl = globalThis.fe
     safeJSON(fetchImpl, `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&period1=${period1}&period2=${chartPeriod2}&events=div%2Csplits`, 'YAHOO_HISTORY', {'User-Agent':GENERIC_RESEARCH_USER_AGENT}),
     safeJSON(fetchImpl, `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}?type=${types.join(',')}&period1=${period1}&period2=${period2}`, 'YAHOO_FUNDAMENTALS', {'User-Agent':GENERIC_RESEARCH_USER_AGENT}),
   ]);
-  let history = null;
-  if (chart.data) {try {history = parseYahooChart(chart.data,symbol,{now,asOf});} catch {warnings.push('YAHOO_HISTORY_INVALID');}}
-  else warnings.push(chart.code);
-  if ((!history || history.bars.length < 2) && twelveDataKey) {
-    const url = new URL('https://api.twelvedata.com/time_series');
-    for (const [key,value] of Object.entries({symbol:tdSymbol(symbol),interval:'1day',outputsize:'5000',
-      adjust:'splits',start_date:dayString(period1*1000),end_date:dayString(cutoffMs),apikey:twelveDataKey})) url.searchParams.set(key,value);
-    const r=await safeJSON(fetchImpl,url.toString(),'TWELVE_HISTORY');
-    if(r.data){try{history=parseTwelveDataHistory(r.data,symbol,{now,asOf});}catch{warnings.push('TWELVE_HISTORY_INVALID');}}
-    else warnings.push(r.code);
-  }
+  const history=await readHistory(chart,symbol,{fetchImpl,now,asOf,period1,cutoffMs,twelveDataKey,warnings,outputsize:5000});
   let fundamentals = facts.data ? parseYahooFundamentals(facts.data,symbol,{now,asOf,priceCurrency:history?.instrument.currency}) : null;
   if(facts.code)warnings.push(facts.code);
   let secName = null;
@@ -409,4 +399,26 @@ export async function fetchResearchData(symbol, {fetch:fetchImpl = globalThis.fe
   }
   return {instrument,bars:history?.bars ?? [],history:history?.history ?? null,fundamentals,
     dividendPerShareTTM:history?.dividendPerShareTTM ?? null,warnings:[...new Set(warnings.filter(Boolean))]};
+}
+
+async function readHistory(chart,symbol,{fetchImpl,now,asOf,period1,cutoffMs,twelveDataKey,warnings,outputsize}) {
+  let history = null;
+  if (chart.data) {try {history = parseYahooChart(chart.data,symbol,{now,asOf});} catch {warnings.push('YAHOO_HISTORY_INVALID');}}
+  else warnings.push(chart.code);
+  if ((!history || history.bars.length < 2) && twelveDataKey) {
+    const url = new URL('https://api.twelvedata.com/time_series');
+    for (const [key,value] of Object.entries({symbol:tdSymbol(symbol),interval:'1day',outputsize:String(outputsize),
+      adjust:'splits',start_date:dayString(period1*1000),end_date:dayString(cutoffMs),apikey:twelveDataKey})) url.searchParams.set(key,value);
+    const r=await safeJSON(fetchImpl,url.toString(),'TWELVE_HISTORY');
+    if(r.data){try{history=parseTwelveDataHistory(r.data,symbol,{now,asOf});}catch{warnings.push('TWELVE_HISTORY_INVALID');}}
+    else warnings.push(r.code);
+  }
+  return history;
+}
+
+export async function fetchChartHistory(symbol,{fetch:fetchImpl=globalThis.fetch,now=new Date(),twelveDataKey}={}) {
+  validateSymbol(symbol);
+  const cutoffMs=+now,period1=Math.floor((cutoffMs-200*DAY)/1000);
+  const chart=await safeJSON(fetchImpl,`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&period1=${period1}&period2=${Math.floor(cutoffMs/1000)+1}`,'YAHOO_HISTORY',{'User-Agent':GENERIC_RESEARCH_USER_AGENT});
+  return readHistory(chart,symbol,{fetchImpl,now,period1,cutoffMs,twelveDataKey,warnings:[],outputsize:200});
 }

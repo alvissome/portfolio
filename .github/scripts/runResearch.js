@@ -1,10 +1,11 @@
+import {refreshCharts} from './research-price-charts.mjs';
 import {processPublishedTables} from './research-ak-published.mjs';
 import {IV_POLICY_VERSION} from '../../assets/valuation-settings.js';
 /** Personal-only research queue consumer. No alerts, email or trading actions. */
 import {randomUUID} from 'node:crypto';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {fetchResearchData} from './research-data.mjs';
+import {fetchChartHistory,fetchResearchData} from './research-data.mjs';
 import {buildSecUserAgent, secContactConfigurationMessage} from './research-http.mjs';
 import {processResearchRequest, compareResearch, needsProcessing, sameRequest, resolveReference, prioritizeRequests} from './research-engine.mjs';
 
@@ -94,6 +95,7 @@ async function main() {
     if (!dryRun && snap.data().akPublishedTableRequest?.id) {
       await processPublishedTables(db, ref, snap.data().akPublishedTableRequest, FieldPath, getSheetsToken);
     }
+    const researchHistories=new Map();
     const requests = prioritizeRequests(Object.entries(snap.data().researchBySecurity || {}).filter(([,record]) => needsProcessing(prepareValuationUpgrade(prepareSecRecovery(record, !!process.env.SEC_CONTACT_EMAIL)))));
     counters.pending += requests.length;
     for (const [symbol, observed] of requests) {
@@ -126,9 +128,13 @@ async function main() {
       });
       try {
         const output = await processResearchRequest(claimed, {
-          fetchData: (ticker, options) => fetchResearchData(ticker, {...options,
+          fetchData: async (ticker, options) => {
+            const result=await fetchResearchData(ticker, {...options,
             twelveDataKey: process.env.TWELVE_DATA_KEY,
-            secUserAgent}),
+            secUserAgent});
+            if(options.asOf===new Date().toISOString().slice(0,10) && result.bars.length)researchHistories.set(ticker,result);
+            return result;
+          },
           progress: persist,
         });
         if (!await persist(output)) {counters.staleDiscarded++; continue;}
@@ -149,6 +155,10 @@ async function main() {
         await persist({...claimed, phase: 'finished', finishedAt: new Date().toISOString(), iv: previous('iv'), supports: previous('supports')});
         counters.failed++;
       }
+    }
+    if(!dryRun && Date.now()-runStartedAt<RESEARCH_CLAIM_WINDOW_MS) {
+      await refreshCharts(user.collection("portfolio"),snap.data(),researchHistories,
+        symbol=>fetchChartHistory(symbol,{twelveDataKey:process.env.TWELVE_DATA_KEY}));
     }
   }
   console.log(JSON.stringify({mode: dryRun ? 'dry-run' : 'process', ...counters}));
