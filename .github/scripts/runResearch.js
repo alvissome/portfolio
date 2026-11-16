@@ -87,6 +87,12 @@ async function main() {
   const getSheetsToken=()=>sheetsAuth.getAccessToken();
   const userRefs = await db.collection('users').listDocuments();
   const counters = {chartsUpdated:0, portfolios: 0, pending: 0, claimed: 0, completed: 0, partial: 0, failed: 0, staleDiscarded: 0, ivMethods: {}, ivUnavailable: {}};
+  let nextFallback=0;
+  const paceFallback=async()=>{
+    const delay=nextFallback-Date.now();
+    if(delay>0)await new Promise(resolve=>setTimeout(resolve,delay));
+    nextFallback=Date.now()+8500;
+  };
   for (const user of userRefs) {
     const ref = user.collection('portfolio').doc('data');
     const snap = await ref.get();
@@ -158,7 +164,7 @@ async function main() {
     }
     if(!dryRun && Date.now()-runStartedAt<RESEARCH_CLAIM_WINDOW_MS) {
       counters.chartsUpdated+=await refreshCharts(user.collection("portfolio"),snap.data(),researchHistories,
-        symbol=>fetchChartHistory(symbol,{twelveDataKey:process.env.TWELVE_DATA_KEY}));
+        symbol=>fetchChartHistory(symbol,{twelveDataKey:process.env.TWELVE_DATA_KEY,paceFallback}),new Date(),runStartedAt+12*60*1000);
     }
   }
   console.log(JSON.stringify({mode: dryRun ? 'dry-run' : 'process', ...counters}));

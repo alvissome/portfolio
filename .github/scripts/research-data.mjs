@@ -401,11 +401,12 @@ export async function fetchResearchData(symbol, {fetch:fetchImpl = globalThis.fe
     dividendPerShareTTM:history?.dividendPerShareTTM ?? null,warnings:[...new Set(warnings.filter(Boolean))]};
 }
 
-async function readHistory(chart,symbol,{fetchImpl,now,asOf,period1,cutoffMs,twelveDataKey,warnings,outputsize}) {
+async function readHistory(chart,symbol,{fetchImpl,now,asOf,period1,cutoffMs,twelveDataKey,warnings,outputsize,paceFallback}) {
   let history = null;
   if (chart.data) {try {history = parseYahooChart(chart.data,symbol,{now,asOf});} catch {warnings.push('YAHOO_HISTORY_INVALID');}}
   else warnings.push(chart.code);
   if ((!history || history.bars.length < 2) && twelveDataKey) {
+    await paceFallback?.();
     const url = new URL('https://api.twelvedata.com/time_series');
     for (const [key,value] of Object.entries({symbol:tdSymbol(symbol),interval:'1day',outputsize:String(outputsize),
       adjust:'splits',start_date:dayString(period1*1000),end_date:dayString(cutoffMs),apikey:twelveDataKey})) url.searchParams.set(key,value);
@@ -416,9 +417,9 @@ async function readHistory(chart,symbol,{fetchImpl,now,asOf,period1,cutoffMs,twe
   return history;
 }
 
-export async function fetchChartHistory(symbol,{fetch:fetchImpl=globalThis.fetch,now=new Date(),twelveDataKey}={}) {
+export async function fetchChartHistory(symbol,{fetch:fetchImpl=globalThis.fetch,now=new Date(),twelveDataKey,paceFallback}={}) {
   validateSymbol(symbol);
   const cutoffMs=+now,period1=Math.floor((cutoffMs-200*DAY)/1000);
   const chart=await safeJSON(fetchImpl,`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&period1=${period1}&period2=${Math.floor(cutoffMs/1000)+1}`,'YAHOO_HISTORY',{'User-Agent':GENERIC_RESEARCH_USER_AGENT});
-  return readHistory(chart,symbol,{fetchImpl,now,period1,cutoffMs,twelveDataKey,warnings:[],outputsize:200});
+  return readHistory(chart,symbol,{fetchImpl,now,period1,cutoffMs,twelveDataKey,warnings:[],outputsize:200,paceFallback});
 }
