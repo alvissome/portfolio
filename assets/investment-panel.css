@@ -37,8 +37,8 @@
 .ic-plan-research{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:10px;align-items:end}
 .ic-plan-research>p{grid-column:1/-1}
 .investment-panel .ic-plan-research>label{width:100%;min-width:0}
-.ic-revisit-picker{display:flex;gap:5px;align-items:center;min-width:0}
-.investment-panel form.ic-compact-plan .ic-revisit-picker input{flex:1;min-width:0;width:0}
+.ic-revisit-picker{display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-width:0;font-size:12px}
+.investment-panel form.ic-compact-plan .ic-revisit-picker input{flex:1 0 112px;min-width:min(112px,100%);max-width:100%}
 .investment-panel .ic-revisit-picker button{font-size:11px;padding:7px 6px;flex:0 0 auto}
 .ic-support-box{padding:9px}
 .ic-support-box h5{margin-bottom:5px;font-size:13px}
