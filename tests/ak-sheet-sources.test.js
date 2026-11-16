@@ -137,5 +137,6 @@ test('closed sale history uses individual sale dates and resolves repeated dispo
   const result=parseAkSheet(sheet,'closed_positions',{today:'2026-11-15'});
   assert.equal(result.asOf,'2026-11-02');
   assert.equal(result.skippedRows,1);
+  assert.deepEqual(result.skippedRowDetails,[{row:7,reason:"Unrecognized listing and currency"}]);
   assert.deepEqual(result.rows.map(r=>[r.symbol,r.asOf,r.averageSellPrice]),[['AAA','2026-11-01',14],['BBB','2026-11-02',null]]);
 });

@@ -24,15 +24,26 @@ export function tableGrid(document) {
   if (!table) throw Error('The published page has no worksheet table.');
   const rows = descendants(table,'tr');
   if (rows.length > 2000) throw Error('The published table exceeds the supported size.');
-  return rows.map(row=>{
+  const grid=[];
+  for(const row of rows){
+    const heading=row.childNodes.find(node=>node.tagName==="th");
+    const label=heading && cellText(heading).trim();
+    const numbered=label && /^\d+$/.test(label);
+    if(!numbered && !row.childNodes.some(node=>node.tagName==="td"))continue;
+    if(numbered){
+      const number=Number(label);
+      if(number<=grid.length || number>2000)throw Error("Unsupported worksheet row number.");
+      while(grid.length<number-1)grid.push([]);
+    }
     const cells=[];
     for (const cell of row.childNodes.filter(node=>node.tagName==='td')) {
       const span=Number(cell.attrs?.find(a=>a.name==='colspan')?.value ?? 1);
       if (!Number.isInteger(span)||span<1||span+cells.length>80) throw Error('Unsupported table width.');
       cells.push(cellText(cell).trim(),...Array(span-1).fill(''));
     }
-    return cells;
-  });
+    grid.push(cells);
+  }
+  return grid;
 }
 export async function readPublishedTable(key, link, {fetchImpl=fetch, now=new Date()}={}) {
   const start = publishedTableUrl(link);
@@ -115,7 +126,7 @@ export function reconcilePublished(data, job, results, finishedAt) {
     const old=previous.filter(row=>row.source===key && tracked.has(row.symbol));
     item.status=comparable(rows)===comparable(old)?'unchanged':'updated';
     Object.assign(item,{asOf:result.asOf,costHeaderFound:result.costHeaderFound,checkedAt:finishedAt,
-      dateBasis:result.dateBasis??'sheet',skippedRows:result.skippedRows??0,message:null,readVia:result.readVia??'published_table'});
+      dateBasis:result.dateBasis??'sheet',skippedRows:result.skippedRows??0,skippedRowDetails:result.skippedRowDetails??[],message:null,readVia:result.readVia??'published_table'});
     for(const row of rows) matched.add(row.symbol);
     bySource.set(key,new Map(rows.map(row=>[row.symbol,row])));
   }
