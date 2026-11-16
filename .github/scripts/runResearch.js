@@ -86,7 +86,7 @@ async function main() {
   const sheetsAuth=new GoogleAuth({credentials:serviceAccount,scopes:['https://www.googleapis.com/auth/spreadsheets.readonly']});
   const getSheetsToken=()=>sheetsAuth.getAccessToken();
   const userRefs = await db.collection('users').listDocuments();
-  const counters = {portfolios: 0, pending: 0, claimed: 0, completed: 0, partial: 0, failed: 0, staleDiscarded: 0, ivMethods: {}, ivUnavailable: {}};
+  const counters = {chartsUpdated:0, portfolios: 0, pending: 0, claimed: 0, completed: 0, partial: 0, failed: 0, staleDiscarded: 0, ivMethods: {}, ivUnavailable: {}};
   for (const user of userRefs) {
     const ref = user.collection('portfolio').doc('data');
     const snap = await ref.get();
@@ -157,7 +157,7 @@ async function main() {
       }
     }
     if(!dryRun && Date.now()-runStartedAt<RESEARCH_CLAIM_WINDOW_MS) {
-      await refreshCharts(user.collection("portfolio"),snap.data(),researchHistories,
+      counters.chartsUpdated+=await refreshCharts(user.collection("portfolio"),snap.data(),researchHistories,
         symbol=>fetchChartHistory(symbol,{twelveDataKey:process.env.TWELVE_DATA_KEY}));
     }
   }
