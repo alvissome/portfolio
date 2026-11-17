@@ -146,3 +146,9 @@ test('unresolved delivery failures stay visible after subsequent quiet checks',(
   const r=outstandingDelivery([{status:'needs_review'},{status:'blocked'},{status:'accepted'}]);assert.equal(r.count,2);assert.match(r.message,/needs review/);
   assert.match(outstandingDelivery([{status:'blocked'}]).message,/blocked/);
 });
+
+test('market callout names all three trends and explains alignment, individual slopes and peak',()=>{
+ const html=renderMarketCallout(context(),{now});
+ for(const text of ['Short:','Medium:','Long:','Short-term','Medium-term','Long-term','20 EMA above 40 EMA','50 SMA above 150 SMA','200 SMA','over 5 sessions','crossover alone','52-week closing peak'])assert.ok(html.includes(text),text);
+ assert.match(html,/<details/);
+});

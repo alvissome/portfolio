@@ -35,10 +35,20 @@ export function marketContextFresh(context,now=Date.now()){
 export const marketSignature=c=>[c.short,c.medium,c.long,c.priceVs200].join('|');
 export function marketText(context,now=Date.now()){
   if(!marketContextFresh(context,now))return 'SPX context unavailable or stale';
-  return `SPX ${MARKET_LABELS[context.medium]} · short ${MARKET_LABELS[context.short].toLowerCase()} · 200 SMA: ${context.priceVs200}, ${context.slopes.sma200>0?'rising':context.slopes.sma200<0?'falling':'flat'} · ${context.drawdownPct.toFixed(1)}% below 52-week closing peak · ${context.date} close`;
+  return `SPX · Short: ${MARKET_LABELS[context.short]} · Medium: ${MARKET_LABELS[context.medium]} · Long: ${MARKET_LABELS[context.long]} · ${context.drawdownPct.toFixed(1)}% below 52-week closing peak · ${context.date} close`;
 }
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function renderMarketCallout(context,{now=Date.now()}={}){
   const fresh=marketContextFresh(context,now);
-  return `<div class="ic-market-context ic-market-${fresh?context.medium:'unavailable'}" role="status" title="Daily completed SPX sessions. 20/40 EMA and 50/150 SMA need both slopes to confirm over five sessions. 200 SMA combines price position and its slope. Peak is the highest close over 52 weeks. These slope settings are implementation choices, not an exact reproduction of AK's discretionary judgment."><strong>Market context</strong><span>${esc(marketText(context,now))}</span></div>`;
+  const direction=n=>n>0?'rising':n<0?'falling':'flat';
+  const value=n=>Number.isFinite(n)?n.toLocaleString('en-SG',{maximumFractionDigits:2}):'—';
+  const change=n=>Number.isFinite(n)?`${n>=0?'+':''}${n.toFixed(2)}%`:'—';
+  const relation=(a,b)=>a>b?'above':a<b?'below':'equal to';
+  const average=(label,key)=>`${label} ${value(context.average?.[key])} · ${direction(context.slopes[key])} (${change(context.slopes[key])} over 5 sessions)`;
+  const cards=fresh?[
+    ['Short-term','short',`20 EMA ${relation(context.average?.ema20,context.average?.ema40)} 40 EMA`,average('20 EMA','ema20'),average('40 EMA','ema40'),'Bullish: 20 EMA above 40 EMA and both rising. Bearish: 20 EMA below 40 EMA and both falling.'],
+    ['Medium-term','medium',`50 SMA ${relation(context.average?.sma50,context.average?.sma150)} 150 SMA`,average('50 SMA','sma50'),average('150 SMA','sma150'),'Bullish: 50 SMA above 150 SMA and both rising. Bearish: 50 SMA below 150 SMA and both falling.'],
+    ['Long-term','long',`SPX close ${value(context.close)} ${esc(context.priceVs200)} 200 SMA`,average('200 SMA','sma200'),'','Bullish: close above a rising 200 SMA. Bearish: close below a falling 200 SMA.']
+  ].map(([label,key,position,line1,line2,rule])=>`<article><h4>${label} <span>${esc(MARKET_LABELS[context[key]])}</span></h4><p><strong>${esc(position)}</strong></p><p>${esc(line1)}${line2?'<br>'+esc(line2):''}</p><p>${rule}</p></article>`).join(''):'';
+  return `<section class="ic-market-block"><div class="ic-market-context ic-market-${fresh?context.medium:'unavailable'}" role="status"><strong>Market context</strong><span>${esc(marketText(context,now))}</span></div>${fresh?`<details class="ic-market-details"><summary>How to read these trends · averages, slopes &amp; peak</summary><div class="ic-market-trends">${cards}</div><p>Daily completed closes. Slope compares each average with its value five completed trading sessions earlier. “Awaiting slope” means the averages or price are aligned, but the required slopes have not confirmed; a crossover alone does not qualify. These exact slope filters are our implementation choices, including the stricter 20/40 rule, rather than a universal AK requirement.</p><p>SPX close: <strong>${value(context.close)}</strong> · 52-week closing peak: <strong>${value(context.peak.price)}</strong> on ${esc(context.peak.date)} · below peak: <strong>${context.drawdownPct.toFixed(2)}%</strong>. Data as of ${esc(context.date)} completed close. Source: ${esc(context.source)}.</p></details>`:''}</section>`;
 }
