@@ -8,7 +8,7 @@ import {money,amount,quantityText} from './investment-format.js?v=compact-price-
 import {recordPlanReview,companyDecisionText,NOTION_REVIEW_URL} from './investment-review.js?v=decision-tools-20261115';
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=redistribution-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
-import {fundingSignature,strategyFunding,createPurchasePlan,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
+import {fundingSignature,strategyFunding,createPurchasePlan,pricedFill,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
 import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-clarity-20261115';
 import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=compact-toolbar-20261115';
 export {resolvedCompany} from './investment-command-centre.js?v=plan-clarity-20261115';
@@ -288,11 +288,21 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       fresh.stages=fresh.stages.map(s=>s.key===execution.stage.key?{...s,entryPrice:execution.entry,purchaseQuantity:execution.units,purchaseBudget:s.spent+Math.min(execution.capacity,Math.ceil((execution.spend-1e-9)*100)/100)}:s);
       await save(recordPlanReview(config,fresh,{id:crypto.randomUUID(),now:new Date().toISOString(),holding:funding.byCompany[symbol]??0,base:funding.base,shares:c.shares}));await clearRebalancing(symbol);delete draftEdits[symbol];
     });
+    const executionFor=(fd,form)=>pricedFill({...Object.fromEntries(fd),currency:form.querySelector('[data-fill-preview]').dataset.currency});
+    root.querySelectorAll('[data-fill-preview]').forEach(output=>{
+      const form=output.closest('form');
+      form.addEventListener('input',()=>{
+        try{
+          const fill=executionFor(new FormData(form),form),total=Number(output.dataset.spent)+fill.amount;
+          output.textContent='This fill '+show(fill.amount)+' · Total '+show(total)+(output.dataset.budget?' of '+show(Number(output.dataset.budget)):'');
+        }catch{output.textContent='';}
+      });
+    });
     root.querySelectorAll('[data-fill]').forEach(form=>form.onsubmit=action(async(fd,form)=>{
       if(fd.get('date')>today())throw Error('A fill cannot be dated in the future.');
       const symbol=form.dataset.fill;
       if(Object.values(config.decisions||{}).some(d=>d.status==='ordered'&&d.symbol===symbol&&d.stageId===form.dataset.stage))throw Error('Record this fill through the pending order in My decisions so its reservation is reconciled.');
-      const next=recordStageCashFill(config,symbol,form.dataset.stage,{spent:fd.get('spent'),completed:fd.get('completed')==='on',date:fd.get('date')},{id:crypto.randomUUID(),now:new Date().toISOString(),state});
+      const next=recordStageCashFill(config,symbol,form.dataset.stage,{execution:executionFor(fd,form),completed:fd.get('completed')==='on',date:fd.get('date')},{id:crypto.randomUUID(),now:new Date().toISOString(),state});
       await save(next);
       notice='Fill saved. CC cash available for other buys is reduced; StocksCafe holdings, cash balances and ledger are unchanged.';
     }));
@@ -333,7 +343,8 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       error='';try{await save(settleOrder(config,button.dataset.cancelOrder,{kind:'cancelled',now:new Date().toISOString(),today:today()}));notice='Cancellation recorded; the reservation is released. No broker order was cancelled by this application.';}catch(e){error=e.message;}render();
     });
     root.querySelectorAll('[data-settle-order]').forEach(form=>form.onsubmit=action(async(fd,form)=>{
-      await save(settleOrder(config,form.dataset.settleOrder,{kind:'filled',spent:fd.get('spent'),completed:fd.get('completed')==='on',date:fd.get('date'),now:new Date().toISOString(),today:today(),cashBasis:cashImportBasis(state),cashId:crypto.randomUUID()}));
+      const execution=executionFor(fd,form);
+      await save(settleOrder(config,form.dataset.settleOrder,{kind:'filled',spent:execution.amount,execution,completed:fd.get('completed')==='on',date:fd.get('date'),now:new Date().toISOString(),today:today(),cashBasis:cashImportBasis(state),cashId:crypto.randomUUID()}));
       notice='Final fill recorded. The reservation is replaced by cash actually used. CC can size other buys; StocksCafe remains the master record.';
     }));
     if(popup&&addDialog){addDialog.querySelector('[name="ticker"]').value=popup.ticker;addDialog.querySelector('[name="category"]').value=popup.category;if(addDialog.showModal)addDialog.showModal();else addDialog.setAttribute('open','');if(error){const message=root.ownerDocument.createElement('p');message.setAttribute('role','alert');message.className='pf-error';message.textContent=error;addDialog.querySelector('form').prepend(message);}addDialog.querySelector(popup.focus==='category'?'[name="category"]':'[name="ticker"]').focus();}

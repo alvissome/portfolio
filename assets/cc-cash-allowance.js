@@ -28,6 +28,7 @@ export function cashUseCanBeIncluded(entry,state){
 export function recordStageCashFill(config,symbol,stageId,fill,{id,now,state}){
  const previous=config.plans[symbol],stage=previous?.stages.find(s=>s.id===stageId);
  if(!stage)throw Error('Purchase stage is missing.');
+ if(fill.execution)fill={...fill,spent:Math.round((stage.spent+fill.execution.amount)*100)/100};
  const plan=recordStageFill(previous,stageId,fill),delta=Number(fill.spent)-stage.spent;
  const next={...config,plans:{...config.plans,[symbol]:plan}};
  return delta>0?recordCashUse(next,{id,symbol,amount:delta,date:fill.date,now,basis:cashImportBasis(state),stageId}):next;

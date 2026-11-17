@@ -134,3 +134,13 @@
 .ticker-chart svg,.ticker-chart input { width:100%; display:block; }
 .ticker-chart output,.ticker-chart small { display:block; margin-top:.35rem; }
 .ticker-chart small,.ticker-chart .chart-dates,.ticker-chart [data-status] { font-size:.78rem; color:#526175; }
+
+.ic-decision-table thead th:first-child,
+.ic-decision-table tr[data-decision-row] > td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: white;
+  box-shadow: 1px 0 0 #dce4ec;
+}
+.ic-decision-table thead th:first-child { background: #f8fafc; z-index: 2; }

@@ -129,7 +129,7 @@ export function addDecision(config,row,{kind,id,now,until,amount,note='',today=S
   }
   return {...config,decisionSequence:sequence,decisions:{...config.decisions,[id]:record}};
 }
-export function settleOrder(config,id,{kind,spent,completed=false,date:fillDate,now,today=String(now||'').slice(0,10),cashBasis,cashId}={}){
+export function settleOrder(config,id,{kind,spent,execution,completed=false,date:fillDate,now,today=String(now||'').slice(0,10),cashBasis,cashId}={}){
   const order=config.decisions?.[id];if(!order||order.status!=='ordered')throw Error('This pending order has already been reconciled.');
   if(!['cancelled','filled'].includes(kind))throw Error('Choose cancel or record final fill.');
   const next={...order,status:kind,reserved:0,updatedAt:now};
@@ -139,7 +139,7 @@ export function settleOrder(config,id,{kind,spent,completed=false,date:fillDate,
     const plan=plans?.[order.symbol];if(!plan||plan.id!==order.planId)throw Error('The original purchase plan must be recovered before recording this fill.');
     const active=plan.stages.find(s=>s.id===order.stageId),archived=plan.archivedStages?.find(s=>s.id===order.stageId),stage=active||archived;
     if(!stage)throw Error('The original purchase stage must be recovered before recording this fill.');
-    const updated=recordStageFill({...plan,stages:[stage]},stage.id,{spent:stage.spent+Number(spent),completed:stage.completed||completed,date:fillDate}).stages[0];
+    const updated=recordStageFill({...plan,stages:[stage]},stage.id,{spent:stage.spent+Number(spent),execution,completed:stage.completed||completed,date:fillDate}).stages[0];
     const changed={...plan,...(active?{stages:plan.stages.map(s=>s.id===stage.id?updated:s)}:{archivedStages:plan.archivedStages.map(s=>s.id===stage.id?updated:s)})};
     plans={...plans,[order.symbol]:changed};funding=cashBasis?funding:{...funding,confirmed:false};
     next.actualSpend=Number(spent);next.fillDate=fillDate;next.stageCompleted=updated.completed;
