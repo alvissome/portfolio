@@ -116,3 +116,23 @@ test('compact cards combine weights, omit repeated base and include the followin
  const sorted=renderCommandCentre(m,{show:String,today,filter:'all',categorySort:'desc'});assert.ok(sorted.indexOf('data-opportunity="BBB"')<sorted.indexOf('data-opportunity="AAA"'));
  s.holdings=[{ticker:'J69U',exited:true,accountType:'Cash',shares:0}];s.watchlist=[];s.strategyCategories={J69U:'anchor'};const inactive=model(s,c);assert.ok(!inactive.rows.some(r=>r.symbol==='J69U'));assert.equal(inactive.inactiveCategories[0].category,'selective');
 });
+
+test('My decisions sizes an unfilled stage and a subsequent stage while funding awaits review',()=>{
+ const s=state(),c=config(s);
+ c.funding.confirmed=false;
+ const anchor=c.plans.AAA;
+ anchor.stages[1].completed=true;
+ anchor.stages[1].spent=1900;
+ anchor.stages[2].spent=100;
+ const core=c.plans.BBB;
+ core.plannedEntryKey=core.stages[1].key;
+ core.lotSize=5;
+ const m=model(s,c);
+ const [a,b]=m.rows;
+ assert.deepEqual([a.nextEntry,a.nextUnits,a.quantityEstimate],[95,15,true]);
+ assert.deepEqual([b.nextEntry,b.nextUnits,b.quantityEstimate],[90,10,true]);
+ for(const row of [a,b])assert.equal(row.result.amount,null);
+ const html=renderCommandCentre(m,{show:String,today,filter:'decisions'});
+ assert.match(html,/≈ 15/);
+ assert.match(html,/≈ 10/);
+});
