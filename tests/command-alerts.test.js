@@ -6,7 +6,7 @@ import {alertUniverse,evaluateTicker,evaluateMarket,levelKey} from '../.github/s
 import {parseAlertQuote,parseNews,fetchAlertNews,fetchSPX} from '../.github/scripts/alert-data.mjs';
 import {renderAlertEmail} from '../.github/scripts/alert-email.mjs';
 import {deliveryDecision,sendAlertEmail,SAFE_RETRY_MS} from '../.github/scripts/alert-delivery.mjs';
-import {validateAlertEnvironment,eventIdentity} from '../.github/scripts/runCommandAlerts.mjs';
+import {validateAlertEnvironment,eventIdentity,alertRunMode,outstandingDelivery} from '../.github/scripts/runCommandAlerts.mjs';
 const now=Date.parse('2026-11-17T10:00:00Z');
 const bars=values=>values.map((close,i)=>({date:new Date(Date.parse('2026-11-16')-(values.length-1-i)*86400000).toISOString().slice(0,10),close}));
 const context=()=>calculateMarketContext(bars(Array.from({length:400},(_,i)=>100+i)),{checkedAt:new Date(now).toISOString()});
@@ -137,4 +137,12 @@ test('environment is personal-only, scopes to one owner, and never borrows legac
 test('new worker preserves the private data boundary and default-off delivery',async()=>{
   const worker=await readFile(new URL('../.github/scripts/runCommandAlerts.mjs',import.meta.url),'utf8'),workflow=await readFile(new URL('../.github/workflows/command-centre-alerts.yml',import.meta.url),'utf8');
   assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/13 \* \* \* \*/);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
+});
+test('the alert worker requires an explicit, unambiguous execution mode',()=>{
+  assert.equal(alertRunMode(['node','script','--dry-run']),'dry-run');assert.equal(alertRunMode(['node','script','--run']),'run');assert.throws(()=>alertRunMode(['node','script']),/EXPLICIT/);assert.throws(()=>alertRunMode(['--run','--dry-run']),/SELECT_ONE/);
+});
+test('unresolved delivery failures stay visible after subsequent quiet checks',()=>{
+  assert.deepEqual(outstandingDelivery([{status:'accepted'}]),{count:0,message:''});
+  const r=outstandingDelivery([{status:'needs_review'},{status:'blocked'},{status:'accepted'}]);assert.equal(r.count,2);assert.match(r.message,/needs review/);
+  assert.match(outstandingDelivery([{status:'blocked'}]).message,/blocked/);
 });

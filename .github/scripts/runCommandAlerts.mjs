@@ -21,8 +21,18 @@ export function eventIdentity(event){
   return event.type==='daily_drop'?[event.type,event.symbol,event.quote.date,event.tier]:event.type==='market_trend'?[event.type,event.context.date,event.before,event.context.short,event.context.medium,event.context.long,event.context.priceVs200]:[event.type,event.symbol,event.currency,event.levels.map(l=>l.price).sort((a,b)=>b-a)];
 }
 const strategyOf=snap=>snap.data()?.settings?.investmentStrategy||{};
+export function alertRunMode(argv){
+  if(argv.includes('--dry-run')&&argv.includes('--run'))throw Error('SELECT_ONE_ALERT_MODE');
+  if(argv.includes('--dry-run'))return 'dry-run';
+  if(argv.includes('--run'))return 'run';
+  throw Error('EXPLICIT_ALERT_MODE_REQUIRED');
+}
+export function outstandingDelivery(records){
+  const blocked=records.filter(r=>r.status==='blocked').length,review=records.filter(r=>r.status==='needs_review').length;
+  return {count:blocked+review,message:review?'An email outcome needs review; automatic retries stopped to prevent duplicates.':blocked?'Email sending is blocked; verify the personal sender and credentials.':''};
+}
 export async function main(env=process.env){
-  const dryRun=process.argv.includes('--dry-run'),settings=validateAlertEnvironment(env),now=new Date();
+  const dryRun=alertRunMode(process.argv)==='dry-run',settings=validateAlertEnvironment(env),now=new Date();
   const [{initializeApp,cert},{getFirestore},{getAuth}]=await Promise.all([import('firebase-admin/app'),import('firebase-admin/firestore'),import('firebase-admin/auth')]);
   initializeApp({credential:cert(settings.serviceAccount),projectId:PERSONAL_PROJECT});
   const db=getFirestore(),portfolio=db.collection('users').doc(settings.uid).collection('portfolio');
@@ -34,6 +44,7 @@ export async function main(env=process.env){
   const enabled=settings.enabled&&strategy.alerts?.enabled!==false;
   let context=cachedMarket.data()||null,marketAvailable=true;
   const counts={tickers:universe.length,quoted:0,unavailable:0,events:0,queued:0,accepted:0,deliveryIssues:0};
+  const warnings=[];
   try{context=await fetchSPX({now});if(!dryRun)await marketRef.set(context);}
   catch{marketAvailable=false;if(!marketContextFresh(context,+now))context=null;}
   const queue=async(tx,stateRef,result)=>{
@@ -64,9 +75,9 @@ export async function main(env=process.env){
     });
   }
   for(const item of universe){
-    let quote;try{quote=await fetchAlertQuote(item.symbol,{now});counts.quoted++;}catch{counts.unavailable++;continue;}
+    let quote;try{quote=await fetchAlertQuote(item.symbol,{now});counts.quoted++;}catch{counts.unavailable++;warnings.push({symbol:item.symbol,reason:'Quote unavailable or not current'});continue;}
     const ref=portfolio.doc('ccAlertState-'+item.symbol),observed=evaluateTicker(item,quote,(await ref.get()).data(),+now);
-    if(observed.skipped)counts.unavailable++;
+    if(observed.skipped){counts.unavailable++;warnings.push({symbol:item.symbol,reason:observed.skipped});}
     counts.events+=observed.events.length;
     const news=observed.events.some(e=>e.type==='daily_drop')?await fetchAlertNews(item.symbol,{now}):null;
     if(!dryRun)await db.runTransaction(async tx=>{
@@ -109,7 +120,10 @@ export async function main(env=process.env){
       if(sent.status==='accepted'){counts.accepted++;lastAcceptedAt=new Date().toISOString();}
       else{counts.deliveryIssues++;lastError=sent.code;}
     }
-    await statusRef.set({checkedAt:now.toISOString(),enabled,mode:!settings.enabled?'Setup needed':enabled?'Active':'Paused',...counts,marketAvailable,
+    const unresolved=await portfolio.doc('ccAlerts').collection('mail').where('status','in',['blocked','needs_review']).limit(100).get();
+    const outstanding=outstandingDelivery(unresolved.docs.map(d=>d.data()));
+    counts.deliveryIssues=Math.max(counts.deliveryIssues,outstanding.count);lastError=lastError||outstanding.message;
+    await statusRef.set({checkedAt:now.toISOString(),enabled,mode:!settings.enabled?'Setup needed':!enabled?'Paused':counts.deliveryIssues?'Delivery issue':counts.unavailable||!marketAvailable?'Active · data gaps':'Active',...counts,marketAvailable,warnings,
       ...(lastAcceptedAt?{lastAcceptedAt}:{}),lastError,source:'Hourly personal GitHub worker; scheduling and quotes may be delayed'}, {merge:true});
   }
   // Public Actions logs contain counts only. No tickers, emails, quotes, payloads,
