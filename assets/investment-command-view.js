@@ -59,8 +59,8 @@ export function renderDecisionTable(model,{show,today,rows=model.rows,expandedSy
  const cell=(r,key)=>{
   const c=r.currency;
   const planned=r.plan?.stages?.find(s=>s.key===r.plan.plannedEntryKey)||r.result.stage;
-  if(key==='quantity')return r.action==='hold'?'—':esc(r.action==='sell'?r.plan.sale?.quantity??'—':r.advanced?r.nextUnits??'—':planned?.purchaseQuantity??'—');
-  if(key==='plannedPrice')return r.action==='hold'?'—':price(r.action==='sell'?r.plan.sale?.price:r.advanced?r.nextEntry:planned?.entryPrice??planned?.price,c);
+  if(key==='quantity')return r.action==='hold'?'—':r.action==='sell'?esc(r.plan.sale?.quantity??'—'):r.quantityEstimate?`<span title="Estimated shares at the displayed entry price, using the remaining stage budget and available portfolio limits.">≈ ${esc(r.nextUnits)}</span>`:esc(r.nextUnits??'—');
+  if(key==='plannedPrice')return r.action==='hold'?'—':price(r.action==='sell'?r.plan.sale?.price:r.nextEntry,c);
   if(key==='nextSL'){const key=r.advanced?r.support?.key:r.support?.key??planned?.key,index=r.levels.findIndex(l=>l.key===key),next=index>=0?r.levels[index+1]:null;return next?esc(next.key.toUpperCase())+' · '+price(next.price,c):'—';}
   if(key==='name')return esc(r.name);
   if(key==='action')return `<strong>${esc((r.action||'buy').toUpperCase())}</strong>${r.action==='hold'?`<small>Revisit ${esc(r.plan.revisitOn||'—')}${r.plan.revisitOn<=today?' · due':''}</small>`:r.action==='sell'?`<small>${r.plan.sale?.quantity??'—'} shares · ${price(r.plan.sale?.price,c)}${r.plan.sale?.completed?' · completed':''}</small>`:''}${r.dataReasons?.length?'<small>Data review: '+r.dataReasons.map(c=>esc(c.label)).join('; ')+'</small>':''}${r.reviewReasons?.length?'<small>'+r.reviewReasons.map(c=>esc(c.label)).join('; ')+'</small>':''}${r.notificationDeferred?'<small>Notifications deferred</small>':''}`;

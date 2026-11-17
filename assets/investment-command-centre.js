@@ -1,3 +1,4 @@
+import {entryDraft} from './investment-plan-defaults.js';
 import {akReferenceCost} from './ak-reference-cost.js?v=plan-research-20261115';
 import {commandQueueState,companyCeiling} from './command-queue.js?v=redistribution-20261115';
 import {planAction,previewActionPlan,potentialSale} from './investment-actions.js?v=plan-research-20261115';
@@ -74,11 +75,27 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const remaining=advanced?remainingBuyStages(plan):[];
     const reached=advanced?remaining.filter(s=>company.quote?.close>0&&company.quote.close<=Math.min(s.price,s.entryPrice??s.price)).at(-1):eligible;
     const support=advanced?(reached||remaining[0]):(result.stage||result.next||eligible||next||levels[0]);
-    const nextEntry=advanced&&support&&company.quote?.close>0?Math.min(company.quote.close,support.price,support.entryPrice??support.price):null;
-    let nextUnits=result.stage?.id===support?.id?result.units:null;
-    if(advanced&&nextEntry&&result.status==='hold'&&funding){
-      const preview=previewPurchase(plan,funding,{close:nextEntry,fx:company.fx,iv:company.iv,category:company.category,today,lotSize:plan.lotSize,oddLots:plan.oddLots,rounding:plan.rounding});
-      if(preview.stage?.id===support.id)nextUnits=preview.units;
+    const openStages=plan&&planAction(plan)==='buy'?remainingBuyStages(plan):[];
+    const entryStage=(!advanced&&openStages.find(s=>s.key===plan?.plannedEntryKey))
+      ||openStages.find(s=>s.key===support?.key)||openStages[0];
+    const nextEntry=entryStage?Math.min(entryStage.price,entryStage.entryPrice??entryStage.price,plan.iv,
+      advanced&&company.quote?.close>0?company.quote.close:Infinity):null;
+    const sizingFunding=funding||displayFunding;
+    let nextUnits=null,quantityEstimate=false;
+    if(entryStage&&nextEntry>0&&company.currency===plan.currency){
+      if(result.stage?.id===entryStage.id&&result.maxEntry===nextEntry&&result.units!=null){
+        nextUnits=result.units;
+      }else{
+        const room=sizingFunding?.complete?Math.max(0,sizingFunding.base*plan.ceilingPct/100
+          -(sizingFunding.byCompany[item.symbol]||0)-(allowance.byCompany[item.symbol]||0)):Infinity;
+        const draft={...plan,room};
+        const sizing=entryDraft(draft,company,sizingFunding||{available:Infinity},{
+          stageKey:entryStage.key,entryPrice:nextEntry,increment:plan.oddLots?1:plan.lotSize??1,
+          quantity:entryStage.purchaseQuantity
+        });
+        nextUnits=sizing.units;
+        quantityEstimate=nextUnits!==null;
+      }
     }
     const supportIndex=levels.findIndex(l=>l.key===support?.key),followingSupport=supportIndex>=0?levels[supportIndex+1]??null:null;
     // Ordinary price ticks do not erase a decision. Holdings, plan/IV/SL/category
@@ -99,7 +116,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const concentration=currentWeight!==null&&ceiling>0&&currentWeight>ceiling;
     const averageCost=shares>0&&holdings.every(h=>Number.isFinite(Number(h.average_cost??h.averageCost)))?holdings.reduce((n,h)=>n+Number(h.shares||0)*Number(h.average_cost??h.averageCost),0)/shares:null;
     const sale=potentialSale(plan,company);
-    const row={...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,advanced,nextEntry,nextUnits,priceMet:!!reached,history,
+    const row={...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,advanced,nextEntry,nextUnits,quantityEstimate,priceMet:!!reached,history,
       changedDecision:history.some(d=>d.context!==context&&['deferred','dismissed','reviewed'].includes(d.status))};
     const queued={...row,...commandQueueState(row,{today,now})};
     const ladder=company.levels||[];
