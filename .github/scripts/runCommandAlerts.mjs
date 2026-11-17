@@ -108,7 +108,12 @@ export async function main(env=process.env){
         tx.set(doc.ref,claimed);return claimed;
       });
       if(!record)continue;
-      const sent=await sendAlertEmail(record.email,record.idempotencyKey,env.PORTFOLIO_ALERT_RESEND_KEY);
+      let sent;
+      for(let attempt=0;attempt<3;attempt++){
+        sent=await sendAlertEmail(record.email,record.idempotencyKey,env.PORTFOLIO_ALERT_RESEND_KEY);
+        if(sent.status!=='retry')break;
+        if(attempt<2)await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));
+      }
       await db.runTransaction(async tx=>{
         const latest=await tx.get(doc.ref);if(latest.get('leaseToken')!==token)return;
         tx.update(doc.ref,{status:sent.status,leaseUntil:0,leaseToken:null,
@@ -124,7 +129,7 @@ export async function main(env=process.env){
     const outstanding=outstandingDelivery(unresolved.docs.map(d=>d.data()));
     counts.deliveryIssues=Math.max(counts.deliveryIssues,outstanding.count);lastError=lastError||outstanding.message;
     await statusRef.set({checkedAt:now.toISOString(),enabled,mode:!settings.enabled?'Setup needed':!enabled?'Paused':counts.deliveryIssues?'Delivery issue':counts.unavailable||!marketAvailable?'Active · data gaps':'Active',...counts,marketAvailable,warnings,
-      ...(lastAcceptedAt?{lastAcceptedAt}:{}),lastError,source:'Hourly personal GitHub worker; scheduling and quotes may be delayed'}, {merge:true});
+      ...(lastAcceptedAt?{lastAcceptedAt}:{}),lastError,source:'Daily personal GitHub worker; scheduling and quotes may be delayed'}, {merge:true});
   }
   // Public Actions logs contain counts only. No tickers, emails, quotes, payloads,
   // holdings, notes, credentials, news URLs, balances or user IDs.

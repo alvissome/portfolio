@@ -1,7 +1,10 @@
 name: Command Centre alerts
 on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/command-centre-alerts.yml, .github/scripts/runCommandAlerts.mjs]
   schedule:
-    - cron: '13 * * * *'
+    - cron: '13 0 * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -16,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   check:
-    if: vars.PORTFOLIO_ALERT_UID != ''
+    if: vars.PORTFOLIO_ALERT_UID != '' || vars.NOTION_PORTFOLIO_UID != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -33,7 +36,7 @@ jobs:
           ALERT_MODE: ${{ inputs.mode || 'run' }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          PORTFOLIO_ALERT_UID: ${{ vars.PORTFOLIO_ALERT_UID }}
+          PORTFOLIO_ALERT_UID: ${{ vars.PORTFOLIO_ALERT_UID || vars.NOTION_PORTFOLIO_UID }}
           PORTFOLIO_ALERT_OWNER_EMAIL: ${{ vars.PORTFOLIO_ALERT_OWNER_EMAIL }}
           PORTFOLIO_ALERT_TO: ${{ vars.PORTFOLIO_ALERT_TO }}
           PORTFOLIO_ALERT_FROM: ${{ vars.PORTFOLIO_ALERT_FROM }}

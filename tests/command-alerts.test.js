@@ -136,7 +136,7 @@ test('environment is personal-only, scopes to one owner, and never borrows legac
 });
 test('new worker preserves the private data boundary and default-off delivery',async()=>{
   const worker=await readFile(new URL('../.github/scripts/runCommandAlerts.mjs',import.meta.url),'utf8'),workflow=await readFile(new URL('../.github/workflows/command-centre-alerts.yml',import.meta.url),'utf8');
-  assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/13 \* \* \* \*/);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
+  assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/13 0 \* \* \*/);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
 });
 test('the alert worker requires an explicit, unambiguous execution mode',()=>{
   assert.equal(alertRunMode(['node','script','--dry-run']),'dry-run');assert.equal(alertRunMode(['node','script','--run']),'run');assert.throws(()=>alertRunMode(['node','script']),/EXPLICIT/);assert.throws(()=>alertRunMode(['--run','--dry-run']),/SELECT_ONE/);
