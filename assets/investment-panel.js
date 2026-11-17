@@ -152,7 +152,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
           <label class="ic-sale-completed"><input type="checkbox" name="saleCompleted"> Sale completed · exclude potential proceeds</label>
           <div class="ic-plan-research">${field('budget','Total Anchor addition budget (SGD)','','type="text" inputmode="decimal"')}${field('ceiling','Company ceiling (%)','','type="number" min="0.01" max="100" step="0.01" required')}<label>Level source<select name="levelSource"><option value="ak">AK sheets · independent fallback</option><option value="independent">Independent reconstruction</option></select></label><label>IV method<select name="methodFamily">${[['auto','Auto method'],['stock','Company DCF'],['bank','Bank'],['reit','REIT'],['fund','Fund / ETF']].map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label><button type="button" data-recalculate>Recalculate</button><p data-plan-research-status></p></div><div class="ic-plan-facts-host" data-plan-facts></div><div class="ic-research-overrides"><p>IV and supports: blank values follow AK sheets, then independent calculation. Enter a value to override it for this plan.</p>${['iv','s1','s2','s3','s4','s5','refCost'].map(key=>field('override-'+key,key==='iv'?'IV':key==='refCost'?'Ref cost':key.toUpperCase(),'','type="text" inputmode="decimal"')).join('')}</div>
           <div class="ic-plan-prefill" data-plan-prefill></div>
-          <p class="ic-footnote">Saving a plan records your proposed entry, quantity and remarks. Cash is reserved only when you record a committed order. Dated reviews are in My decisions, with Copy for Notion for the <a href="${NOTION_REVIEW_URL}" target="_blank" rel="noopener">Stocks Plan Review log</a>.</p>
+          <p class="ic-footnote">Saving a plan records your proposed entry, quantity and remarks. Cash is reserved only when you record a committed order. Dated reviews are in My decisions, with a per-ticker sync to the <a href="${NOTION_REVIEW_URL}" target="_blank" rel="noopener">Stocks Plan Review log</a>.</p>
         </div></details></form>
         <p class="ic-meta" data-plan-feedback></p>
         </details>
@@ -332,10 +332,18 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     });
     root.querySelectorAll('[data-company-details]').forEach(button=>button.onclick=()=>{expandedDecision=expandedDecision===button.dataset.companyDetails?'':button.dataset.companyDetails;render();if(expandedDecision)root.querySelector('.ic-decision-table-wrap').scrollLeft=0;});
     root.querySelectorAll('[data-close-company-details]').forEach(button=>button.onclick=()=>{expandedDecision='';render();root.querySelector('[data-company-details="'+button.dataset.closeCompanyDetails+'"]')?.focus();});
-    root.querySelectorAll('[data-copy-company]').forEach(button=>button.onclick=async()=>{
-      const row=model.rows.find(r=>r.symbol===button.dataset.copyCompany),text=companyDecisionText(row,model.history);
-      try{await navigator.clipboard.writeText(text);button.innerHTML='<span aria-hidden="true">✓</span>';button.title='Copied — paste into Stocks Plan Review';button.setAttribute('aria-label',row.symbol+' copied — paste into Stocks Plan Review');}
-      catch{const area=document.createElement('textarea');area.className='ic-copy-fallback';area.setAttribute('aria-label','Select and copy '+row.symbol+' for Notion');area.value=text;area.readOnly=true;root.querySelector('.ic-decision-table-wrap').after(area);area.focus();area.select();button.title='Select and copy the text below the table';}
+    root.querySelectorAll('[data-sync-company]').forEach(button=>button.onclick=async()=>{
+      const row=model.rows.find(r=>r.symbol===button.dataset.syncCompany);
+      try{
+        const sale=row.action==='sell',buy=row.action==='buy';
+        const request={id:crypto.randomUUID(),status:'queued',action:row.action,
+          stage:buy?row.entryStage?.key??'':'',quantity:sale?row.plan.sale?.quantity??null:buy?row.nextUnits:null,
+          price:sale?row.plan.sale?.price??null:buy?row.nextEntry:null,currency:row.currency||'',
+          reviewed:row.plan.reviewedAt||null,record:companyDecisionText(row,model.history)};
+        await save({...config,notionExports:{...config.notionExports,[row.symbol]:request}});
+        notice=row.symbol+' queued for the personal Notion worker.';
+      }catch(e){error=e.message;}
+      render();
     });
     root.querySelectorAll('[data-plan-action-filter]').forEach(input=>input.onchange=()=>{actionFilter=[...root.querySelectorAll('[data-plan-action-filter]')].filter(el=>el.checked).map(el=>el.dataset.planActionFilter);render();});
     if(root.querySelector('[data-opportunity-category]'))root.querySelector('[data-opportunity-category]').onchange=e=>{categoryFilter=e.target.value;render();};

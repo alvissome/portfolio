@@ -116,7 +116,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const concentration=currentWeight!==null&&ceiling>0&&currentWeight>ceiling;
     const averageCost=shares>0&&holdings.every(h=>Number.isFinite(Number(h.average_cost??h.averageCost)))?holdings.reduce((n,h)=>n+Number(h.shares||0)*Number(h.average_cost??h.averageCost),0)/shares:null;
     const sale=potentialSale(plan,company);
-    const row={...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,advanced,nextEntry,nextUnits,quantityEstimate,priceMet:!!reached,history,
+    const row={...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,advanced,entryStage,nextEntry,nextUnits,quantityEstimate,priceMet:!!reached,history,
       changedDecision:history.some(d=>d.context!==context&&['deferred','dismissed','reviewed'].includes(d.status))};
     const queued={...row,...commandQueueState(row,{today,now})};
     const ladder=company.levels||[];
@@ -132,7 +132,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
   const potentialSales=rows.reduce((n,r)=>n+(r.sale?.sgd||0),0);
   const incompleteSales=rows.filter(r=>r.sale&&r.sale.sgd===null).length;
   const inactiveCategories=Object.entries(normalizeStrategyCategories(state.strategyCategories)).filter(([symbol])=>!active.has(symbol)).map(([symbol])=>({symbol,category:'selective'}));
-  return {decisionColumns:{...state.watchlistColumnVisibility,...config.decisionColumns},rows,visible,history,archivedPlans,inactiveCategories,potentialSales,incompleteSales,potentialCash:displayFunding?Math.max(0,displayFunding.committed-displayFunding.liabilities-displayFunding.pending-allowance.spent+potentialSales):null,funding,displayFunding,fundingError,reserved,allowance,
+  return {notionExports:config.notionExports||{},decisionColumns:{...state.watchlistColumnVisibility,...config.decisionColumns},rows,visible,history,archivedPlans,inactiveCategories,potentialSales,incompleteSales,potentialCash:displayFunding?Math.max(0,displayFunding.committed-displayFunding.liabilities-displayFunding.pending-allowance.spent+potentialSales):null,funding,displayFunding,fundingError,reserved,allowance,
     stats:{attention:visible.filter(r=>!r.plan&&r.lists.includes('balance')).length,opportunities:rows.filter(r=>r.openOpportunity).length,setup:visible.filter(r=>!r.plan&&r.lists.includes('data')).length,planSet:rows.filter(r=>r.plan).length,
       pendingOrders:decisions.filter(d=>d.status==='ordered').length,decisions:decisions.length},
     totalSuggested:visible.filter(r=>r.status==='eligible').reduce((n,r)=>n+r.result.amount,0)};
