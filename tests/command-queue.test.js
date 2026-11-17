@@ -8,10 +8,10 @@ const base=()=>({strategyCategories:{AAA:'anchor',BBB:'core'},holdings:[],watchl
 const config=s=>({cashTrackingVersion:1,plans:{},decisions:{},funding:{confirmed:true,basisSignature:fundingSignature(s)}});
 const build=(s,c)=>buildCommandCentre(s,{},c,{today,now});
 const plan=()=>({...createPurchasePlan({id:'plan-a',symbol:'AAA',category:'anchor',ceilingPct:10,addBudget:1500,base:15000,iv:200,currency:'USD',reviewedAt:today,levels:[120,100,80].map((price,i)=>({key:'s'+(i+1),price}))}),lotSize:1,plannedEntryKey:'s1'});
-test('saved plans are exclusive to My decisions even when inputs change',()=>{
+test('saved buy plans appear in Opportunities while other views retain their existing scope',()=>{
  const s=base(),c=config(s);c.plans.AAA=plan();s.watchlist[0].iv=210;
- const m=build(s,c);assert.equal(m.rows[0].openOpportunity,false);
- for(const filter of ['opportunities','watchlist','balance','data'])assert.doesNotMatch(renderCommandCentre(m,{show:String,today,filter}),/data-opportunity="AAA"/);
+ const m=build(s,c);assert.equal(m.rows[0].openOpportunity,true);
+ for(const filter of ['watchlist','balance','data'])assert.doesNotMatch(renderCommandCentre(m,{show:String,today,filter}),/data-opportunity="AAA"/);
  assert.match(renderCommandCentre(m,{show:String,today,filter:'decisions'}),/data-decision-row="AAA"/);
 });
 test('opportunities contain held stocks at or within five percent of support, not distant holdings',()=>{
@@ -88,4 +88,31 @@ test('My decisions puts Notion sync buttons last and opens company-specific exec
  html=renderCommandCentre(m,{show:String,today,filter:'decisions',expandedSymbol:'AAA'});
  assert.match(html,/data-company-details="AAA" aria-expanded="true"/);assert.match(html,/data-company-detail-row="AAA" ><td/);
  assert.match(html,/AAA · Stages, fills & orders/);assert.match(html,/data-fill="AAA"/);assert.match(html,/data-company-detail-row="BBB" hidden/);
+});
+
+test('completed stages advance opportunity cards and distant plans remain watchable',()=>{
+ const s=base(),c=config(s);c.plans.AAA=plan();
+ c.plans.AAA.stages[0].completed=true;c.plans.AAA.stages[0].spent=490;
+ for(const [close,stage,active] of [[104,'s2',true],[100,'s2',true],[79,'s3',true],[110,'s2',false]]){
+  s.priceCache.AAA.close=close;
+  const m=build(s,c),row=m.rows[0],html=renderCommandCentre(m,{show:String,today});
+  assert.equal(row.entryStage.key,stage);assert.equal(row.openOpportunity,active);
+  assert.equal(m.stats.opportunities,Number(active));
+  assert.match(html,/S1 completed/);assert.match(html,/Remaining stage budget/);
+  assert.match(html,/data-fill="AAA"/);
+  assert.equal(html.includes('Watching next entry · 1'),!active);
+ }
+ s.priceCache.AAA.timestamp=now-5*86400000;
+ let m=build(s,c);assert.equal(m.rows[0].openOpportunity,false);
+ assert.match(renderCommandCentre(m,{show:String,today}),/Quote needs refreshing/);
+ c.plans.AAA.stages.forEach(s=>{s.completed=true;s.spent=s.budget;});
+ m=build(s,c);assert.equal(m.rows[0].monitoringBuy,false);
+ assert.doesNotMatch(renderCommandCentre(m,{show:String,today}),/data-opportunity="AAA"/);
+});
+test('hold and sell plans stay out of buying opportunities',()=>{
+ for(const action of ['hold','sell']){
+  const s=base(),c=config(s);c.plans.AAA={...plan(),action,revisitOn:'2026-12-15',sale:{quantity:1,price:115}};
+  const m=build(s,c);assert.equal(m.rows[0].monitoringBuy,false);
+  assert.doesNotMatch(renderCommandCentre(m,{show:String,today}),/data-opportunity="AAA"/);
+ }
 });
