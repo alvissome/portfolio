@@ -43,7 +43,7 @@ export function commandQueueState(row,{today,now}){
  const openOpportunity=priceTriggered&&!planSet&&!suppressed&&!overIV&&!concentration&&(!(iv>0)||close<iv);
  const weights={ceiling:100,'above-iv':80,'hold-due':60,'next-stage':50,'plan-changed':40,'plan-due':30,'sale-review':60};
  const reviewPriority=Math.max(0,...reviewReasons.map(c=>weights[c.key]||0));
- const entry=action==='sell'?plan?.sale?.price:row.advanced?row.support?.price:plan?.stages?.find(s=>s.key===plan.plannedEntryKey)?.entryPrice??row.support?.price;
+ const entry=action==='sell'?plan?.sale?.price:row.entryStage?Math.min(row.entryStage.price,row.entryStage.entryPrice??row.entryStage.price,plan.iv):plan?.stages?.find(s=>s.key===plan.plannedEntryKey)?.entryPrice??row.support?.price;
  const distanceToEntry=fresh&&entry>0?(close-entry)/entry*100:null;
  return {reviewPriority,checks,reviewReasons,dataReasons,concentration,overIV,planChanged,planSet,priceTriggered,openOpportunity,distanceToEntry,ceiling,quoteFresh:fresh};
 }

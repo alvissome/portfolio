@@ -72,10 +72,10 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const levels=expectedLevels(company),eligible=levels.filter(l=>company.quote?.close>0&&company.quote.close<=Math.min(l.price,plan?.stages?.find(s=>s.key===l.key)?.entryPrice??l.price)).at(-1);
     const next=plan?.stages?.find(s=>!s.completed&&s.spent<s.budget);
     const advanced=plan&&planAction(plan)==='buy'&&plan.stages.some(s=>s.completed&&s.spent>0);
-    const remaining=advanced?remainingBuyStages(plan):[];
-    const reached=advanced?remaining.filter(s=>company.quote?.close>0&&company.quote.close<=Math.min(s.price,s.entryPrice??s.price)).at(-1):eligible;
-    const support=advanced?(reached||remaining[0]):(result.stage||result.next||eligible||next||levels[0]);
-    const openStages=plan&&planAction(plan)==='buy'?remainingBuyStages(plan):[];
+    const remaining=plan&&planAction(plan)==='buy'?remainingBuyStages(plan).filter(s=>!s.skipped):[];
+    const reached=plan?remaining.filter(s=>company.quote?.close>0&&company.quote.close<=Math.min(s.price,s.entryPrice??s.price)).at(-1):eligible;
+    const support=plan&&planAction(plan)==='buy'?(reached||remaining.find(s=>s.key===plan.plannedEntryKey)||remaining[0]):(result.stage||result.next||eligible||next||levels[0]);
+    const openStages=remaining;
     const entryStage=(!advanced&&openStages.find(s=>s.key===plan?.plannedEntryKey))
       ||openStages.find(s=>s.key===support?.key)||openStages[0];
     const nextEntry=entryStage?Math.min(entryStage.price,entryStage.entryPrice??entryStage.price,plan.iv,
@@ -121,9 +121,10 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const queued={...row,...commandQueueState(row,{today,now})};
     const ladder=company.levels||[];
     if(ladder.some((l,i)=>i&&l.price>=ladder[i-1].price))queued.dataReasons.push({key:'ladder',label:'Support ladder is not descending',kind:'data'});
+    queued.monitoringBuy=!!(plan&&planAction(plan)==='buy'&&entryStage);
     const approaching=queued.quoteFresh&&queued.distanceToEntry!==null&&queued.distanceToEntry>0&&queued.distanceToEntry<=5;
-    queued.lists=[...(item.held&&queued.quoteFresh&&(row.priceMet||approaching)?['opportunities']:[]),...(item.watchlisted&&!item.held?['watchlist']:[]),...(item.held&&(queued.overIV||queued.concentration||state.rebalancingSymbols?.[item.symbol])?['balance']:[]),...(queued.dataReasons.length?['data']:[])];
-    queued.manuallyRebalancing=!!state.rebalancingSymbols?.[item.symbol];queued.approaching=approaching;queued.openOpportunity=!plan&&!['dismissed','deferred'].includes(queued.status)&&queued.lists.includes('opportunities');
+    queued.lists=[...((queued.monitoringBuy||!plan&&item.held)&&queued.quoteFresh&&(row.priceMet||approaching)?['opportunities']:[]),...(item.watchlisted&&!item.held?['watchlist']:[]),...(item.held&&(queued.overIV||queued.concentration||state.rebalancingSymbols?.[item.symbol])?['balance']:[]),...(queued.dataReasons.length?['data']:[])];
+    queued.manuallyRebalancing=!!state.rebalancingSymbols?.[item.symbol];queued.approaching=approaching;queued.openOpportunity=(!plan||queued.monitoringBuy)&&!['dismissed','deferred'].includes(queued.status)&&queued.lists.includes('opportunities');
     return queued;
   });
   const archivedPlans=Object.values(config.plans||{}).filter(p=>!active.has(p.symbol));
