@@ -30,6 +30,12 @@ export function createInvestmentStore({projectId,uid,getToken,fetch:request=glob
   const endpoint='https://firestore.googleapis.com/v1/'+name;
   let loaded=false,version=null,busy=false;
   const headers=async()=>({'Authorization':'Bearer '+await getToken(),'Content-Type':'application/json'});
+  const readSibling=async id=>{
+    const response=await request(endpoint.replace(/performance$/,id),{headers:await headers(),cache:'no-store'});
+    if(response.status===404)return null;
+    if(!response.ok)throw Error('Market/alert status read failed.');
+    return decode({mapValue:{fields:(await response.json()).fields}});
+  };
   const readCloud=async()=>{
     const response=await request(endpoint,{headers:await headers(),cache:'no-store'});
     if(response.status===404)return {strategy:{},updateTime:null};
@@ -39,6 +45,8 @@ export function createInvestmentStore({projectId,uid,getToken,fetch:request=glob
     return {strategy:decode(doc.fields?.settings?.mapValue?.fields?.investmentStrategy)||{},updateTime:doc.updateTime};
   };
   return {
+    loadMarketContext(){return readSibling('ccMarketContext');},
+    loadAlertStatus(){return readSibling('ccAlertStatus');},
     async loadChart(symbol){
       if(!/^[A-Z0-9][A-Z0-9.^=-]{0,29}$/i.test(symbol))throw Error('Invalid ticker.');
       const url=endpoint.replace(/performance$/,'tickerChart-'+encodeURIComponent(symbol));
