@@ -34,9 +34,9 @@ Deployment/activation requires the owner's approval. Configure only this persona
 | Setting | Location | Value |
 | --- | --- | --- |
 | `PORTFOLIO_ALERT_UID` | Actions variable | Owner's personal Firebase Auth UID; defaults to the existing personal NOTION_PORTFOLIO_UID when unset |
-| `PORTFOLIO_ALERT_TO` | Actions variable | Owner's explicitly selected personal delivery email |
-| `PORTFOLIO_ALERT_OWNER_EMAIL` | Optional Actions variable | Owner's Firebase Auth email when different from the explicitly approved delivery address; worker verifies this identity against the selected UID |
-| `PORTFOLIO_ALERT_FROM` | Actions variable | Sender allowed by the dedicated personal Resend account |
+| `PORTFOLIO_ALERT_TO` | Actions secret | Owner's explicitly selected personal delivery email |
+| `PORTFOLIO_ALERT_OWNER_EMAIL` | Optional Actions secret | Owner's Firebase Auth email when different from the explicitly approved delivery address; worker verifies this identity against the selected UID |
+| `PORTFOLIO_ALERT_FROM` | Actions secret | Sender allowed by the dedicated personal Resend account |
 | `PORTFOLIO_ALERT_RESEND_KEY` | Actions secret | Dedicated personal send-only Resend key; never put it in code, chat, artifacts or client settings |
 | `PORTFOLIO_ALERTS_ENABLED` | Actions variable | `true` only after dry-run and one live preview/test succeeds; otherwise delivery is off |
 | `FIREBASE_SERVICE_ACCOUNT`, optional `FIREBASE_PROJECT_ID` | Existing personal Actions secrets | Retain existing personal worker identity; hard project check rejects every other project |
