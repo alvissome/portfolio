@@ -29,21 +29,50 @@ function compactFinancialArchive(facts, annual, current) {
   return archive;
 }
 
-export function dcf20({fcf0, g1, g2, g3 = .04, discountRate, cash, debt, shares}) {
-  if (![fcf0, g1, g2, g3, discountRate, cash, debt, shares].every(finite) ||
-      shares <= 0 || discountRate <= -1 || Math.min(g1, g2, g3) <= -1) {
+export function discountedCashFlow({fcf0, g1, g2, g3 = .04, discountRate, cash, debt, shares,
+  years = 20, terminalGrowth = null, terminalTiming = 'end_forecast', additionalAssets = 0}) {
+  if (![fcf0, g1, g2, g3, discountRate, cash, debt, shares, additionalAssets].every(finite) ||
+      shares <= 0 || additionalAssets < 0 || discountRate <= -1 || Math.min(g1, g2, g3) <= -1 ||
+      ![10,20].includes(years) || !['end_forecast','following_year'].includes(terminalTiming) || terminalGrowth !== null &&
+      (!finite(terminalGrowth) || terminalGrowth <= -1 || discountRate <= terminalGrowth)) {
     throw new TypeError('Invalid DCF inputs');
   }
   let flow = fcf0, present = 0;
   const schedule = [];
-  for (let year = 1; year <= 20; year++) {
+  for (let year = 1; year <= years; year++) {
     const growth = year <= 5 ? g1 : year <= 10 ? g2 : g3;
     flow *= 1 + growth;
     const pv = flow / (1 + discountRate) ** year;
     present += pv;
     schedule.push({year, growth, cashFlow: flow, pv});
   }
-  return {value: (present + cash - debt) / shares, presentValue: present, schedule};
+  const terminalValue = terminalGrowth === null ? 0 : flow * (1 + terminalGrowth) / (discountRate - terminalGrowth);
+  const terminalDiscountYear = years + (terminalTiming === 'following_year' ? 1 : 0);
+  const terminalPresentValue = terminalValue / (1 + discountRate) ** terminalDiscountYear;
+  return {value: (present + terminalPresentValue + cash - debt + additionalAssets) / shares,
+    presentValue: present, terminalValue, terminalPresentValue, terminalDiscountYear, schedule};
+}
+
+export function dcf20(inputs) {
+  return discountedCashFlow({...inputs, years:20, terminalGrowth:null});
+}
+
+/** Per-listing-unit distributions: no second cash/debt or share-count bridge. */
+export function dividendDiscount({dividend0, growthRates, discountRate, terminalGrowth}) {
+  if (![dividend0, discountRate, terminalGrowth].every(finite) || dividend0 <= 0 ||
+      discountRate <= -1 || terminalGrowth <= -1 || discountRate <= terminalGrowth ||
+      !Array.isArray(growthRates) || !growthRates.length || growthRates.length > 20 ||
+      growthRates.some(value=>!finite(value)||value<=-1)) throw new TypeError('Invalid dividend discount inputs');
+  let dividend=dividend0,presentValue=0;
+  const schedule=growthRates.map((growth,index)=>{
+    dividend*=1+growth;
+    const pv=dividend/(1+discountRate)**(index+1);
+    presentValue+=pv;
+    return {year:index+1,growth,dividend,pv};
+  });
+  const terminalValue=dividend*(1+terminalGrowth)/(discountRate-terminalGrowth);
+  const terminalPresentValue=terminalValue/(1+discountRate)**growthRates.length;
+  return {value:presentValue+terminalPresentValue,presentValue,terminalValue,terminalPresentValue,schedule};
 }
 
 export function justifiedPB({bookValuePerShare, roe, growth = .04, costOfEquity = .095}) {
@@ -97,8 +126,11 @@ export function calculateIV(data, request = {}, asOf = new Date().toISOString().
   catch(error) { return unavailable(error.message,'invalid_assumptions'); }
   if(settings.inputsAsOf>asOf)return unavailable('Valuation input date is later than the requested calculation date.','input_vintage_required');
   const instrument=data.instrument||{};
-  const explicitUnit=['nav','yield'].includes(settings.method)&&
-    (finite(settings.bookValuePerShare)||finite(settings.dividendPerShare));
+  const bookMethods=['historical_pb','peer_pb','justified_pb','nav'];
+  const payoutMethods=['yield','ddm'];
+  const explicitUnit=bookMethods.includes(settings.method)&&finite(settings.bookValuePerShare)||
+    payoutMethods.includes(settings.method)&&finite(settings.dividendPerShare)||
+    settings.method==='pe'&&finite(settings.earningsPerShare);
   const facts=data.fundamentals||(explicitUnit?{financialCurrency:instrument.currency,ttm:{},annual:[]}:null);
   const suppliedFamily=request.methodFamilySource==='user'?request.methodFamily:null;
   const providerFamily=['stock','bank','reit','insurance','financial_other','fund','etf'].includes(instrument.methodFamily)?instrument.methodFamily:null;
@@ -109,12 +141,14 @@ export function calculateIV(data, request = {}, asOf = new Date().toISOString().
     reason:'Company DCF IV is not applicable to this fund/index. Select NAV with a dated fund NAV for closed-end funds.'};
   if(!facts)return unavailable('Financial inputs could not be retrieved. Technical support calculation can still complete.');
   const currency=instrument.currency;
-  if(!currency||!facts.financialCurrency||(currency!==facts.financialCurrency&&!finite(settings.fxRate)))
+  const listingPayout=payoutMethods.includes(method);
+  if(!currency||!listingPayout&&(!facts.financialCurrency||(currency!==facts.financialCurrency&&!finite(settings.fxRate))))
     return unavailable('Financial-statement and listing currencies are not verified as identical; an explicit FX/listing mapping is required.','currency_mapping_required');
   const fx=currency===facts.financialCurrency?1:settings.fxRate;
   const current=facts.ttm||{},share=settings.shares??current.shares;
-  // An explicit per-listing-unit NAV needs no ordinary/ADR share conversion.
-  const perUnit=method==='nav'&&finite(settings.bookValuePerShare)||method==='yield'&&finite(settings.dividendPerShare);
+  // Dated per-listing-unit inputs need no second ordinary/ADR share conversion.
+  const perUnit=bookMethods.includes(method)&&finite(settings.bookValuePerShare)||listingPayout||
+    method==='pe'&&finite(settings.earningsPerShare);
   if(!perUnit&&facts.listingSharesVerified!==true&&!finite(settings.shares)){
     const diagnostics=[...new Set((data.warnings||[]).filter(code=>/^SEC_[A-Z0-9_]{1,80}$/.test(code)))].slice(0,5);
     return unavailable(['Share or ADR denominator is not verified for this listing.',facts.listingSharesReason,
@@ -143,17 +177,35 @@ export function calculateIV(data, request = {}, asOf = new Date().toISOString().
   }
   const book=settings.bookValuePerShare??(finite(current.equity)&&current.equity>0?current.equity/share:null);
   const dividend=settings.dividendPerShare??facts.dividendPerShareTTM??current.dividendPerShareTTM;
-  if(['historical_pb','justified_pb','nav','yield'].includes(method)){
+  if(method==='ddm'){
+    if(!(dividend>0)||!settings.dividendGrowthRates?.length||!finite(settings.discountRate)||!finite(settings.terminalGrowth))
+      return unavailable('Dividend discount needs a positive base DPU, explicit annual forward growth path, discount rate and perpetual terminal growth.','dividend_forecast_required');
+    if(settings.discountRate<=settings.terminalGrowth)
+      return unavailable('The dividend discount rate must exceed perpetual terminal growth.','invalid_terminal_rate');
+    const model=dividendDiscount({dividend0:dividend,growthRates:settings.dividendGrowthRates,
+      discountRate:settings.discountRate,terminalGrowth:settings.terminalGrowth});
+    notes.push('Per-listing-unit dividend model: forecast years start after the base DPU period. Historical base-year growth is excluded.');
+    notes.push('Discounted forward distributions plus a Gordon terminal value. No additional cash/debt or share-count bridge.');
+    return finish(model.value,'ddm','Dividend discount · explicit forecasts + terminal value',
+      {dividendPerShare:dividend,growthRates:settings.dividendGrowthRates,discountRate:settings.discountRate,
+        terminalGrowth:settings.terminalGrowth,forecastYears:model.schedule.length,
+        distributionsPresentValue:model.presentValue,terminalPresentValue:model.terminalPresentValue,
+        dividendBasis:settings.dividendPerShare?'user_dated_dividend':'trailing_provider_dividends'});
+  }
+  if(['historical_pb','peer_pb','justified_pb','nav','yield'].includes(method)){
     const variants=[];
     const yieldRate=settings.targetYield??.05;
     if(finite(dividend)&&dividend>0)variants.push({key:yieldRate===.05?'yield_5pct':'yield_price',
       method:'Dividend yield price',value:dividend/yieldRate,basis:settings.dividendPerShare?'user_dated_dividend':'trailing_provider_dividends',
       inputs:{dividendPerShare:dividend,targetYield:yieldRate}});
-    const historical=data.history?.splitEventsComplete===true&&data.history?.adjustmentVintageVerified===true?
+    const historical=method!=='peer_pb'&&data.history?.splitEventsComplete===true&&data.history?.adjustmentVintageVerified===true?
       historicalPB(annual,data.bars||[],data.history.splitEvents||[]):null;
-    const multiple=settings.historicalMultiple??historical?.multiple;
-    if(book>0&&multiple>0)variants.push({key:'historical_pb',method:settings.historicalMultiple?'Historical P/B / P/NAV · supplied multiple':'Historical P/B · annual sample proxy',
-      value:book*multiple*fx,basis:'unadjusted_equity',inputs:{bookValuePerShare:book,historicalPB:multiple,fxRate:fx,observations:historical?.observations||[]}});
+    const multiple=settings.historicalMultiple??(method==='peer_pb'?null:historical?.multiple);
+    if(book>0&&multiple>0)variants.push({key:method==='peer_pb'?'peer_pb':'historical_pb',
+      method:method==='peer_pb'?'Peer P/B · supplied multiple':settings.historicalMultiple?'Historical P/B / P/NAV · supplied multiple':'Historical P/B · annual sample proxy',
+      value:book*multiple*fx,basis:'unadjusted_equity',inputs:{bookValuePerShare:book,
+        ...(method==='peer_pb'?{peerPB:multiple,referenceBasis:'peer'}:{historicalPB:multiple,referenceBasis:'historical'}),
+        fxRate:fx,observations:settings.historicalMultiple?[]:historical?.observations||[]}});
     if(['bank','justified_pb'].includes(family)||method==='justified_pb'){
       const roes=annual.filter(r=>finite(r.netIncome)&&r.equity>0).slice(-5).map(r=>r.netIncome/r.equity);
       const roe=settings.roe??(roes.length>=3?mean(roes):null);
@@ -169,12 +221,21 @@ export function calculateIV(data, request = {}, asOf = new Date().toISOString().
     const id=method==='yield'?(yieldRate===.05?'yield_5pct':'yield_price'):method;
     const selected=variants.find(v=>v.key===(request.ivMethod||id));
     if(!selected)return unavailable('Inputs are insufficient for the selected valuation method. Supply the historical multiple, normalized ROE, NAV or distribution as applicable.');
-    notes.push('Historical multiples need a matching lookback and book/NAV basis. Annual samples are disclosed proxies for daily-average multiples.');
+    notes.push(method==='peer_pb'?'Peer P/B needs an explicitly selected peer basket, aggregation and matching book basis in the source rationale.':
+      'Historical multiples need a matching lookback and book/NAV basis. Annual samples are disclosed proxies for daily-average multiples.');
     notes.push('Dividend yield prices are a separate variant from book/NAV fair value. Review forward dividends and special distributions.');
     if(!settings.roe&&family==='bank')notes.push('Default bank ROE uses five annual end-equity observations. Long-run growth 4% and cost of equity 9.5% are proxy assumptions unless supplied.');
     const result=finish(selected.value,selected.key,selected.method,selected.inputs,variants);
     if(result.result)result.result.basis=selected.basis||null;
     return result;
+  }
+  if(method==='pe'){
+    const eps=settings.earningsPerShare??(finite(current.netIncome)?current.netIncome/share:null);
+    if(!(eps>0)||!(settings.historicalMultiple>0))
+      return unavailable('Price/earnings needs positive listing-equivalent EPS and a dated selected P/E multiple.','earnings_multiple_required');
+    notes.push('The selected P/E multiple and EPS basis must share a source date; historical and peer multiples are not interchangeable.');
+    return finish(eps*settings.historicalMultiple*fx,'earnings_multiple','Price/earnings · supplied multiple',
+      {earningsPerShare:eps,multiple:settings.historicalMultiple,fxRate:fx});
   }
   const revenue=current.revenue;
   if(['ps','psg'].includes(method)){
@@ -208,9 +269,20 @@ export function calculateIV(data, request = {}, asOf = new Date().toISOString().
     notes.push(settings.flowYears+'-year average starting '+field+'.');
   }
   if(finite(settings.baseFlow))base=settings.baseFlow;
+  const baseFlowBeforeAdjustment=base,sbcFraction=settings.sbcFraction??0;
+  const stockBasedCompensation=settings.stockBasedCompensation??current.stockBasedCompensation;
+  if(sbcFraction>0){
+    if(!['dcf','ocf'].includes(method)||!finite(stockBasedCompensation)||stockBasedCompensation<0)
+      return unavailable('An SBC deduction needs a nonnegative charge for the selected FCF/OCF starting-flow period.','sbc_basis_required');
+    base-=stockBasedCompensation*sbcFraction;
+    notes.push('Subtract '+(sbcFraction*100)+'% of the supplied SBC charge from the selected starting flow. Do not supply an already-adjusted base as well.');
+  }
   if(!(base>0))return unavailable('The selected starting cash flow or earnings is not positive. Review normalization or select an earnings, book or sales method.','flow_basis_required');
   const cash=settings.cash??current.cash,debt=settings.debt??current.totalDebt;
   if(!finite(cash)||!finite(debt))return unavailable('Cash or total debt is missing; neither is assumed to be zero.');
+  const additionalAssets=settings.additionalAssets??0;
+  if(additionalAssets>0&&method!=='dni')
+    return unavailable('Additional assets are supported with DNI only; exclude their earnings from the projected base to avoid double counting.','additional_asset_basis_required');
   const historical=historicalGrowth(normalizedAnnual,field,base);
   let g1=selectedGrowth(settings);
   const forward=finite(g1);
@@ -220,14 +292,31 @@ export function calculateIV(data, request = {}, asOf = new Date().toISOString().
   const beta=finite(facts.beta)?clamp(facts.beta,.8,1.6):1;
   const rf=currency==='HKD'?.03068:.03608,mrp=currency==='HKD'?.06862:.02728;
   const discount=finite(assumptions.discountRate)?assumptions.discountRate:currency==='SGD'?.095:Math.round((rf+beta*mrp)*10000)/10000;
-  const value=dcf20({fcf0:base,g1,g2,g3,discountRate:discount,cash,debt,shares:share}).value*fx;
+  const projection=settings.projection||'finite_20',terminal=projection==='terminal_10',years=projection==='finite_20'?20:10;
+  if(terminal&&(!forward||!finite(settings.g2)||!finite(settings.discountRate)||!finite(settings.terminalGrowth)))
+    return unavailable('Terminal DCF needs dated forward growth, explicit stage-two growth, discount rate and perpetual terminal growth.','terminal_inputs_required');
+  if(terminal&&discount<=settings.terminalGrowth)
+    return unavailable('The cash-flow discount rate must exceed perpetual terminal growth.','invalid_terminal_rate');
+  const model=discountedCashFlow({fcf0:base,g1,g2,g3,discountRate:discount,cash,debt,shares:share,
+    years,terminalGrowth:terminal?settings.terminalGrowth:null,terminalTiming:settings.terminalTiming,additionalAssets});
+  const value=model.value*fx;
   notes.push(forward?'Growth from dated supplied forecasts or direct scenario input.':'Growth is a historical-flow proxy, not current or historical analyst consensus. Historical CAGR is capped to -5%–25%.');
-  notes.push('Years 6–10 default to the smaller of stage-one growth and 15%; final decade defaults to 4%. Explicit scenarios can change either.');
-  notes.push('Twenty discounted annual flows; no perpetual terminal value. Cash and debt bridge follows the selected teaching calculator, including DNI.');
+  notes.push('Years 6–10 default to the smaller of stage-one growth and 15%; an explicit scenario can change this.');
+  if(years===20)notes.push('The final decade defaults to 4%; an explicit scenario can change this.');
+  notes.push(terminal?'Ten discounted annual flows plus a perpetual terminal value from year eleven.':
+    years===10?'Ten discounted annual flows; no perpetual terminal value.':'Twenty discounted annual flows; no perpetual terminal value.');
+  notes.push('Cash and debt bridge follows the selected teaching calculator, including DNI.');
+  if(terminal)notes.push('Terminal component discounted at year '+model.terminalDiscountYear+'. The October 2025 WM worksheet is numerically consistent with the optional year-11 convention.');
+  if(additionalAssets>0)notes.push('Additional assets are added separately; their earnings and gains must be excluded from the projected DNI base.');
   if(!finite(assumptions.discountRate))notes.push('Discount proxy uses dated March 2026 teaching inputs; missing beta defaults to 1. SGD defaults to 9.5%.');
-  const id=method==='dni'?'dni_20y':method==='ocf'?'ocf_20y':'dcf_20y';
-  return finish(value,id,(forward?'Forecast':'Historical-growth proxy')+' '+({dcf:'FCF',ocf:'OCF',dni:'DNI'}[method])+'20',
-    {baseFlow:base,flowBasis:method,capexYears,flowYears:settings.flowYears||0,shares:share,cash,debt,g1,g2,g3,discountRate:discount,beta,fxRate:fx,historicalGrowth:historical});
+  const id=method+(terminal?'_terminal':'_'+years+'y');
+  return finish(value,id,(forward?'Forecast':'Historical-growth proxy')+' '+({dcf:'FCF',ocf:'OCF',dni:'DNI'}[method])+(terminal?' · terminal value':years),
+    {baseFlow:base,baseFlowBeforeAdjustment,stockBasedCompensation:stockBasedCompensation??null,sbcFraction,additionalAssets,
+      flowBasis:method,capexYears,flowYears:settings.flowYears||0,shares:share,cash,debt,g1,g2,
+      ...(years===20?{g3}:{}),projection,forecastYears:years,
+      ...(terminal?{terminalGrowth:settings.terminalGrowth,terminalPresentValue:model.terminalPresentValue,
+        terminalTiming:settings.terminalTiming||'end_forecast',terminalDiscountYear:model.terminalDiscountYear}:{}),
+      discountRate:discount,beta,fxRate:fx,historicalGrowth:historical});
 }
 
 function selectedGrowth(settings) {
@@ -236,6 +325,10 @@ function selectedGrowth(settings) {
   if(!estimates.length)return null;
   if(settings.growthSelection==='lowest')return Math.min(...estimates);
   if(settings.growthSelection==='highest')return Math.max(...estimates);
+  if(settings.growthSelection==='median'){
+    const sorted=[...estimates].sort((a,b)=>a-b),middle=Math.floor(sorted.length/2);
+    return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2;
+  }
   return mean(estimates);
 }
 

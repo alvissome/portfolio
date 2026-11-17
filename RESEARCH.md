@@ -319,3 +319,73 @@ Export Backup includes research results and reference metadata alongside the
 existing portfolio and performance history. Older backup formats keep their
 previous restore scopes. Restoring research invalidates old execution claims
 and pauses unfinished requests; it does not silently restart old jobs.
+
+## Archive-derived valuation options (17 November 2026)
+
+The expanded evidence pass covers the IV/support sections available across 82
+monthly premium reports (February 2020–November 2026), through transcripts and
+valuation worksheets. It does not establish a universal automatic selector or
+prove the November support reconstruction. Missing video chart anchors and
+ambiguous historical inputs remain research gaps. Subscribed report content,
+reference snapshots and the user's holdings remain outside this public repo.
+
+The existing `dcf`, `ocf` and `dni` methods retain finite 20-year projection as
+their default. The IV inputs editor also supports finite 10-year projection
+and a 10-year projection with a perpetual terminal value. Each result retains
+its own method ID; these models must not be compared as interchangeable IVs.
+Growth in years 6–10 is explicitly editable: archive examples use unchanged
+growth, a 50% or 70% retention, a 15% cap or a separate forecast. The existing
+default is only a disclosed proxy. Forecast median is now available alongside
+mean/lowest/highest; exclusions from a forecast set must be documented in its
+source rather than silently removed as outliers.
+
+For base flow F0 and discount rate r, project annual flows F1…FN and sum their
+discounted values. Finite models stop at N=10 or N=20, with no terminal value.
+A terminal model adds `FN*(1+gt)/(r-gt)`, discounted at the selected terminal
+year, then applies the cash/debt bridge and listing share/FX mapping. It needs
+explicit dated forward growth, stage-two growth, r and terminal growth gt,
+with `r > gt`. The default terminal discount year is 10. The optional year-11
+choice is numerically consistent with the October 2025 WM worksheet: its
+displayed stage values reproduce with one additional terminal discount year.
+This is an observed worksheet convention, not a general Gordon-growth rule.
+The timing choice and terminal present value are retained in the result.
+
+`ddm` is a separate per-listing-unit model. Starting from a dated annual DPU,
+apply one supplied growth rate for each forward year, discount each dividend,
+and add `DN*(1+gt)/(r-gt)` discounted at year N. Do not include the base-year
+historical growth in the forward path. Do not add company cash, deduct debt
+or divide by shares a second time. The August 2026 NetLink example reproduces
+S$1.022 from five forward years; it does not justify routing every dividend
+stock or REIT to DDM automatically. Required-yield price and NAV remain
+separate methods.
+
+Other explicit options/adjustments:
+
+- Peer P/B uses a supplied peer multiple and listing-equivalent book value;
+  it cannot fall back to the issuer's own historical P/B sample. Preserve peer
+  selection and mean/median/midpoint choices in the dated source rationale.
+- Selected P/E uses supplied listing-equivalent EPS (or verified earnings and
+  listing shares) times the selected multiple. EPS and the multiple must use
+  a consistent period, currency and share class.
+- An SBC charge can be subtracted from the FCF/OCF starting flow by an explicit
+  percentage, e.g. 50% or 100%. Supply the charge for the same normalized/base
+  period and do not also submit an already-adjusted base flow. A missing charge
+  blocks the adjustment rather than becoming zero.
+- DNI can add separately valued assets omitted from projected operating
+  earnings. Their earnings/unrealized gains must be excluded from the base to
+  avoid double counting. This is an explicit composite scenario, not an
+  automatic investment-asset estimate.
+
+Historical report inputs are not seeded into current research records. Auto
+continues to use provider data and its disclosed experimental assumptions;
+these additional methods need dated reviewed inputs under IV inputs. Worked
+example arithmetic is tested separately from source-date/denominator validation.
+Rounded narration does not always reproduce a displayed IV (e.g. the older FB
+ten-year example), and a formula must not be fitted by hiding that discrepancy.
+
+Deployment uses the same personal GitHub Pages app and existing project-guarded
+Actions research worker, with no new services, credentials or dependencies.
+The IV policy version schedules one normal refresh of finished older-policy
+records, preserving prior results during processing. Existing manual watchlist
+levels, holdings, price sync, costs and portfolio reconciliation are unchanged.
+Recovery is a code revert; records retain their dated inputs and previous output.
