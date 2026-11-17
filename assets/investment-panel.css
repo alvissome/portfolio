@@ -144,3 +144,17 @@
   box-shadow: 1px 0 0 #dce4ec;
 }
 .ic-decision-table thead th:first-child { background: #f8fafc; z-index: 2; }
+
+.investment-panel .ic-stage-history form[data-fill] {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(106px,1.1fr) auto;
+  align-items:end; gap:6px; container-type:inline-size;
+}
+.ic-stage-history form[data-fill] > strong,.ic-stage-history .ic-saved-fill,
+.ic-stage-history [data-fill-preview] { grid-column:1/-1; white-space:normal; }
+.ic-stage-spent { font-weight:400; }
+.ic-stage-history [data-fill-preview] { order:1; }
+.ic-stage-history [data-fill-preview]:empty { display:none; }
+.investment-panel .ic-stage-history form[data-fill] input { width:100%; min-width:0; box-sizing:border-box; }
+@container (max-width:330px) {
+  .ic-stage-history form[data-fill] > label,.ic-stage-history form[data-fill] > button { grid-column:span 2; }
+}
