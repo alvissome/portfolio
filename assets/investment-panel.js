@@ -10,7 +10,7 @@ import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaul
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,pricedFill,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
 import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-clarity-20261115';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=compact-toolbar-20261115';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=cc-email-20261117';
 export {resolvedCompany} from './investment-command-centre.js?v=plan-clarity-20261115';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function revisitDate(date,months=1){
@@ -35,6 +35,17 @@ export function createInvestmentComponent(React,jsx){
 export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange,onViewChange=()=>{},onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
   let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',watchStop=null,pendingCloud=null,cloudSnapshot='',draftDirty=false,filter='opportunities',expandedDecision='',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
   let chartDialog=null;
+  let marketContext=null,alertStatus=null;
+  async function refreshMarket(){
+    if(!alive||globalThis.document?.visibilityState==='hidden')return;
+    try{
+      const results=await Promise.all([storage.loadMarketContext?.(),storage.loadAlertStatus?.()]);
+      if(!alive)return;
+      marketContext=results[0]||null;alertStatus=results[1]||null;
+      if(!draftDirty)render();
+    }catch{if(alive){alertStatus={mode:'Status unavailable'};if(!draftDirty)render();}}
+  }
+  const marketTimer=setInterval(()=>void refreshMarket(),5*60000);
   const onChartClick=e=>{
     const button=e.target.closest?.('[data-price-chart]');
     if(button)chartDialog=openPriceChart(button,symbol=>storage.loadChart(symbol));
@@ -71,7 +82,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     };
   };
   const onDraftInput=event=>{
-    if(event.target?.closest?.('[data-plan],[data-decision-form],[data-settle-order],[data-fill],[data-cash-use]'))draftDirty=true;
+    if(event.target?.closest?.('[data-plan],[data-decision-form],[data-settle-order],[data-fill],[data-cash-use],[data-alert-settings]'))draftDirty=true;
   };
   root.addEventListener('input',onDraftInput);
   root.addEventListener('change',onDraftInput);
@@ -128,7 +139,8 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       <span data-ak-feedback role="status"></span>${!loaded?'<p>Loading saved plans and decisions… <button type="button" data-retry-cloud>Retry</button></p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
       ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<details data-section="funding-breakdown" ${open.has('funding-breakdown')?'open':''}><summary>Portfolio and cash basis</summary><p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. CC cash used since import: ${show(model.allowance.spent)}. Pending order reservations: ${show(model.reserved)}. Available for other buys: <strong>${show(funding.available)}</strong>.</p></details>`:''}
       ${model.incompleteSales?'<p class="ic-meta">Some planned sales lack FX and are excluded from potential cash.</p>':''}
-      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter,expandedSymbol:expandedDecision})}
+      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter,expandedSymbol:expandedDecision,marketContext})}
+      <details data-section="email-alerts" ${open.has('email-alerts')?'open':''}><summary>Email alerts · ${esc(config.alerts?.enabled===false?'Paused':alertStatus?.mode||'Setup pending')}</summary><p>Hourly checks follow all current Cash holdings and Watchlist tickers, including tickers in My decisions and Opportunities. Approaching: within 5% above the nearest support. Each support price is notified once; new daily drops below 3% and 5% can each notify once. Every email includes SPX context, with recent ticker headlines on drop alerts.</p><p class="ic-meta">${alertStatus?.checkedAt?'Last worker check: '+esc(new Date(alertStatus.checkedAt).toLocaleString('en-SG',{timeZone:'Asia/Singapore'}))+' SGT. ':''}${alertStatus?.lastAcceptedAt?'Last email accepted by provider: '+esc(new Date(alertStatus.lastAcceptedAt).toLocaleString('en-SG',{timeZone:'Asia/Singapore'}))+' SGT. ':''}${esc(alertStatus?.lastError||'')}</p><form data-alert-settings><label><input type="checkbox" name="enabled" ${config.alerts?.enabled===false?'':'checked'}> Enable personal email alerts once delivery is configured</label><button ${!loaded?'disabled':''}>Save alert preference</button></form><p class="ic-meta">Existing breached levels are baselined at startup. Pausing does not build an email backlog. SPX uses completed daily closes; ticker quotes may be delayed. Scheduling is hourly, with possible provider or cloud delays.</p></details>
       ${renderCashAllowance(model)}
       <details data-section="funding" ${open.has('funding')||model.allowance.legacyReviewRequired?'open':''}><summary>Confirm strategy funding</summary>
         <form data-funding>${field('liabilities','Related liabilities (SGD)',config.funding.liabilities??0,'type="number" min="0" step="0.01" required')}${field('pending','Other unavailable cash: external orders or unrecorded spending (SGD)',config.funding.pending??0,'type="number" min="0" step="0.01" required')}
@@ -159,6 +171,11 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
 `;
     root.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{filter=button.dataset.commandFilter;onViewChange(filter);render();});
     root.querySelector('[data-retry-cloud]')?.addEventListener('click',()=>reload());
+    root.querySelector('[data-alert-settings]')?.addEventListener('submit',async event=>{
+      event.preventDefault();error='';
+      const enabled=new FormData(event.currentTarget).get('enabled')==='on';
+      try{await save({...config,alerts:{...config.alerts,enabled}});notice=enabled?'Alert preference enabled. The personal email worker must be configured before it sends.':'Email alerts paused. The worker will discard pending emails on its next check.';}catch(e){error=e.message;}render();
+    });
     root.querySelector('[data-sync-ak]').onclick=async event=>{
       const button=event.currentTarget;
       button.disabled=true;
@@ -380,5 +397,6 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
   }
   render();
   reload();
-  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices,nextAdd=addWatchlist,nextRemove=removeWatchlist){addWatchlist=nextAdd;removeWatchlist=nextRemove;state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;if(!draftDirty||state.privacyMode)render();},destroy(){chartDialog?.close();root.removeEventListener("click",onChartClick);alive=false;watchStop?.();root.removeEventListener('input',onDraftInput);root.removeEventListener('change',onDraftInput);root.innerHTML='';}};
+  void refreshMarket();
+  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices,nextAdd=addWatchlist,nextRemove=removeWatchlist){addWatchlist=nextAdd;removeWatchlist=nextRemove;state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;if(!draftDirty||state.privacyMode)render();},destroy(){clearInterval(marketTimer);chartDialog?.close();root.removeEventListener("click",onChartClick);alive=false;watchStop?.();root.removeEventListener('input',onDraftInput);root.removeEventListener('change',onDraftInput);root.innerHTML='';}};
 }

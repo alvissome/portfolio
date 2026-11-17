@@ -165,3 +165,4 @@
   .ic-stage-history form[data-fill] > label { grid-column:span 2; }
   .ic-stage-history form[data-fill] > button { grid-column:span 1; }
 }
+.ic-market-context{display:flex;align-items:center;gap:12px;border:1px solid #c9d8e4;border-left:3px solid #527694;border-radius:7px;background:#f1f6fa;color:#25435d;padding:10px 12px;margin:14px 0 10px;font-size:12px;line-height:1.5}.ic-market-context strong{white-space:nowrap;font-weight:700}.ic-market-context span{min-width:0}.ic-market-bullish{border-left-color:#238363;background:#f0f8f3}.ic-market-bearish{border-left-color:#be442e;background:#fff4ef}.ic-market-unavailable{color:#6b7280;background:#f8fafc}.ic-market-bullish_pending,.ic-market-bearish_pending{border-left-color:#bd7a27;background:#fff8eb}@media(max-width:600px){.ic-market-context{align-items:flex-start;gap:8px;font-size:11px}}
