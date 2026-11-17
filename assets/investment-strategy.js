@@ -94,6 +94,12 @@ export function recordStageFill(plan,stageId,{spent,completed,date,execution}) {
   if(!stage)throw Error('The purchase stage no longer exists.');
   const amount=nonnegative(spent,'cumulative actual spend');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date)))throw Error('Enter the fill date.');
+  if(execution){
+    const limit=Math.min(stage.budget,stage.purchaseBudget??stage.budget);
+    const lot=plan.oddLots?1:plan.lotSize||1;
+    const nextLotCost=Math.round(execution.price*execution.fx*lot*100)/100;
+    completed=stage.completed||amount>=limit||Math.round((limit-amount)*100)<Math.round(nextLotCost*100);
+  }
   if(amount<stage.spent||stage.completed&&!completed)throw Error('Recorded spend and completed stages cannot be reset.');
   return {...plan,stages:plan.stages.map(s=>s.id===stageId?{...s,...(execution?{fills:[...(s.fills||[]),{...execution,date}]}:{}),spent:amount,completed:completed===true,fillDate:date}:s)};
 }

@@ -288,7 +288,12 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       fresh.stages=fresh.stages.map(s=>s.key===execution.stage.key?{...s,entryPrice:execution.entry,purchaseQuantity:execution.units,purchaseBudget:s.spent+Math.min(execution.capacity,Math.ceil((execution.spend-1e-9)*100)/100)}:s);
       await save(recordPlanReview(config,fresh,{id:crypto.randomUUID(),now:new Date().toISOString(),holding:funding.byCompany[symbol]??0,base:funding.base,shares:c.shares}));await clearRebalancing(symbol);delete draftEdits[symbol];
     });
-    const executionFor=(fd,form)=>pricedFill({...Object.fromEntries(fd),currency:form.querySelector('[data-fill-preview]').dataset.currency});
+    const executionFor=(fd,form)=>{
+      const currency=form.querySelector('[data-fill-preview]').dataset.currency;
+      const fx=currency==='SGD'?1:state.fxRates?.[currency];
+      if(!(fx>0))throw Error('Refresh prices to load the exchange rate for '+currency+'.');
+      return pricedFill({quantity:fd.get('quantity'),price:fd.get('price'),currency,fx});
+    };
     root.querySelectorAll('[data-fill-preview]').forEach(output=>{
       const form=output.closest('form');
       form.addEventListener('input',()=>{
@@ -302,7 +307,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       if(fd.get('date')>today())throw Error('A fill cannot be dated in the future.');
       const symbol=form.dataset.fill;
       if(Object.values(config.decisions||{}).some(d=>d.status==='ordered'&&d.symbol===symbol&&d.stageId===form.dataset.stage))throw Error('Record this fill through the pending order in My decisions so its reservation is reconciled.');
-      const next=recordStageCashFill(config,symbol,form.dataset.stage,{execution:executionFor(fd,form),completed:fd.get('completed')==='on',date:fd.get('date')},{id:crypto.randomUUID(),now:new Date().toISOString(),state});
+      const next=recordStageCashFill(config,symbol,form.dataset.stage,{execution:executionFor(fd,form),date:fd.get('date')},{id:crypto.randomUUID(),now:new Date().toISOString(),state});
       await save(next);
       notice='Fill saved. CC cash available for other buys is reduced; StocksCafe holdings, cash balances and ledger are unchanged.';
     }));
@@ -344,7 +349,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
     });
     root.querySelectorAll('[data-settle-order]').forEach(form=>form.onsubmit=action(async(fd,form)=>{
       const execution=executionFor(fd,form);
-      await save(settleOrder(config,form.dataset.settleOrder,{kind:'filled',spent:execution.amount,execution,completed:fd.get('completed')==='on',date:fd.get('date'),now:new Date().toISOString(),today:today(),cashBasis:cashImportBasis(state),cashId:crypto.randomUUID()}));
+      await save(settleOrder(config,form.dataset.settleOrder,{kind:'filled',spent:execution.amount,execution,date:fd.get('date'),now:new Date().toISOString(),today:today(),cashBasis:cashImportBasis(state),cashId:crypto.randomUUID()}));
       notice='Final fill recorded. The reservation is replaced by cash actually used. CC can size other buys; StocksCafe remains the master record.';
     }));
     if(popup&&addDialog){addDialog.querySelector('[name="ticker"]').value=popup.ticker;addDialog.querySelector('[name="category"]').value=popup.category;if(addDialog.showModal)addDialog.showModal();else addDialog.setAttribute('open','');if(error){const message=root.ownerDocument.createElement('p');message.setAttribute('role','alert');message.className='pf-error';message.textContent=error;addDialog.querySelector('form').prepend(message);}addDialog.querySelector(popup.focus==='category'?'[name="category"]':'[name="ticker"]').focus();}
