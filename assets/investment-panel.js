@@ -336,7 +336,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       const row=model.rows.find(r=>r.symbol===button.dataset.syncCompany);
       try{
         const sale=row.action==='sell',buy=row.action==='buy';
-        const request={id:crypto.randomUUID(),status:'queued',action:row.action,
+        const request={id:crypto.randomUUID(),status:'queued',queuedAt:new Date().toISOString(),action:row.action,
           stage:buy?row.entryStage?.key??'':'',quantity:sale?row.plan.sale?.quantity??null:buy?row.nextUnits:null,
           price:sale?row.plan.sale?.price??null:buy?row.nextEntry:null,currency:row.currency||'',
           reviewed:row.plan.reviewedAt||null,record:companyDecisionText(row,model.history)};
