@@ -76,19 +76,26 @@ export function reviewPurchasePlan(previous,fresh) {
   const stages=fresh.stages.map(s=>{
     const old=oldByKey.get(s.key);
     if(!old)return s;
-    return {...s,...(old.skipped?{skipped:true}:{}),id:old.id,spent:old.spent,completed:old.completed,...(old.entryPrice!=null?{entryPrice:old.entryPrice}:{}),...(old.purchaseQuantity!=null?{purchaseQuantity:old.purchaseQuantity}:{}),...(old.purchaseBudget!=null?{purchaseBudget:sameSchedule?old.purchaseBudget:Math.min(s.budget,old.purchaseBudget)}:{}),...(old.fillDate?{fillDate:old.fillDate}:{}),...(sameSchedule?{budget:old.budget}:{})};
+    return {...s,...(old.skipped?{skipped:true}:{}),id:old.id,...(old.fills?{fills:old.fills}:{}),spent:old.spent,completed:old.completed,...(old.entryPrice!=null?{entryPrice:old.entryPrice}:{}),...(old.purchaseQuantity!=null?{purchaseQuantity:old.purchaseQuantity}:{}),...(old.purchaseBudget!=null?{purchaseBudget:sameSchedule?old.purchaseBudget:Math.min(s.budget,old.purchaseBudget)}:{}),...(old.fillDate?{fillDate:old.fillDate}:{}),...(sameSchedule?{budget:old.budget}:{})};
   });
   const activeKeys=new Set(stages.map(s=>s.key));
   return {...fresh,...(sameSchedule?{baseAtApproval:previous.baseAtApproval,...(previous.redistribution?{redistribution:previous.redistribution}:{})}:{}),stages,
     archivedStages:[...oldByKey.values()].filter(s=>!activeKeys.has(s.key))};
 }
-export function recordStageFill(plan,stageId,{spent,completed,date}) {
+export function pricedFill({quantity,price,fees=0,fx,currency}){
+  const units=Number(quantity),unitPrice=Number(price),fee=Number(fees),rate=currency==='SGD'?1:Number(fx);
+  if(!currency||![units,unitPrice,rate].every(v=>Number.isFinite(v)&&v>0)||!Number.isFinite(fee)||fee<0)throw Error('Enter a positive quantity, price and SGD exchange rate, and nonnegative fees.');
+  const amount=Math.round((units*unitPrice+fee)*rate*100)/100;
+  if(!Number.isFinite(amount)||amount<=0)throw Error('Fill spend must be at least one SGD cent.');
+  return {quantity:units,price:unitPrice,fees:fee,fx:rate,currency,amount};
+}
+export function recordStageFill(plan,stageId,{spent,completed,date,execution}) {
   const stage=plan.stages.find(s=>s.id===stageId);
   if(!stage)throw Error('The purchase stage no longer exists.');
   const amount=nonnegative(spent,'cumulative actual spend');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date)))throw Error('Enter the fill date.');
   if(amount<stage.spent||stage.completed&&!completed)throw Error('Recorded spend and completed stages cannot be reset.');
-  return {...plan,stages:plan.stages.map(s=>s.id===stageId?{...s,spent:amount,completed:completed===true,fillDate:date}:s)};
+  return {...plan,stages:plan.stages.map(s=>s.id===stageId?{...s,...(execution?{fills:[...(s.fills||[]),{...execution,date}]}:{}),spent:amount,completed:completed===true,fillDate:date}:s)};
 }
 export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSize=1,oddLots=false,rounding='down',priceStale=false,levelsChanged=false,category}={}) {
   const pending=reasons=>({status:'review',amount:null,reasons});
