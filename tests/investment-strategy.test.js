@@ -41,7 +41,10 @@ test('caps by current company market value, cash and unused stage budget',()=>{
 });
 test('actual fills persist, cannot reset a completed stage or reduce actual spend',()=>{
  const p=plan();const filled=recordStageFill(p,p.stages[4].id,{spent:9000,completed:true,date:'2026-11-13'});
- assert.equal(preview(filled,fund(),{close:79}).stage.key,'s4');
+ assert.equal(preview(filled,fund(),{close:79}).stage,undefined);
+ const afterS2=recordStageFill(p,p.stages[1].id,{spent:9000,completed:true,date:'2026-11-13'});
+ assert.equal(preview(afterS2,fund(),{close:105}).next.key,'s3');
+ assert.equal(preview(afterS2,fund(),{close:95}).maxEntry,95);
  assert.equal(filled.stages[4].id,p.stages[4].id);
  assert.throws(()=>recordStageFill(filled,p.stages[4].id,{spent:8000,completed:true,date:'2026-11-13'}),/reset/);
  assert.throws(()=>recordStageFill(filled,p.stages[4].id,{spent:9000,completed:false,date:'2026-11-13'}),/reset/);

@@ -158,3 +158,10 @@
 @container (max-width:330px) {
   .ic-stage-history form[data-fill] > label,.ic-stage-history form[data-fill] > button { grid-column:span 2; }
 }
+.investment-panel .ic-stage-history form[data-fill] { grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(106px,1.1fr) auto auto; }
+.investment-panel .ic-stage-history .ic-finish-stage { flex-direction:row; align-items:center; white-space:nowrap; align-self:center; }
+.investment-panel .ic-stage-history form[data-fill] .ic-finish-stage input { width:auto; }
+@container (max-width:420px) {
+  .ic-stage-history form[data-fill] > label { grid-column:span 2; }
+  .ic-stage-history form[data-fill] > button { grid-column:span 1; }
+}

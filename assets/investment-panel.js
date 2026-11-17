@@ -303,13 +303,27 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
         }catch{output.textContent='';}
       });
     });
+    root.querySelectorAll('[data-fill]').forEach(form=>{
+      const syncRequired=()=>{
+        const onlyComplete=form.elements.completeStage.checked&&!form.elements.quantity.value&&!form.elements.price.value;
+        form.elements.quantity.required=form.elements.price.required=!onlyComplete;
+        form.querySelector('button').textContent=onlyComplete?'Save stage':'Save fill';
+      };
+      form.oninput=syncRequired;
+      syncRequired();
+    });
     root.querySelectorAll('[data-fill]').forEach(form=>form.onsubmit=action(async(fd,form)=>{
       if(fd.get('date')>today())throw Error('A fill cannot be dated in the future.');
       const symbol=form.dataset.fill;
       if(Object.values(config.decisions||{}).some(d=>d.status==='ordered'&&d.symbol===symbol&&d.stageId===form.dataset.stage))throw Error('Record this fill through the pending order in My decisions so its reservation is reconciled.');
-      const next=recordStageCashFill(config,symbol,form.dataset.stage,{execution:executionFor(fd,form),date:fd.get('date')},{id:crypto.randomUUID(),now:new Date().toISOString(),state});
+      const stage=config.plans[symbol].stages.find(s=>s.id===form.dataset.stage);
+      const completed=fd.get('completeStage')==='on';
+      const onlyComplete=completed&&!fd.get('quantity')&&!fd.get('price');
+      if(onlyComplete&&!stage.spent)throw Error('Record a fill before completing this stage.');
+      const fill=onlyComplete?{spent:stage.spent,completed,date:stage.fillDate||fd.get('date')}:{execution:executionFor(fd,form),completed,date:fd.get('date')};
+      const next=recordStageCashFill(config,symbol,form.dataset.stage,fill,{id:crypto.randomUUID(),now:new Date().toISOString(),state});
       await save(next);
-      notice='Fill saved. CC cash available for other buys is reduced; StocksCafe holdings, cash balances and ledger are unchanged.';
+      notice=onlyComplete?'Stage completed. Previously recorded spend retained.':'Fill saved. CC cash available for other buys is reduced; StocksCafe holdings, cash balances and ledger are unchanged.';
     }));
     if(root.querySelector('[data-cash-reconcile]'))root.querySelector('[data-cash-reconcile]').onsubmit=action(async(fd,form)=>{
       const includedIds=[...form.querySelectorAll('[name="included"]')].filter(input=>input.checked).map(input=>input.value);

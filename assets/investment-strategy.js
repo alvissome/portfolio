@@ -98,10 +98,14 @@ export function recordStageFill(plan,stageId,{spent,completed,date,execution}) {
     const limit=Math.min(stage.budget,stage.purchaseBudget??stage.budget);
     const lot=plan.oddLots?1:plan.lotSize||1;
     const nextLotCost=Math.round(execution.price*execution.fx*lot*100)/100;
-    completed=stage.completed||amount>=limit||Math.round((limit-amount)*100)<Math.round(nextLotCost*100);
+    completed=completed===true||stage.completed||amount>=limit||Math.round((limit-amount)*100)<Math.round(nextLotCost*100);
   }
   if(amount<stage.spent||stage.completed&&!completed)throw Error('Recorded spend and completed stages cannot be reset.');
   return {...plan,stages:plan.stages.map(s=>s.id===stageId?{...s,...(execution?{fills:[...(s.fills||[]),{...execution,date}]}:{}),spent:amount,completed:completed===true,fillDate:date}:s)};
+}
+export function remainingBuyStages(plan){
+  const last=plan.stages.reduce((index,s,i)=>s.completed&&s.spent>0?i:index,-1);
+  return plan.stages.slice(last+1).filter(s=>!s.completed&&s.spent<s.budget);
 }
 export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSize=1,oddLots=false,rounding='down',priceStale=false,levelsChanged=false,category}={}) {
   const pending=reasons=>({status:'review',amount:null,reasons});
@@ -117,7 +121,7 @@ export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSi
   if(!Number.isFinite(age)||age<0||age>31)reasons.push('Thesis and IV review is overdue or invalid.');
   if(reasons.length)return pending(reasons);
   if(close>=iv)return {status:'paused',amount:0,reasons:['Price is at or above reviewed IV.']};
-  const unused=plan.stages.filter(s=>!s.completed&&s.spent<s.budget);
+  const unused=remainingBuyStages(plan);
   const stage=unused.filter(s=>close<=Math.min(s.price,s.entryPrice??s.price)).at(-1);
   if(!stage)return {status:'hold',amount:0,next:unused[0],reasons:['No unused support is currently eligible.']};
   const holding=funding.byCompany[plan.symbol]||0;
@@ -126,7 +130,7 @@ export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSi
   const lot=positive(oddLots?1:lotSize,'lot size');
   if(!Number.isInteger(lot))throw Error('Lot size must be a whole number.');
   // The IV comparison is strict: an executable limit may not equal IV.
-  const maxEntry=Math.min(stage.price,stage.entryPrice??stage.price,iv);
+  const maxEntry=Math.min(stage.price,stage.entryPrice??stage.price,iv,...(plan.stages.some(s=>s.completed&&s.spent>0)?[close]:[]));
   const rawUnits=amount/(maxEntry*fx);
   // Round up only within all approved budgets and shared cash. Never breach a cap.
   const nearest=rounding==='nearest'?Math.round(rawUnits/lot)*lot:Math.floor(rawUnits/lot+1e-10)*lot;
