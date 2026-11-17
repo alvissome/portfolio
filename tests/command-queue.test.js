@@ -79,11 +79,11 @@ test('opportunity summary matches visible cards and separates reached from appro
  m=build(s,c);assert.equal(m.stats.opportunities,0);html=renderCommandCentre(m,{show:String,today});assert.doesNotMatch(html,/data-opportunity=/);assert.match(html,/Open opportunities<\/span><strong>0/);
 });
 
-test('My decisions puts clipboard icons last and opens company-specific execution without nested stage headings',()=>{
+test('My decisions puts Notion sync buttons last and opens company-specific execution without nested stage headings',()=>{
  const s=base(),c=config(s);c.plans.AAA=plan();c.plans.BBB={...plan(),symbol:'BBB',action:'hold',stages:[],revisitOn:'2027-01-01'};
  const m=build(s,c);let html=renderCommandCentre(m,{show:String,today,filter:'decisions'});
  assert.match(html,/<th>Manage<\/th><th>Notion<\/th><\/tr>/);
- assert.match(html,/data-copy-company="AAA"/);assert.match(html,/data-copy-company="BBB"/);
+ assert.match(html,/data-sync-company="AAA"/);assert.match(html,/data-sync-company="BBB"/);
  assert.match(html,/data-company-detail-row="AAA" hidden/);assert.doesNotMatch(html,/<summary>Purchase stages|data-copy-review/);
  html=renderCommandCentre(m,{show:String,today,filter:'decisions',expandedSymbol:'AAA'});
  assert.match(html,/data-company-details="AAA" aria-expanded="true"/);assert.match(html,/data-company-detail-row="AAA" ><td/);

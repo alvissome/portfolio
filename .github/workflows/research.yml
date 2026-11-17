@@ -51,3 +51,10 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
           SEC_CONTACT_EMAIL: ${{ secrets.SEC_CONTACT_EMAIL }}
+      - name: Process personal Notion exports
+        if: always() && vars.NOTION_PORTFOLIO_UID != '' && (inputs.mode == 'process' || github.event_name != 'workflow_dispatch')
+        run: node .github/scripts/syncNotion.mjs
+        env:
+          NOTION_PORTFOLIO_UID: ${{ vars.NOTION_PORTFOLIO_UID }}
+          NOTION_PORTFOLIO_TOKEN: ${{ secrets.NOTION_PORTFOLIO_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
