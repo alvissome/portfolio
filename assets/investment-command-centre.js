@@ -4,7 +4,7 @@ import {planAction,previewActionPlan,potentialSale} from './investment-actions.j
 import {cashAllowance,recordCashUse} from './cc-cash-allowance.js?v=redistribution-20261115';
 import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
-import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,recordStageFill} from './investment-strategy.js?v=redistribution-20261115';
+import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,remainingBuyStages,recordStageFill} from './investment-strategy.js?v=redistribution-20261115';
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
 const date=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value));
 const positive=n=>Number.isFinite(Number(n))&&Number(n)>0;
@@ -70,7 +70,16 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     }catch(e){result={status:'review',amount:null,reasons:[e.message]};}
     const levels=expectedLevels(company),eligible=levels.filter(l=>company.quote?.close>0&&company.quote.close<=Math.min(l.price,plan?.stages?.find(s=>s.key===l.key)?.entryPrice??l.price)).at(-1);
     const next=plan?.stages?.find(s=>!s.completed&&s.spent<s.budget);
-    const support=result.stage||result.next||eligible||next||levels[0];
+    const advanced=plan&&planAction(plan)==='buy'&&plan.stages.some(s=>s.completed&&s.spent>0);
+    const remaining=advanced?remainingBuyStages(plan):[];
+    const reached=advanced?remaining.filter(s=>company.quote?.close>0&&company.quote.close<=Math.min(s.price,s.entryPrice??s.price)).at(-1):eligible;
+    const support=advanced?(reached||remaining[0]):(result.stage||result.next||eligible||next||levels[0]);
+    const nextEntry=advanced&&support&&company.quote?.close>0?Math.min(company.quote.close,support.price,support.entryPrice??support.price):null;
+    let nextUnits=result.stage?.id===support?.id?result.units:null;
+    if(advanced&&nextEntry&&result.status==='hold'&&funding){
+      const preview=previewPurchase(plan,funding,{close:nextEntry,fx:company.fx,iv:company.iv,category:company.category,today,lotSize:plan.lotSize,oddLots:plan.oddLots,rounding:plan.rounding});
+      if(preview.stage?.id===support.id)nextUnits=preview.units;
+    }
     const supportIndex=levels.findIndex(l=>l.key===support?.key),followingSupport=supportIndex>=0?levels[supportIndex+1]??null:null;
     // Ordinary price ticks do not erase a decision. Holdings, plan/IV/SL/category
     // changes and a different eligible stage do; all earlier records remain.
@@ -90,7 +99,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const concentration=currentWeight!==null&&ceiling>0&&currentWeight>ceiling;
     const averageCost=shares>0&&holdings.every(h=>Number.isFinite(Number(h.average_cost??h.averageCost)))?holdings.reduce((n,h)=>n+Number(h.shares||0)*Number(h.average_cost??h.averageCost),0)/shares:null;
     const sale=potentialSale(plan,company);
-    const row={...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,priceMet:!!eligible,history,
+    const row={...item,...company,action:plan?planAction(plan):null,averageCost,sale,notes:plan?.remarks??(state.watchlist||[]).find(w=>w.symbol===item.symbol)?.notes??'',fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],plan,result,context,decision,notificationDeferred,orders,status,support,followingSupport,currentWeight,valuationPending:!!fundingError,currentHolding,shares,ccSpent:allowance.byCompany[item.symbol]||0,portfolioBase:displayFunding?.complete?displayFunding.base:null,concentration,advanced,nextEntry,nextUnits,priceMet:!!reached,history,
       changedDecision:history.some(d=>d.context!==context&&['deferred','dismissed','reviewed'].includes(d.status))};
     const queued={...row,...commandQueueState(row,{today,now})};
     const ladder=company.levels||[];
