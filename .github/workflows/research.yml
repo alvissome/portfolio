@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - .github/scripts/research-*
+      - .github/scripts/syncNotion.mjs
+      - .github/scripts/notion-ticker.mjs
       - .github/scripts/runResearch.js
       - .github/scripts/research-cli.js
       - assets/research-core.js
