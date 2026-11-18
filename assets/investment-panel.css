@@ -169,7 +169,8 @@
 
 .ic-market-details{font-size:12px;margin-bottom:12px}.ic-market-details summary{color:#34536c}.ic-market-trends{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}.ic-market-trends article{border:1px solid #dbe3eb;border-radius:8px;padding:12px;background:#f8fafc}.ic-market-trends h4{font-weight:700;margin:0 0 8px}.ic-market-trends h4 span{display:block;font-size:12px;color:#34536c;margin-top:5px}.ic-market-trends p{font-size:12px;line-height:1.6}@media(max-width:700px){.ic-market-trends{grid-template-columns:1fr}}
 
-.ic-dashboard-overview{min-width:0;margin-bottom:16px}
+.ic-dashboard-overview{min-width:0;margin-bottom:16px;padding:22px;background:#fff;border:1px solid #dfe5ec;border-radius:12px}
+@media(max-width:700px){.ic-dashboard-overview{padding:15px}}
 .ic-dashboard-overview .ic-market-context{margin-top:0;flex-wrap:wrap}
 .ic-dashboard-overview .ic-summary{margin:14px 0 0}
 .ic-dashboard-overview .ic-summary>button,.ic-dashboard-overview .ic-summary>div{padding:15px;text-align:left;border:1px solid #dce4ec;border-radius:10px;background:#f8fafc;color:#18334e;min-width:0}
