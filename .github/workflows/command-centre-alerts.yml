@@ -1,10 +1,7 @@
 name: Command Centre alerts
 on:
-  push:
-    branches: [main]
-    paths: [.github/workflows/command-centre-alerts.yml, .github/scripts/runCommandAlerts.mjs]
   schedule:
-    - cron: '13 0 * * *'
+    - cron: '0 0 * * *' # 08:00 Asia/Singapore
   workflow_dispatch:
     inputs:
       mode:

@@ -17,6 +17,9 @@ export function validateAlertEnvironment(env){
   if(enabled&&(!to||!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(to)||!from||/[\r\n]/.test(from)||!env.PORTFOLIO_ALERT_RESEND_KEY))throw Error('PERSONAL_EMAIL_SETUP_NEEDED');
   return {serviceAccount,uid,to,from,ownerEmail,enabled};
 }
+export function singaporeDigestDay(date){
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
+}
 export function eventIdentity(event){
   return event.type==='daily_drop'?[event.type,event.symbol,event.quote.date,event.tier]:event.type==='market_trend'?[event.type,event.context.date,event.before,event.context.short,event.context.medium,event.context.long,event.context.priceVs200]:[event.type,event.symbol,event.currency,event.levels.map(l=>l.price).sort((a,b)=>b-a)];
 }
@@ -47,54 +50,68 @@ export async function main(env=process.env){
   const warnings=[];
   try{context=await fetchSPX({now});if(!dryRun)await marketRef.set(context);}
   catch{marketAvailable=false;if(!marketContextFresh(context,+now))context=null;}
-  const queue=async(tx,stateRef,result)=>{
-    if(!enabled||!result.events.length){tx.set(stateRef,result.state);return;}
-    const events=result.events,createdAt=now.toISOString();
-    const id=hash(JSON.stringify(events.map(eventIdentity))),mailRef=portfolio.doc('ccAlerts').collection('mail').doc(id);
-    const existing=await tx.get(mailRef);
-    tx.set(stateRef,result.state);
-    if(existing.exists)return;
-    const rendered=renderAlertEmail({events,context,createdAt});
-    tx.create(mailRef,{status:'queued',createdAt,attempts:0,firstAttemptAt:null,
-      scope:events.map(e=>({symbol:e.symbol,type:e.type,currency:e.currency||null,prices:(e.levels||[]).map(l=>l.price)})),
-      idempotencyKey:'cc-alert/'+hash(settings.uid+'/'+id),email:{from:settings.from,to:[settings.to],...rendered}});
-  };
-  // All state/outbox changes check current plans and membership in the same
-  // transaction. Editing or removing a ticker while a quote loads discards work.
-  const stillCurrent=async tx=>{
-    const [freshData,freshStrategy]=await Promise.all([tx.get(dataRef),tx.get(strategyRef)]);
-    const latest=strategyOf(freshStrategy);
-    return latest.alerts?.enabled===strategy.alerts?.enabled&&JSON.stringify(alertUniverse(freshData.data()||{},latest))===signature;
-  };
+  const mail=portfolio.doc('ccAlerts').collection('mail');
+  const digestDay=singaporeDigestDay(now),mailRef=mail.doc('digest-'+digestDay);
+  const observations=[];
   if(context&&marketContextFresh(context,+now)){
-    const ref=portfolio.doc('ccAlertMarketState');
-    const observed=evaluateMarket(context,(await ref.get()).data(),+now);counts.events+=observed.events.length;
-    if(!dryRun)await db.runTransaction(async tx=>{
-      const prior=await tx.get(ref);if(!await stillCurrent(tx))return;
-      const result=evaluateMarket(context,prior.data(),+now);await queue(tx,ref,result);if(enabled&&result.events.length)counts.queued++;
-    });
+    observations.push({ref:portfolio.doc('ccAlertMarketState'),evaluate:prior=>evaluateMarket(context,prior,+now)});
   }
   for(const item of universe){
-    let quote;try{quote=await fetchAlertQuote(item.symbol,{now});counts.quoted++;}catch{counts.unavailable++;warnings.push({symbol:item.symbol,reason:'Quote unavailable or not current'});continue;}
-    const ref=portfolio.doc('ccAlertState-'+item.symbol),observed=evaluateTicker(item,quote,(await ref.get()).data(),+now);
-    if(observed.skipped){counts.unavailable++;warnings.push({symbol:item.symbol,reason:observed.skipped});}
-    counts.events+=observed.events.length;
-    const news=observed.events.some(e=>e.type==='daily_drop')?await fetchAlertNews(item.symbol,{now}):null;
-    if(!dryRun)await db.runTransaction(async tx=>{
-      const prior=await tx.get(ref);if(!await stillCurrent(tx))return;
-      const result=evaluateTicker(item,quote,prior.data(),+now);
-      result.events=result.events.map(e=>e.type==='daily_drop'?{...e,news:news||{items:[],status:'News unavailable; no cause confirmed.'}}:e);
-      if(Buffer.byteLength(JSON.stringify(result.state))>300000)throw Error('ALERT_HISTORY_REQUIRES_REVIEW');
-      await queue(tx,ref,result);if(enabled&&result.events.length)counts.queued++;
+    let quote;
+    try{quote=await fetchAlertQuote(item.symbol,{now});counts.quoted++;}
+    catch{counts.unavailable++;warnings.push({symbol:item.symbol,reason:'Quote unavailable or not current'});continue;}
+    observations.push({symbol:item.symbol,ref:portfolio.doc('ccAlertState-'+item.symbol),evaluate:prior=>evaluateTicker(item,quote,prior,+now)});
+  }
+  const observed=await Promise.all(observations.map(async observation=>{
+    const result=observation.evaluate((await observation.ref.get()).data());
+    if(observation.symbol&&result.skipped){counts.unavailable++;warnings.push({symbol:observation.symbol,reason:result.skipped});}
+    return result;
+  }));
+  counts.events=observed.reduce((total,result)=>total+result.events.length,0);
+  if(!dryRun){
+    const news=await Promise.all(observations.map((observation,index)=>
+      enabled&&observed[index].events.some(event=>event.type==='daily_drop')?fetchAlertNews(observation.symbol,{now}):null));
+    // Reserve a single digest for the Singapore calendar day and commit its
+    // alert baselines atomically. A rerun can retry the same immutable message.
+    counts.queued=await db.runTransaction(async tx=>{
+      const [freshData,freshStrategy,existing,...prior]=await Promise.all([
+        tx.get(dataRef),tx.get(strategyRef),tx.get(mailRef),...observations.map(o=>tx.get(o.ref)),
+      ]);
+      const latest=strategyOf(freshStrategy);
+      const stillCurrent=latest.alerts?.enabled===strategy.alerts?.enabled&&JSON.stringify(alertUniverse(freshData.data()||{},latest))===signature;
+      if(!stillCurrent||(enabled&&existing.exists))return 0;
+      const events=[];
+      observations.forEach((observation,index)=>{
+        const result=observation.evaluate(prior[index].data());
+        if(Buffer.byteLength(JSON.stringify(result.state))>300000)throw Error('ALERT_HISTORY_REQUIRES_REVIEW');
+        tx.set(observation.ref,result.state);
+        for(const event of result.events){
+          events.push(event.type==='daily_drop'&&news[index]?{...event,news:news[index]}:event);
+        }
+      });
+      if(!enabled||!events.length)return 0;
+      const createdAt=now.toISOString(),rendered=renderAlertEmail({events,context,createdAt});
+      tx.create(mailRef,{status:'queued',digestDay,createdAt,attempts:0,firstAttemptAt:null,
+        scope:events.map(e=>({symbol:e.symbol,type:e.type,currency:e.currency||null,prices:(e.levels||[]).map(l=>l.price)})),
+        idempotencyKey:'cc-digest/'+hash(settings.uid+'/'+digestDay),email:{from:settings.from,to:[settings.to],...rendered}});
+      return 1;
     });
   }
   let lastAcceptedAt=null,lastError='';
   if(!dryRun){
-    const pending=await portfolio.doc('ccAlerts').collection('mail').where('status','in',['queued','retry','sending','blocked']).limit(100).get();
-    for(const doc of pending.docs){
+    const [currentDigest,pending]=await Promise.all([mailRef.get(),mail.where('status','in',['queued','retry','sending','blocked']).limit(100).get()]);
+    for(const doc of [currentDigest,...pending.docs.filter(doc=>doc.id!==mailRef.id)]){
       const token=randomUUID();
       const record=await db.runTransaction(async tx=>{
         const [mail,currentStrategy,currentData]=await Promise.all([tx.get(doc.ref),tx.get(strategyRef),tx.get(dataRef)]),current=mail.data();
+        if(!['queued','retry','sending','blocked'].includes(current?.status))return null;
+        if(current.digestDay!==digestDay){
+          if(current.status==='sending'&&current.leaseUntil>Date.now())return null;
+          tx.update(doc.ref,current.deliveryUncertain||current.status==='sending'
+            ?{status:'needs_review',code:'PREVIOUS_DIGEST_OUTCOME_UNCONFIRMED'}
+            :{status:'cancelled',reason:'Superseded by daily digest schedule'});
+          return null;
+        }
         if(!settings.enabled||strategyOf(currentStrategy).alerts?.enabled===false){tx.update(doc.ref,{status:'cancelled',reason:'Alerts paused'});return null;}
         const active=alertUniverse(currentData.data()||{},strategyOf(currentStrategy));
         if(current.scope?.some(s=>s.symbol!=='SPX'&&!active.some(a=>a.symbol===s.symbol&&(!s.prices.length||a.currency===s.currency&&s.prices.every(p=>a.levels.some(l=>l.price===p)))))){
