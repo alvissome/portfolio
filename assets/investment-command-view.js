@@ -1,3 +1,4 @@
+import {remainingBuyStages} from './investment-strategy.js?v=stage-history-20261118';
 import {planAction} from './investment-actions.js?v=plan-research-20261115';
 import {renderMarketCallout} from './market-context.js?v=dashboard-overview-20261118';
 import {money} from './investment-format.js?v=compact-price-20261114';
@@ -21,9 +22,35 @@ const nextDate=today=>new Date(Date.parse(today+'T12:00:00Z')+86400000).toISOStr
 function fillFields(currency,fx,spent,budget){
  return `<label>Fill quantity<input type="number" name="quantity" step="any" min="0" required></label><label>Fill price (${esc(currency)})<input type="number" name="price" step="any" min="0" required></label><output data-fill-preview data-currency="${esc(currency)}" data-spent="${esc(spent||0)}" data-budget="${esc(budget??'')}"></output>`;
 }
-function stageHistory(plan,show,today,{inline=false,fx}={}){
+function stageSummary(stage,label,show){
+ const status=label==='Next stage'?'Open · Next stage':label;
+ return `<strong>${esc(stage.key.toUpperCase())} · budget ${show(stage.budget)} · ${status} <span class="ic-stage-spent">· Spent ${show(stage.spent)} of ${show(stage.budget)}</span></strong>`;
+}
+function savedFills(stage,show){
+ return (stage.fills||[]).map(f=>`<small class="ic-saved-fill">${esc(f.date)} · ${esc(f.quantity)} × ${esc(f.price)} ${esc(f.currency)} · ${show(f.amount)}</small>`).join('');
+}
+function stageFillForm(plan,stage,today){
+ return `<form data-fill="${esc(plan.symbol)}" data-stage="${esc(stage.id)}">${fillFields(plan.currency,null,stage.spent,stage.budget)}<label>Fill date<input name="date" type="date" max="${today}" value="${today}" required></label><label class="ic-finish-stage"><input type="checkbox" name="completeStage"> Complete stage</label><button>Save fill</button></form>`;
+}
+function stageCorrection(plan,stage,today){
+ return `<details class="ic-stage-edit"><summary>Edit</summary>${stage.fills.map((fill,index)=>`<form data-correct-fill="${esc(plan.symbol)}" data-stage="${esc(stage.id)}" data-index="${index}"><label>Fill quantity<input name="quantity" type="number" min="0" step="any" value="${esc(fill.quantity)}" required></label><label>Fill price (${esc(fill.currency)})<input name="price" type="number" min="0" step="any" value="${esc(fill.price)}" required></label><label>Fill date<input name="date" type="date" max="${today}" value="${esc(fill.date)}" required></label><button>Save correction</button><p data-correction-feedback role="status"></p></form>`).join('')}</details>`;
+}
+function stageHistory(row,show,today,{inline=false}={}){
+ const plan=row.plan;
  if(!plan||planAction(plan)!=='buy')return '';
- return `${inline?'<div class="ic-stage-history">':'<details class="ic-stage-history"><summary>Purchase stages and actual fills</summary>'}${plan.stages.map(s=>`<form data-fill="${esc(plan.symbol)}" data-stage="${esc(s.id)}"><strong>${esc(s.key.toUpperCase())} · budget ${show(s.budget)} · ${s.completed?'Completed':'Open'} <span class="ic-stage-spent">· Spent ${show(s.spent)} of ${show(s.budget)}</span></strong>${(s.fills||[]).map(f=>`<small class="ic-saved-fill">${esc(f.date)} · ${esc(f.quantity)} × ${esc(f.price)} ${esc(f.currency)} · ${show(f.amount)}</small>`).join('')}${fillFields(plan.currency,fx,s.spent,s.budget)}<label>Fill date<input name="date" type="date" max="${today}" value="${esc(today)}" required></label><label class="ic-finish-stage"><input type="checkbox" name="completeStage" ${s.completed?'checked disabled':''}> Complete stage</label><button>Save fill</button></form>`).join('')}${plan.archivedStages?.length?`<p>Earlier stages retained: ${plan.archivedStages.map(s=>`${esc(s.key.toUpperCase())} · ${show(s.spent)} spent · ${s.completed?'completed':'inactive'}`).join('; ')}.</p>`:''}${inline?'</div>':'</details>'}`;
+ const active=remainingBuyStages(plan);
+ const next=active.find(stage=>stage.id===row.entryStage?.id)||active[0];
+ const lastCompleted=plan.stages.findLastIndex(stage=>stage.completed&&stage.spent>0);
+ const later=active.filter(stage=>stage!==next);
+ const past=plan.stages.filter(stage=>!active.includes(stage));
+ const openStage=(stage,isNext)=>`<div class="ic-stage-card${isNext?' ic-next-stage':''}">${stageSummary(stage,isNext?'Next stage':'Open',show)}${savedFills(stage,show)}${isNext?stageFillForm(plan,stage,today):`<details><summary>Record fill</summary>${stageFillForm(plan,stage,today)}</details>`}</div>`;
+ const pastStage=stage=>{
+  const label=stage.completed?'Completed':stage.skipped||plan.stages.indexOf(stage)<lastCompleted?'Skipped':'No budget remaining';
+  const edit=stage.fills?.length?stageCorrection(plan,stage,today):!stage.completed?`<button type="button" class="ic-secondary ic-edit-stage" data-review-plan="${esc(plan.symbol)}" data-review-stage="${esc(stage.key)}">Edit plan</button>`:'';
+  return `<div class="ic-stage-card ic-past-stage">${stageSummary(stage,label,show)}${savedFills(stage,show)}${edit}</div>`;
+ };
+ const body=(next?openStage(next,true):'')+later.map(stage=>openStage(stage,false)).join('')+past.map(pastStage).join('');
+ return `${inline?'<div class="ic-stage-history">':'<details class="ic-stage-history"><summary>Purchase stages and actual fills</summary>'}${body}${plan.archivedStages?.length?`<p>Earlier stages retained: ${plan.archivedStages.map(s=>`${esc(s.key.toUpperCase())} · ${show(s.spent)} spent · ${s.completed?'completed':s.skipped?'skipped':'inactive'}`).join('; ')}.</p>`:''}${inline?'</div>':'</details>'}`;
 }
 export function renderOpportunityCard(row,{show,today,chart=true}){
  const r=row.result,ready=row.status==='eligible',order=row.orders[0];
@@ -46,7 +73,7 @@ export function renderOpportunityCard(row,{show,today,chart=true}){
  <p class="ic-meta">IV ${price(row.iv,row.currency)} · ${row.plan?'reviewed '+esc(row.plan.reviewedAt):'plan not set'}${row.changedDecision?' · earlier decision needs rechecking after input changes':''}</p></div>
  <div class="ic-actions"><button type="button" data-review-plan="${esc(row.symbol)}">${row.plan?'Review plan':'Set up plan'}</button>${!order?`<button type="button" class="ic-secondary" data-open-decision="deferred" data-symbol="${esc(row.symbol)}">Defer alerts</button><button type="button" class="ic-secondary" data-open-decision="dismissed" data-symbol="${esc(row.symbol)}">Dismiss</button>${ready?`<button type="button" data-open-decision="ordered" data-symbol="${esc(row.symbol)}">Record pending order</button>`:''}`:''}</div>
  ${!order?`<form class="ic-decision-form" data-decision-form="${esc(row.symbol)}" hidden><input type="hidden" name="kind"><label data-defer-field>Resume checks on<input type="date" name="until" min="${nextDate(today)}" value="${nextDate(today)}"></label><label data-order-field>Amount reserved including fees (SGD)<input type="number" name="amount" min="0.01" step="0.01" max="${r.amount||0}" value="${r.amount||''}"></label><label>Reason / note<input name="note" maxlength="1000" placeholder="Optional"></label><p class="ic-meta">Defer changes timing; your Buy, Sell or Hold plan stays unchanged. Notifications are not sent by this version.</p><p data-order-field>Record an order you have placed yourself. This does not send an order to your broker.</p><button type="submit">Save decision</button><button type="button" class="ic-secondary" data-close-decision>Cancel</button></form>`:''}
- ${stageHistory(row.plan,show,today,{fx:row.fx})}${order?renderDecisionHistory({rows:[row],history:row.orders.map(d=>({...d,active:true,contextCurrent:true})),archivedPlans:[]},{show,today}):''}</article>`;
+ ${stageHistory(row,show,today)}${order?renderDecisionHistory({rows:[row],history:row.orders.map(d=>({...d,active:true,contextCurrent:true})),archivedPlans:[]},{show,today}):''}</article>`;
 }
 export function renderDecisionHistory(model,{show,today}){
  if(!model.history.length&&!model.archivedPlans.length)return '<p class="ic-empty">No decisions or orders recorded yet.</p>';
@@ -56,7 +83,7 @@ export function renderDecisionHistory(model,{show,today}){
 }
 function decisionExecution(row,{show,today,model}){
  const r=row.result;
- return `<section class="ic-company-execution" data-opportunity="${esc(row.symbol)}"><header><h4>${esc(row.symbol)} · ${planAction(row.plan)==='buy'?'Stages, fills & orders':'Decision history & orders'}</h4><button type="button" class="ic-secondary" data-close-company-details="${esc(row.symbol)}">Close</button></header>${planAction(row.plan)==='buy'?`<p class="ic-meta">${row.plan.stages.filter(s=>s.completed).length}/${row.plan.stages.length} stages completed${row.orders.length?` · ${row.orders.length} pending order(s)`:""}</p>`:''}${row.notes?`<p class="ic-plan-remarks">${esc(row.notes)}</p>`:''}${row.status==='eligible'&&!row.orders.length?`<button type="button" data-open-decision="ordered" data-symbol="${esc(row.symbol)}">Record pending order</button><form data-decision-form="${esc(row.symbol)}" hidden><input type="hidden" name="kind" value="ordered"><input type="hidden" name="until" value="${nextDate(today)}" disabled><label data-order-field>Cash reserved (SGD)<input name="amount" type="number" min="0.01" step="0.01" max="${r.amount}" value="${r.amount}" required></label><label>Note<input name="note" maxlength="1000"></label><p data-order-field>Record an order already placed by you; this application sends no broker order.</p><button>Save order</button><button type="button" class="ic-secondary" data-close-decision>Cancel</button></form>`:row.orders.length?'<p class="ic-meta">Pending order: record cancellation or final fill below.</p>':''}${stageHistory(row.plan,show,today,{inline:true,fx:row.fx})}${planAction(row.plan)==='buy'?'<h5>Decision history & orders</h5>':''}${renderDecisionHistory({...model,history:(model.history||[]).filter(d=>d.symbol===row.symbol),archivedPlans:[]},{show,today})}</section>`;
+ return `<section class="ic-company-execution" data-opportunity="${esc(row.symbol)}"><header><h4>${esc(row.symbol)} · ${planAction(row.plan)==='buy'?'Stages, fills & orders':'Decision history & orders'}</h4><button type="button" class="ic-secondary" data-close-company-details="${esc(row.symbol)}">Close</button></header>${planAction(row.plan)==='buy'?`<p class="ic-meta">${row.plan.stages.filter(s=>s.completed).length}/${row.plan.stages.length} stages completed${row.plan.stages.some(s=>s.skipped&&!s.completed)?` · ${row.plan.stages.filter(s=>s.skipped&&!s.completed).length} skipped`:""}${row.orders.length?` · ${row.orders.length} pending order(s)`:""}</p>`:''}${row.notes?`<p class="ic-plan-remarks">${esc(row.notes)}</p>`:''}${row.status==='eligible'&&!row.orders.length?`<button type="button" data-open-decision="ordered" data-symbol="${esc(row.symbol)}">Record pending order</button><form data-decision-form="${esc(row.symbol)}" hidden><input type="hidden" name="kind" value="ordered"><input type="hidden" name="until" value="${nextDate(today)}" disabled><label data-order-field>Cash reserved (SGD)<input name="amount" type="number" min="0.01" step="0.01" max="${r.amount}" value="${r.amount}" required></label><label>Note<input name="note" maxlength="1000"></label><p data-order-field>Record an order already placed by you; this application sends no broker order.</p><button>Save order</button><button type="button" class="ic-secondary" data-close-decision>Cancel</button></form>`:row.orders.length?'<p class="ic-meta">Pending order: record cancellation or final fill below.</p>':''}${stageHistory(row,show,today,{inline:true})}${planAction(row.plan)==='buy'?'<h5>Decision history & orders</h5>':''}${renderDecisionHistory({...model,history:(model.history||[]).filter(d=>d.symbol===row.symbol),archivedPlans:[]},{show,today})}</section>`;
 }
 export const DECISION_COLUMNS=[['name','Company'],['action','Action'],['close','Close'],['avgPrice','Avg Price'],['bValue','BValue'],['iv','IV'],['refCost','Ref cost'],['currentSL','Current SL'],['nextSL','Next SL'],['quantity','Quantity'],['plannedPrice','Entry / sale price'],['notes','Notes']];
 export function renderDecisionTable(model,{show,today,rows=model.rows,expandedSymbol=''}={}){

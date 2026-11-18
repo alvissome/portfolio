@@ -1,7 +1,7 @@
 import {researchFromLevels} from './fixtures/company-research.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cashImportBasis,cashAllowance,recordCashUse,recordStageCashFill,reconcileCashUse} from '../assets/cc-cash-allowance.js';
+import {cashImportBasis,cashAllowance,recordCashUse,recordStageCashFill,correctStageCashFill,reconcileCashUse} from '../assets/cc-cash-allowance.js';
 import {buildCommandCentre,addDecision,settleOrder} from '../assets/investment-command-centre.js';
 import {fundingSignature,createPurchasePlan} from '../assets/investment-strategy.js';
 import {createDashboardBackup,readDashboardBackup} from '../assets/dashboard-backup.js';
@@ -64,4 +64,34 @@ test('cash deductions survive ticker removal and affect planning projections, no
  const s=state();let c=fill(s,config(s),500);
  const row=model(s,c).rows[0];assert.equal(row.currentWeight,5);assert.equal(row.currentHolding,5000);assert.equal(row.ccSpent,500);assert.ok(row.result.projectedWeight>=5.5);
  const removed={...s,holdings:[],watchlist:s.watchlist.filter(w=>w.symbol!=='AAA')};assert.equal(model(removed,c).allowance.spent,500);assert.equal(model(removed,c).funding.available,94500);
+});
+
+
+test('correcting a recorded fill replaces its cash deduction and preserves the completion state',()=>{
+ const s=state(),stageId='p-AAA-s3';
+ const fill={quantity:5,price:100,fees:0,currency:'SGD',fx:1,amount:500};
+ const original=recordStageCashFill(config(s),'AAA',stageId,{execution:fill,date:today,completed:true},{id:'use-correction',now,state:s});
+ const result=correctStageCashFill(original,'AAA',stageId,0,{quantity:4,price:100,date:today,today,now});
+ assert.equal(cashAllowance(result,s).spent,400);
+ assert.equal(Object.keys(result.cashUsage).length,1);
+ assert.equal(result.plans.AAA.stages[0].spent,400);
+ assert.equal(result.plans.AAA.stages[0].fills[0].quantity,4);
+ assert.equal(result.plans.AAA.stages[0].completed,true);
+ assert.equal(cashAllowance(original,s).spent,500);
+});
+
+
+test('a historical fill can be corrected when its settled order and cash record match',()=>{
+ const s=state(),row=model(s,config(s)).rows[1];
+ const order=addDecision(config(s),row,{kind:'ordered',id:'settled-for-correction',amount:1000,now,today});
+ const execution={quantity:9,price:100,fees:0,currency:'SGD',fx:1,amount:900};
+ const c=settleOrder(order,'settled-for-correction',{kind:'filled',spent:900,execution,completed:true,date:today,now,today,cashBasis:cashImportBasis(s),cashId:'legacy-use'});
+ const stage=c.plans.BBB.stages.find(stage=>stage.id===row.result.stage.id);
+ delete stage.fills[0].cashUseId; // Simulate a fill saved before explicit links.
+ const options={quantity:8,price:100,date:today,today,now};
+ const corrected=correctStageCashFill(c,'BBB',stage.id,0,options);
+ assert.equal(corrected.decisions['settled-for-correction'].actualSpend,800);
+ assert.equal(cashAllowance(corrected,s).spent,800);
+ const ambiguous={...c,cashUsage:{...c.cashUsage,duplicate:{...c.cashUsage['legacy-use'],id:'duplicate'}}};
+ assert.throws(()=>correctStageCashFill(ambiguous,'BBB',stage.id,0,options),/unique cash record/);
 });

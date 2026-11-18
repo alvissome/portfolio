@@ -6,7 +6,7 @@ import {planAction,previewActionPlan,potentialSale} from './investment-actions.j
 import {cashAllowance,recordCashUse} from './cc-cash-allowance.js?v=redistribution-20261115';
 import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
-import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,remainingBuyStages,recordStageFill} from './investment-strategy.js?v=redistribution-20261115';
+import {RULE_VERSION,fundingSignature,strategyFunding,previewPurchase,remainingBuyStages,recordStageFill} from './investment-strategy.js?v=stage-history-20261118';
 const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id);
 const date=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value));
 const positive=n=>Number.isFinite(Number(n))&&Number(n)>0;
@@ -73,7 +73,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const levels=expectedLevels(company),eligible=levels.filter(l=>company.quote?.close>0&&company.quote.close<=Math.min(l.price,plan?.stages?.find(s=>s.key===l.key)?.entryPrice??l.price)).at(-1);
     const next=plan?.stages?.find(s=>!s.completed&&s.spent<s.budget);
     const advanced=plan&&planAction(plan)==='buy'&&plan.stages.some(s=>s.completed&&s.spent>0);
-    const remaining=plan&&planAction(plan)==='buy'?remainingBuyStages(plan).filter(s=>!s.skipped):[];
+    const remaining=plan&&planAction(plan)==='buy'?remainingBuyStages(plan):[];
     const reached=plan?remaining.filter(s=>company.quote?.close>0&&company.quote.close<=Math.min(s.price,s.entryPrice??s.price)).at(-1):eligible;
     const support=planAction(plan)==='hold'&&plan?.skipSupportKey?result.holdSupport:(plan&&planAction(plan)==='buy'?(reached||remaining.find(s=>s.key===plan.plannedEntryKey)||remaining[0]):(result.stage||result.next||eligible||next||levels[0]));
     const openStages=remaining;
@@ -169,7 +169,7 @@ export function settleOrder(config,id,{kind,spent,execution,completed=false,date
     const plan=plans?.[order.symbol];if(!plan||plan.id!==order.planId)throw Error('The original purchase plan must be recovered before recording this fill.');
     const active=plan.stages.find(s=>s.id===order.stageId),archived=plan.archivedStages?.find(s=>s.id===order.stageId),stage=active||archived;
     if(!stage)throw Error('The original purchase stage must be recovered before recording this fill.');
-    const updated=recordStageFill({...plan,stages:[stage]},stage.id,{spent:stage.spent+Number(spent),execution,completed:stage.completed||completed,date:fillDate}).stages[0];
+    const updated=recordStageFill({...plan,stages:[stage]},stage.id,{spent:stage.spent+Number(spent),execution:execution&&cashBasis?{...execution,cashUseId:cashId}:execution,completed:stage.completed||completed,date:fillDate}).stages[0];
     const changed={...plan,...(active?{stages:plan.stages.map(s=>s.id===stage.id?updated:s)}:{archivedStages:plan.archivedStages.map(s=>s.id===stage.id?updated:s)})};
     plans={...plans,[order.symbol]:changed};funding=cashBasis?funding:{...funding,confirmed:false};
     next.actualSpend=Number(spent);next.fillDate=fillDate;next.stageCompleted=updated.completed;
