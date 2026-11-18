@@ -179,3 +179,28 @@
 .ic-market-refresh[aria-disabled="true"]{opacity:.65;cursor:wait}
 .ic-market-meta{margin:0 0 8px;color:#526579;font-size:12px;line-height:1.5}
 #investment-command-centre{scroll-margin-top:72px}
+
+/* Give the Hold controls separate columns without moving the other actions. */
+.investment-panel form.ic-compact-plan:has(>.ic-revisit-field:not([hidden])){
+  align-items:start;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.35fr) minmax(0,1fr) minmax(0,1.65fr) minmax(0,1fr);
+}
+.investment-panel form.ic-compact-plan:has(>.ic-revisit-field:not([hidden]))>.ic-plan-remarks-field{grid-column:auto}
+.investment-panel .ic-revisit-field:not([hidden]){
+  display:grid;
+  grid-column:span 2;
+  grid-template-columns:subgrid;
+  align-items:start;
+  row-gap:5px;
+}
+.investment-panel .ic-revisit-field>label{margin:0;min-width:0}
+.ic-revisit-field>.ic-revisit-picker{grid-column:1;grid-row:2}
+.ic-revisit-field>label:has(>select){grid-column:2;grid-row:1/span 2}
+@media(max-width:1000px){
+  .investment-panel form.ic-compact-plan:has(>.ic-revisit-field:not([hidden])){grid-template-columns:repeat(4,minmax(0,1fr))}
+  .investment-panel form.ic-compact-plan:has(>.ic-revisit-field:not([hidden]))>.ic-plan-remarks-field{grid-column:span 3}
+}
+@media(max-width:650px){
+  .investment-panel form.ic-compact-plan:has(>.ic-revisit-field:not([hidden])){grid-template-columns:repeat(2,minmax(0,1fr))}
+  .investment-panel form.ic-compact-plan:has(>.ic-revisit-field:not([hidden]))>.ic-plan-remarks-field{grid-column:1/-1}
+}
