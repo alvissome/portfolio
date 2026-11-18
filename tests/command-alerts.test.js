@@ -6,7 +6,7 @@ import {alertUniverse,evaluateTicker,evaluateMarket,levelKey} from '../.github/s
 import {parseAlertQuote,parseNews,fetchAlertNews,fetchSPX} from '../.github/scripts/alert-data.mjs';
 import {renderAlertEmail} from '../.github/scripts/alert-email.mjs';
 import {deliveryDecision,sendAlertEmail,SAFE_RETRY_MS} from '../.github/scripts/alert-delivery.mjs';
-import {validateAlertEnvironment,eventIdentity,alertRunMode,outstandingDelivery} from '../.github/scripts/runCommandAlerts.mjs';
+import {validateAlertEnvironment,eventIdentity,alertRunMode,outstandingDelivery,singaporeDigestDay} from '../.github/scripts/runCommandAlerts.mjs';
 const now=Date.parse('2026-11-17T10:00:00Z');
 const bars=values=>values.map((close,i)=>({date:new Date(Date.parse('2026-11-16')-(values.length-1-i)*86400000).toISOString().slice(0,10),close}));
 const context=()=>calculateMarketContext(bars(Array.from({length:400},(_,i)=>100+i)),{checkedAt:new Date(now).toISOString()});
@@ -136,7 +136,7 @@ test('environment is personal-only, scopes to one owner, and never borrows legac
 });
 test('new worker preserves the private data boundary and default-off delivery',async()=>{
   const worker=await readFile(new URL('../.github/scripts/runCommandAlerts.mjs',import.meta.url),'utf8'),workflow=await readFile(new URL('../.github/workflows/command-centre-alerts.yml',import.meta.url),'utf8');
-  assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/13 0 \* \* \*/);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
+  assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/0 0 \* \* \*/);assert.doesNotMatch(workflow,/^  push:/m);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
 });
 test('the alert worker requires an explicit, unambiguous execution mode',()=>{
   assert.equal(alertRunMode(['node','script','--dry-run']),'dry-run');assert.equal(alertRunMode(['node','script','--run']),'run');assert.throws(()=>alertRunMode(['node','script']),/EXPLICIT/);assert.throws(()=>alertRunMode(['--run','--dry-run']),/SELECT_ONE/);
@@ -151,4 +151,18 @@ test('market callout names all three trends and explains alignment, individual s
  const html=renderMarketCallout(context(),{now});
  for(const text of ['Short:','Medium:','Long:','Short-term','Medium-term','Long-term','20 EMA above 40 EMA','50 SMA above 150 SMA','200 SMA','over 5 sessions','crossover alone','52-week closing peak'])assert.ok(html.includes(text),text);
  assert.match(html,/<details/);
+});
+
+
+test('daily email groups multiple alerts in one ticker card and keeps every alert',()=>{
+  const email=renderAlertEmail({createdAt:new Date(now).toISOString(),context:context(),events:[
+    {type:'support_approach',symbol:'CRM',currency:'USD',quote:quote(99),distancePct:2,levels:[{key:'s2',price:97}]},
+    {type:'daily_drop',symbol:'CRM',currency:'USD',tier:5,dropPct:-6,quote:quote(99)},
+    {type:'support_hit',symbol:'CRM',currency:'USD',quote:quote(99),levels:[{key:'s1',price:100}]},
+  ]});
+  assert.match(email.subject,/Daily digest · 3 alerts · CRM/);
+  assert.equal((email.html.match(/>CRM<\/h2>/g)||[]).length,1);
+  for(const label of ['Approaching support','New support reached','Large daily drop'])assert.ok(email.html.includes(label));
+  assert.equal(singaporeDigestDay(new Date('2026-11-18T15:59:00Z')),'2026-11-18');
+  assert.equal(singaporeDigestDay(new Date('2026-11-18T16:00:00Z')),'2026-11-19');
 });

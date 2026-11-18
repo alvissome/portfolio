@@ -75,10 +75,11 @@ test('unsubscribing an automatic watcher stops subsequent cloud reads',async()=>
   await new Promise(resolve=>setTimeout(resolve,25));
   assert.equal(h.checks,before);
 });
-test('CC screen has bulk AK sync in place of reload, protects forms, and Settings owns the AK links',async()=>{
+test('Top bar owns both sync actions, CC protects forms, and Settings owns the AK links',async()=>{
   const panel=await readFile(new URL('../assets/investment-panel.js',import.meta.url),'utf8');
   const main=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8');
-  assert.match(panel,/data-sync-ak/);
+  assert.doesNotMatch(panel,/data-sync-ak|data-refresh-prices|Prices refreshed/);
+  assert.match(main,/Sync options[\s\S]*?Refresh prices[\s\S]*?Sync AK sheets/);
   assert.doesNotMatch(panel,/data-reload-command|Reload saved decisions/);
   assert.doesNotMatch(panel,/className:'ic-watchlist-host'/);
   assert.match(panel,/watchStop=storage\.watch/);
