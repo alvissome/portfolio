@@ -31,9 +31,11 @@ test('editing either table changes the same ticker category; tracking does not c
  assert.equal(categoryFor(chooseStrategyCategory(categories,'GOOGL','anchor'),track.item.symbol),'anchor');
  assert.equal(categoryFor(chooseStrategyCategory(categories,'GOOGL',''),'GOOGL'),'');
 });
-test('at most six Anchors, safe keys, and only the three supported categories',()=>{
+test('additional Anchors are supported with safe keys and valid categories',()=>{
  const seeded=normalizeStrategyCategories(undefined);
- assert.throws(()=>chooseStrategyCategory(seeded,'NEW','anchor'),/six/);
+ const expanded=chooseStrategyCategory(chooseStrategyCategory(seeded,'NEW','anchor'),'ANOTHER','anchor');
+ assert.equal(Object.values(expanded).filter(c=>c==='anchor').length,8);
+ assert.deepEqual(normalizeStrategyCategories(JSON.parse(JSON.stringify(expanded))),expanded);
  const next=chooseStrategyCategory(chooseStrategyCategory(seeded,'GOOGL','core'),'NEW','anchor');
  assert.equal(next.NEW,'anchor');assert.equal(next.GOOGL,'core');
  for(const category of ['other','top6','constructor'])assert.throws(()=>chooseStrategyCategory({},'XYZ',category));
@@ -43,7 +45,7 @@ test('production cloud serializer round-trips categories without placing them in
  const start=bundle.indexOf('function MR('),end=bundle.indexOf('async function JT(',start);
  const context={holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
  runInNewContext(bundle.slice(start,end)+';this.save=BR;this.load=UR;',context);
- const state={accountImportVersion:1,strategyCategories:{GOOGL:'selective'},holdings:[{ticker:'GOOGL',accountType:'Cash',shares:1}],watchlist:[{symbol:'GOOGL'}],cash:{},emailSettings:{}};
+ const state={accountImportVersion:1,strategyCategories:chooseStrategyCategory(undefined,'CANDIDATE','anchor'),holdings:[{ticker:'GOOGL',accountType:'Cash',shares:1}],watchlist:[{symbol:'GOOGL'}],cash:{},emailSettings:{}};
  const saved=context.save(state);
  assert.deepEqual(clone(saved.settings.strategyCategories),state.strategyCategories);
  assert.deepEqual(clone(context.load(saved).strategyCategories),state.strategyCategories);
@@ -52,8 +54,8 @@ test('production cloud serializer round-trips categories without placing them in
 });
 test('category selections and explicit Unassigned survive dashboard-wide backup restore',()=>{
  const performance={snapshots:{},flows:{},trades:{},coverage:{},settings:{}};
- const state={holdings:[],watchlist:[],cash:{},strategyCategories:{XYZ:'core'}};
- assert.deepEqual(readDashboardBackup(createDashboardBackup(state,performance)).state.strategyCategories,{XYZ:'core'});
+ const state={holdings:[],watchlist:[],cash:{},strategyCategories:{...normalizeStrategyCategories(undefined),CANDIDATE:'anchor',XYZ:'core'}};
+ assert.deepEqual(readDashboardBackup(createDashboardBackup(state,performance)).state.strategyCategories,state.strategyCategories);
  assert.deepEqual(readDashboardBackup(createDashboardBackup({...state,strategyCategories:{}},performance)).state.strategyCategories,{});
  assert.throws(()=>readDashboardBackup(createDashboardBackup({...state,strategyCategories:{XYZ:'unknown'}},performance)),/category/);
 });
@@ -162,7 +164,7 @@ test('holdings table filters by category; Watchlist research no longer renders t
 
 test('privacy masks account quantities, average costs and notes while keeping public closes',()=>{
  const holdings=[{ticker:'XYZ',accountType:'Cash',portfolioType:'Growth',shares:123456,currency:'USD',average_cost:543.21}],prices={XYZ:{close:95}};
- const common={holdings,prices,fxRate:1.3,fxRates:{USD:1.3},cash:{},privacyMode:true,portfolioTypes:['Growth'],accountTypes:['Cash'],columnVisibility:{shares:true,avgPrice:true,close:true,notes:true},strategyCategories:{XYZ:'core'}};
+ const common={holdings,prices,fxRate:1.3,fxRates:{USD:1.3},cash:{},privacyMode:true,portfolioTypes:['Growth'],accountTypes:['Cash'],columnVisibility:{shares:true,avgPrice:true,close:true,notes:true},strategyCategories:{...normalizeStrategyCategories(undefined),CANDIDATE:'anchor',XYZ:'core'}};
  for(const tree of [renderProductionTable('NN',common)]){
   const json=JSON.stringify(tree,(key,value)=>typeof value==='function'?undefined:value);
   assert.ok(!json.includes('543.21'));assert.ok(!json.includes('123,456'));assert.ok(!json.includes('PRIVATE NOTE'));assert.ok(json.includes('95.00'));

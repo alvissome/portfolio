@@ -11,7 +11,6 @@ export function normalizeStrategyCategories(categories){
     if(!validSymbol(symbol)||!Object.hasOwn(STRATEGY_CATEGORIES,category))throw Error('Invalid strategy category for '+symbol+'.');
     result[symbol]=category;
   }
-  if(Object.values(result).filter(c=>c==='anchor').length>6)throw Error('Choose at most six Anchor companies.');
   return result;
 }
 export function categoryFor(categories,symbol){
