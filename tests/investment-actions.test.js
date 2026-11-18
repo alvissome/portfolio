@@ -13,13 +13,13 @@ const fields={reviewedAt:today,remarks:'Synthetic <note>',entry:120,quantity:5};
 const save=(action,extra={},prior)=>saveActionPlan(prior,{...fields,action,...extra},company,{today,id:'plan-a'});
 const config=s=>({plans:{},decisions:{},cashTrackingVersion:1,funding:{confirmed:true,basisSignature:fundingSignature(s)}});
 const model=(s,c)=>buildCommandCentre(s,{},c,{today,now});
-test('Watchlist addition requires only ticker and category, normalizes symbols and inherits holding categories',()=>{
- const s=state(),p=planWatchlistAddition({...s,watchlist:[]},{symbol:' aaa ',category:'selective',id:'row'});
- assert.equal(p.watchlist[0].symbol,'AAA');assert.equal(p.strategyCategories.AAA,'anchor');assert.equal(p.watchlist[0].iv,'');assert.equal(p.watchlist[0].levelSource,'ak');assert.equal(s.watchlist.length,2);
- assert.throws(()=>planWatchlistAddition(s,{symbol:'AAA',category:'core'}),/already/);
+test('Watchlist addition requires only ticker and category, normalizes symbols and excludes Cash holdings',()=>{
+ const s=state(),p=planWatchlistAddition({...s,watchlist:[]},{symbol:' new ',category:'selective',id:'row'});
+ assert.equal(p.watchlist[0].symbol,'NEW');assert.equal(p.strategyCategories.NEW,'selective');assert.equal(p.watchlist[0].iv,'');assert.equal(p.watchlist[0].levelSource,'ak');assert.equal(s.watchlist.length,2);
+ assert.throws(()=>planWatchlistAddition(s,{symbol:'AAA',category:'core'}),/Cash Holdings/);
  assert.throws(()=>planWatchlistAddition(s,{symbol:'NEW',category:''}),/Choose/);
  const full={strategyCategories:Object.fromEntries(['A','B','C','D','E','F'].map(s=>[s,'anchor'])),watchlist:[]};
- assert.throws(()=>planWatchlistAddition(full,{symbol:'NEW',category:'anchor'}),/six/);
+ assert.equal(planWatchlistAddition(full,{symbol:'NEW',category:'anchor'}).strategyCategories.NEW,'anchor');
 });
 test('new ticker resolves AK first, falls back per component, and plan overrides can return to auto',()=>{
  const s={...state(),watchlist:[{symbol:'NEW'}],priceCache:{NEW:{currency:'USD',close:90,timestamp:now}}};

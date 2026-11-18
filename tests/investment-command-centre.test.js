@@ -1,3 +1,4 @@
+import {researchFromLevels} from './fixtures/company-research.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {currentUniverse,buildCommandCentre,addDecision,settleOrder,reservedCash} from '../assets/investment-command-centre.js';
@@ -6,10 +7,10 @@ import {createPurchasePlan,reviewPurchasePlan,fundingSignature} from '../assets/
 import {createDashboardBackup,readDashboardBackup} from '../assets/dashboard-backup.js';
 const today='2026-11-14',now=Date.parse('2026-11-14T02:00:00Z'),iso=new Date(now).toISOString();
 const levels=[120,110,100,90,80].map((price,i)=>({key:'s'+(i+1),price}));
-const state=()=>({strategyCategories:{AAA:'anchor',BBB:'core'},holdings:[{ticker:'AAA',name:'Alpha',accountType:'Cash',shares:5,currency:'USD'},{ticker:'RET',accountType:'Retirement - SRS',shares:999,currency:'USD'}],watchlist:[{symbol:'AAA',name:'Alpha',priceCurrency:'USD',iv:'150',s1:'120',s2:'110',s3:'100',s4:'90',s5:'80'},{symbol:'BBB',name:'Beta',priceCurrency:'USD',iv:'150',s1:'120',s2:'110',s3:'100',s4:'90',s5:'80'}],priceCache:{AAA:{close:95,timestamp:now},BBB:{close:95,timestamp:now}},fxRates:{USD:1.3},cash:{brokers:50000,growth:50000,dividend:0,srs:999999,cpfIs:999999}});
+const state=()=>({strategyCategories:{AAA:'anchor',BBB:'core'},holdings:[{ticker:'AAA',name:'Alpha',accountType:'Cash',shares:5,currency:'USD'},{ticker:'RET',accountType:'Retirement - SRS',shares:999,currency:'USD'}],researchLevels:[{symbol:'AAA',name:'Alpha',priceCurrency:'USD',iv:'150',s1:'120',s2:'110',s3:'100',s4:'90',s5:'80'}],watchlist:[{symbol:'BBB',name:'Beta',priceCurrency:'USD',iv:'150',s1:'120',s2:'110',s3:'100',s4:'90',s5:'80'}],priceCache:{AAA:{close:95,timestamp:now},BBB:{close:95,timestamp:now}},fxRates:{USD:1.3},cash:{brokers:50000,growth:50000,dividend:0,srs:999999,cpfIs:999999}});
 const plan=(symbol='AAA',category='anchor')=>({...createPurchasePlan({symbol,category,levels,base:100000,ceilingPct:category==='core'?6:10,addBudget:10000,iv:150,currency:'USD',reviewedAt:today,id:'plan-'+symbol}),feeReserve:20,lotSize:1});
 const config=s=>({plans:{AAA:plan(),BBB:plan('BBB','core')},funding:{confirmed:true,basisSignature:fundingSignature(s),pending:0,liabilities:0},decisions:{}});
-const model=(s,c)=>buildCommandCentre(s,{},c,{today,now});
+const model=(s,c)=>buildCommandCentre(s,researchFromLevels(s.researchLevels),c,{today,now});
 const action=(c,row,kind,extra={})=>addDecision(c,row,{kind,id:kind+'-'+(Object.keys(c.decisions).length+1),now:iso,today,...extra});
 test('quarterly replacement adds new tickers, retires removed watchlist-only tickers and retains actual holdings',()=>{
  const s=state(),c=config(s);const changed={...s,watchlist:[{symbol:'NEW',iv:'50',s1:'40'}]};
@@ -21,25 +22,25 @@ test('quarterly replacement adds new tickers, retires removed watchlist-only tic
 test('removed and re-added tickers retain their plan, budgets and completed fills',()=>{
  const s=state(),c=config(s);c.plans.BBB.stages[0]={...c.plans.BBB.stages[0],completed:true,spent:1200};
  const removed={...s,watchlist:s.watchlist.filter(w=>w.symbol!=='BBB')};assert.equal(model(removed,c).archivedPlans[0].stages[0].spent,1200);
- const restored=model({...removed,watchlist:[...removed.watchlist,{...s.watchlist[1],id:'new-row-id'}]},c).rows.find(r=>r.symbol==='BBB');
+ const restored=model({...removed,watchlist:[...removed.watchlist,{...s.watchlist[0],id:'new-row-id'}]},c).rows.find(r=>r.symbol==='BBB');
  assert.equal(restored.plan.stages[0].completed,true);assert.equal(restored.plan.stages[0].spent,1200);
 });
 test('category, IV, support ladder and rule changes withhold amounts pending review',()=>{
  const s=state(),c=config(s);assert.equal(model(s,c).rows[0].status,'eligible');
- for(const changed of [{...s,strategyCategories:{...s.strategyCategories,AAA:'selective'}},{...s,watchlist:s.watchlist.map(w=>w.symbol==='AAA'?{...w,iv:'140'}:w)},{...s,watchlist:s.watchlist.map(w=>w.symbol==='AAA'?{...w,s3:'99'}:w)}])assert.equal(model(changed,c).rows.find(r=>r.symbol==='AAA').result.amount,null);
+ for(const changed of [{...s,strategyCategories:{...s.strategyCategories,AAA:'selective'}},{...s,researchLevels:s.researchLevels.map(w=>w.symbol==='AAA'?{...w,iv:'140'}:w)},{...s,researchLevels:s.researchLevels.map(w=>w.symbol==='AAA'?{...w,s3:'99'}:w)}])assert.equal(model(changed,c).rows.find(r=>r.symbol==='AAA').result.amount,null);
  assert.equal(model(s,{...c,plans:{...c.plans,AAA:{...c.plans.AAA,ruleVersion:'old'}}}).rows[0].result.amount,null);
 });
 test('ordinary quote ticks preserve dismissal, but quarter changes bring the opportunity back',()=>{
  const s=state();let c=config(s);c=action(c,model(s,c).rows[0],'dismissed');
  assert.equal(model(s,c).rows[0].status,'dismissed');
  assert.equal(model({...s,priceCache:{...s.priceCache,AAA:{close:96,timestamp:now}}},c).rows[0].status,'dismissed');
- const changed={...s,watchlist:s.watchlist.map(w=>w.symbol==='AAA'?{...w,iv:'140'}:w)};
+ const changed={...s,researchLevels:s.researchLevels.map(w=>w.symbol==='AAA'?{...w,iv:'140'}:w)};
  const m=model(changed,c);assert.equal(m.rows[0].status,'review');assert.equal(m.history.length,1);assert.equal(m.history[0].contextCurrent,false);
 });
 test('deferred opportunities reappear on the requested date, with history retained',()=>{
  const s=state();let c=config(s);c=action(c,model(s,c).rows[0],'deferred',{until:'2026-11-15'});
  assert.equal(model(s,c).rows[0].status,'deferred');
- assert.equal(buildCommandCentre(s,{},c,{today:'2026-11-15',now:now+86400000}).rows[0].status,'eligible');
+ assert.equal(buildCommandCentre(s,researchFromLevels(s.researchLevels),c,{today:'2026-11-15',now:now+86400000}).rows[0].status,'eligible');
  assert.throws(()=>action(config(s),model(s,config(s)).rows[0],'deferred',{until:today}),/after today/);
 });
 test('recorded orders reserve shared cash once and recalculate later opportunities',()=>{
@@ -135,4 +136,18 @@ test('My decisions sizes an unfilled stage and a subsequent stage while funding 
  const html=renderCommandCentre(m,{show:String,today,filter:'decisions'});
  assert.match(html,/≈ 15/);
  assert.match(html,/≈ 10/);
+});
+
+
+test('retired holding overlap does not supply card controls, IV or support inputs',()=>{
+ const s=state(),c=config(s);
+ s.watchlist.push({symbol:'AAA',iv:'999',s1:'900',levelSource:'independent'}, {symbol:'AAA',iv:'998'});
+ const [held,watch]=model(s,c).rows;
+ assert.equal(held.watchlisted,false);
+ assert.equal(held.iv,150);
+ assert.deepEqual(held.levels,levels);
+ const html=renderOpportunityCard(held,{show:String,today});
+ assert.match(html,/Anchor · Buy · Holding/);
+ assert.doesNotMatch(html,/data-card-category|data-remove-watchlist/);
+ assert.match(renderOpportunityCard(watch,{show:String,today}),/data-card-category="BBB"/);
 });

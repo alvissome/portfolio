@@ -1,15 +1,16 @@
+import {researchFromLevels} from './fixtures/company-research.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildCommandCentre,resolvedCompany,addDecision} from '../assets/investment-command-centre.js';
 import {createPurchasePlan,fundingSignature} from '../assets/investment-strategy.js';
 import {renderCommandCentre} from '../assets/investment-command-view.js';
 const today='2026-11-15',now=Date.parse(today+'T02:00:00Z');
-const base=()=>({strategyCategories:{AAA:'anchor',BBB:'core'},holdings:[],watchlist:['AAA','BBB'].map(symbol=>({symbol,priceCurrency:'USD',iv:200,s1:120,s2:100,s3:80})),priceCache:{AAA:{close:115,timestamp:now},BBB:{close:150,timestamp:now}},fxRates:{USD:1.3},cash:{brokers:10000,growth:5000,dividend:0}});
+const base=()=>({strategyCategories:{AAA:'anchor',BBB:'core'},holdings:[],researchLevels:['AAA','BBB'].map(symbol=>({symbol,priceCurrency:'USD',iv:200,s1:120,s2:100,s3:80})),watchlist:['AAA','BBB'].map(symbol=>({symbol})),priceCache:{AAA:{close:115,timestamp:now},BBB:{close:150,timestamp:now}},fxRates:{USD:1.3},cash:{brokers:10000,growth:5000,dividend:0}});
 const config=s=>({cashTrackingVersion:1,plans:{},decisions:{},funding:{confirmed:true,basisSignature:fundingSignature(s)}});
-const build=(s,c)=>buildCommandCentre(s,{},c,{today,now});
+const build=(s,c)=>buildCommandCentre(s,researchFromLevels(s.researchLevels),c,{today,now});
 const plan=()=>({...createPurchasePlan({id:'plan-a',symbol:'AAA',category:'anchor',ceilingPct:10,addBudget:1500,base:15000,iv:200,currency:'USD',reviewedAt:today,levels:[120,100,80].map((price,i)=>({key:'s'+(i+1),price}))}),lotSize:1,plannedEntryKey:'s1'});
 test('saved buy plans appear in Opportunities while other views retain their existing scope',()=>{
- const s=base(),c=config(s);c.plans.AAA=plan();s.watchlist[0].iv=210;
+ const s=base(),c=config(s);c.plans.AAA=plan();s.researchLevels[0].iv=210;
  const m=build(s,c);assert.equal(m.rows[0].openOpportunity,true);
  for(const filter of ['watchlist','balance','data'])assert.doesNotMatch(renderCommandCentre(m,{show:String,today,filter}),/data-opportunity="AAA"/);
  assert.match(renderCommandCentre(m,{show:String,today,filter:'decisions'}),/data-decision-row="AAA"/);
@@ -23,7 +24,7 @@ test('rebalancing labels above-IV and ceiling conditions; data review excludes m
  const s=base();s.holdings=[{ticker:'AAA',accountType:'Cash',shares:100,currency:'USD'}];s.priceCache.AAA.close=250;const c=config(s),m=build(s,c);
  assert.ok(m.rows[0].lists.includes('balance'));assert.ok(!m.rows[0].lists.includes('data'));
  const html=renderCommandCentre(m,{show:String,today,filter:'balance'});assert.match(html,/Price above IV/);assert.match(html,/Allocation above company ceiling/);
- s.watchlist[0].iv='';assert.match(renderCommandCentre(build(s,c),{show:String,today,filter:'data'}),/Review data before setting a plan/);
+ s.researchLevels[0].iv='';assert.match(renderCommandCentre(build(s,c),{show:String,today,filter:'data'}),/Review data before setting a plan/);
 });
 test('summary uses known cash even with stale quotes, adds sale BValue only to potential cash and nets commitments once',()=>{
  const s=base();s.holdings=[{ticker:'AAA',accountType:'Cash',shares:20,currency:'USD'}];s.priceCache.AAA.timestamp=now-5*86400000;const c=config(s);

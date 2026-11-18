@@ -1,3 +1,4 @@
+import {activeWatchlist} from '../assets/active-watchlist.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -34,7 +35,7 @@ test('production wiring uses persisted rebalancing flags and per-plan source/sta
 });
 test('rebalancing flag round-trips the production cloud serializer independently of watchlist membership',async()=>{
  const {runInNewContext}=await import('node:vm');const {normalizeStrategyCategories}=await import('../assets/strategy-categories.js');const {normalizeResearchColumnSettings}=await import('../assets/research-columns.js');const {holdingKey}=await import('../assets/account-portfolio.js');
- const bundle=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8'),context={holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
+ const bundle=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8'),context={activeWatchlist,holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
  const a=bundle.indexOf('function MR('),b=bundle.indexOf('async function JT(',a);runInNewContext(bundle.slice(a,b)+';this.save=BR;this.load=UR;',context);
  const state={holdings:[],watchlist:[],cash:{},strategyCategories:{},rebalancingSymbols:{EXAMPLE:true}};const saved=context.save(state);assert.equal(saved.settings.rebalancingSymbols.EXAMPLE,true);assert.equal(context.load(saved).rebalancingSymbols.EXAMPLE,true);assert.equal(context.load(saved).watchlist.length,0);
 });

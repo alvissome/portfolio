@@ -64,11 +64,11 @@ test('units round down by lot after fees and SGD conversion; cash is a shared po
  assert.equal(preview(plan(),fund(),{feeReserve:20000}).units,preview().units); // Legacy reserve is ignored.
  assert.throws(()=>preview(plan(),fund(),{lotSize:1.5}),/whole/);
 });
-test('existing manual levels override generated levels; conflicting duplicate rows stop preview',()=>{
+test('manual levels apply to watchlist-only tickers; duplicate rows stop their preview',()=>{
  const row={symbol:'GOOGL',iv:'140',s1:'110',s2:'90',priceCurrency:'USD'};
- const r=resolvedCompany({...state,watchlist:[row]},null,'GOOGL');
+ const r=resolvedCompany({...state,holdings:[],watchlist:[row]},null,'GOOGL');
  assert.equal(r.iv,140);assert.equal(r.currency,'USD');assert.deepEqual(r.levels,[{key:'s1',price:110},{key:'s2',price:90}]);
- assert.throws(()=>resolvedCompany({...state,watchlist:[row,row]},null,'GOOGL'),/duplicate/);
+ assert.throws(()=>resolvedCompany({...state,holdings:[],watchlist:[row,row]},null,'GOOGL'),/duplicate/);
 });
 test('strategy plans and stage fills survive dashboard-wide backup and restore',()=>{
  const strategy={plans:{GOOGL:plan()},funding:{confirmed:true}};

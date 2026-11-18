@@ -1,3 +1,4 @@
+import {researchFromLevels} from './fixtures/company-research.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cashImportBasis,cashAllowance,recordCashUse,recordStageCashFill,reconcileCashUse} from '../assets/cc-cash-allowance.js';
@@ -6,10 +7,10 @@ import {fundingSignature,createPurchasePlan} from '../assets/investment-strategy
 import {createDashboardBackup,readDashboardBackup} from '../assets/dashboard-backup.js';
 const today='2026-11-14',now='2026-11-14T02:00:00Z',tick=Date.parse(now);
 const levels=[120,110,100,90,80].map((price,i)=>({key:'s'+(i+1),price}));
-const state=()=>({holdings:[{ticker:'AAA',accountType:'Cash',shares:50,currency:'SGD'}],watchlist:[{symbol:'AAA',priceCurrency:'SGD',iv:150,s1:120,s2:110,s3:100,s4:90,s5:80},{symbol:'BBB',priceCurrency:'SGD',iv:150,s1:120,s2:110,s3:100,s4:90,s5:80}],strategyCategories:{AAA:'core',BBB:'core'},cash:{brokers:50000,growth:45000,dividend:0},priceCache:{AAA:{close:100,timestamp:tick},BBB:{close:95,timestamp:tick}},fxRates:{SGD:1},cashImportInfo:{brokers:{importedAt:'2026-11-01T01:00:00Z',source:'StocksCafe CASH row'}},lastImportDate:'2026-11-01T01:00:00Z'});
+const state=()=>({holdings:[{ticker:'AAA',accountType:'Cash',shares:50,currency:'SGD'}],researchLevels:[{symbol:'AAA',priceCurrency:'SGD',iv:150,s1:120,s2:110,s3:100,s4:90,s5:80}],watchlist:[{symbol:'BBB',priceCurrency:'SGD',iv:150,s1:120,s2:110,s3:100,s4:90,s5:80}],strategyCategories:{AAA:'core',BBB:'core'},cash:{brokers:50000,growth:45000,dividend:0},priceCache:{AAA:{close:100,timestamp:tick},BBB:{close:95,timestamp:tick}},fxRates:{SGD:1},cashImportInfo:{brokers:{importedAt:'2026-11-01T01:00:00Z',source:'StocksCafe CASH row'}},lastImportDate:'2026-11-01T01:00:00Z'});
 const plan=s=>createPurchasePlan({symbol:s,category:'core',levels,base:100000,ceilingPct:6,iv:150,currency:'SGD',reviewedAt:today,id:'p-'+s});
 const config=s=>({plans:{AAA:plan('AAA'),BBB:plan('BBB')},decisions:{},funding:{confirmed:true,basisSignature:fundingSignature(s)}});
-const model=(s,c)=>buildCommandCentre(s,{},c,{today,now:tick});
+const model=(s,c)=>buildCommandCentre(s,researchFromLevels(s.researchLevels),c,{today,now:tick});
 const fill=(s,c,amount,id='use-1',completed=false)=>recordStageCashFill(c,'AAA','p-AAA-s3',{spent:amount,date:today,completed},{id,now,state:s});
 test('a fill reduces only CC cash and company purchase room, never imported holdings/balances/history',()=>{
  const s=state(),before=structuredClone(s),c=config(s),next=fill(s,c,1000);

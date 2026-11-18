@@ -1,3 +1,4 @@
+import {activeWatchlist} from '../assets/active-watchlist.js';
 import {normalizeResearchColumnSettings} from '../assets/research-columns.js';
 import {normalizeStrategyCategories} from '../assets/strategy-categories.js';
 import test from 'node:test';
@@ -81,7 +82,7 @@ const bundle=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.ur
 const normalize=o=>JSON.parse(JSON.stringify(o));
 test('production storage serializer round-trips all accounts, BDiv and import metadata',()=>{
  const start=bundle.indexOf('function MR('),end=bundle.indexOf('async function JT(',start);
- const context={holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
+ const context={activeWatchlist,holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
  runInNewContext(bundle.slice(start,end)+';this.save=BR;this.load=UR;',context);
  const s={...migrated(),emailSettings:{},fxRates:{SGD:1},portfolioTypes:['Dividend'],accountTypes:['Cash','Retirement - SRS','Retirement - CPF']};
  const saved=context.save(s);assert.equal(Object.keys(saved.holdings).length,3);assert.equal(Object.keys(saved.classifications).length,3);
@@ -92,7 +93,7 @@ test('production storage serializer round-trips all accounts, BDiv and import me
 test('production save replaces holdings map so migrated aggregate keys cannot survive',async()=>{
  const start=bundle.indexOf('async function LR('),end=bundle.indexOf('const In=',start);
  let stored={holdings:{OLD:{ticker:'OLD'}},classifications:{OLD:{}},unrelated:'keep'};
- const context={OR:normalize,CR:()=>123,qT:()=>'',RR:async(ref,patch,options)=>{assert.deepEqual(normalize(options.mergeFields),Object.keys(patch));for(const key of options.mergeFields)stored[key]=patch[key];}};
+ const context={activeWatchlist,OR:normalize,CR:()=>123,qT:()=>'',RR:async(ref,patch,options)=>{assert.deepEqual(normalize(options.mergeFields),Object.keys(patch));for(const key of options.mergeFields)stored[key]=patch[key];}};
  runInNewContext(bundle.slice(start,end)+';this.save=LR;',context);
  await context.save('owner',{holdings:{NEW:{ticker:'NEW'}},classifications:{NEW:{}}});
  assert.deepEqual(Object.keys(stored.holdings),['NEW']);assert.equal(stored.unrelated,'keep');
@@ -100,7 +101,7 @@ test('production save replaces holdings map so migrated aggregate keys cannot su
 test('production callback applies a whole batch in a single state update',()=>{
  const start=bundle.indexOf('Q=ne.useCallback(files=>'),end=bundle.indexOf('},[]),K=ne.useCallback',start);
  const callback=bundle.slice(start+'Q=ne.useCallback('.length,end+1);
- let s=state(),updates=0;const context={planAccountImports,r:fn=>{updates++;s=fn(s);},files:files()};
+ let s=state(),updates=0;const context={activeWatchlist,planAccountImports,r:fn=>{updates++;s=fn(s);},files:files()};
  runInNewContext('const callback='+callback+';callback(files);',context);
  assert.equal(updates,1);assert.equal(s.holdings.length,3);assert.equal(s.watchlist[0].id,'keep');
  assert.equal(s.watchlist[0].reviewed,false);assert.equal(s.accountImportVersion,1);

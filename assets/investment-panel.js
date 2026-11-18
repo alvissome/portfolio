@@ -1,7 +1,8 @@
+import {activeWatchlist} from './active-watchlist.js';
 import {openPriceChart} from './ticker-chart.js';
 import {researchProcessingLabel,researchComparisonLabel} from './research-panel.js?v=plan-research-20261115';
 import {redistributeBudget} from './budget-redistribution.js?v=redistribution-20261115';
-import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides} from './investment-actions.js?v=plan-research-20261115';
+import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides} from './investment-actions.js?v=active-watchlist-20261118';
 import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=redistribution-20261115';
 import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=compact-settings-20261115';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
@@ -9,9 +10,9 @@ import {recordPlanReview,companyDecisionText,NOTION_REVIEW_URL} from './investme
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=redistribution-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,pricedFill,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=plan-clarity-20261115';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=cc-email-20261117';
-export {resolvedCompany} from './investment-command-centre.js?v=plan-clarity-20261115';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=active-watchlist-20261118';
+import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=active-watchlist-20261118';
+export {resolvedCompany} from './investment-command-centre.js?v=active-watchlist-20261118';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function revisitDate(date,months=1){
   const [year,month,day]=date.split('-').map(Number),last=new Date(Date.UTC(year,month-1+months+1,0)).getUTCDate();
@@ -243,7 +244,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       try{
         selectedSymbol=selector.value;
         const saved=config.plans[selectedSymbol],company=resolvedCompany(state,research,selectedSymbol,saved),draft=planDraft(company,saved,funding);
-        get('levelSource').value=saved?.researchOverrides?.levelSource||(state.watchlist||[]).find(w=>w.symbol===selectedSymbol)?.levelSource||'ak';const record=research?.records?.[selectedSymbol];get('methodFamily').value=record?.methodFamilySource==='user'?record.methodFamily:'auto';get('action').value=saved?planAction(saved):'buy';get('revisitOn').value=saved?.revisitOn||revisitDate(today());get('revisitOn').min=new Date(Date.parse(today()+'T00:00:00Z')+86400000).toISOString().slice(0,10);get('saleCompleted').checked=saved?.sale?.completed===true;
+        get('levelSource').value=saved?.researchOverrides?.levelSource||activeWatchlist(state.holdings,state.watchlist).find(w=>w.symbol===selectedSymbol)?.levelSource||'ak';const record=research?.records?.[selectedSymbol];get('methodFamily').value=record?.methodFamilySource==='user'?record.methodFamily:'auto';get('action').value=saved?planAction(saved):'buy';get('revisitOn').value=saved?.revisitOn||revisitDate(today());get('revisitOn').min=new Date(Date.parse(today()+'T00:00:00Z')+86400000).toISOString().slice(0,10);get('saleCompleted').checked=saved?.sale?.completed===true;
         for(const key of ['iv','s1','s2','s3','s4','s5','refCost']){const input=get('override-'+key);input.value=company.manualValues[key]??'';input.placeholder=key==='priceCurrency'?company.currency||'Auto':key==='refCost'?(company.refCost>0?money(company.refCost,company.currency):'AK reference unavailable'):money(key==='iv'?company.iv:company.levels.find(l=>l.key===key)?.price,company.currency);}
         get('ceiling').value=draft.ceiling??'';get('ceiling').max=({anchor:10,core:6,selective:4}[company.category]||100);
         get('budget').value=draft.addBudget==null?'':money(draft.addBudget,'SGD');get('budget').disabled=company.category!=='anchor';get('budget').required=company.category==='anchor';get('budget').readOnly=company.category==='anchor'&&saved?.category==='anchor'&&saved.stages.length>0;get('budget').closest('label').hidden=company.category!=='anchor';

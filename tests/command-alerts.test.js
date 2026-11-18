@@ -48,7 +48,7 @@ test('stale, malformed or future SPX data is visibly unavailable',()=>{
 test('active CC holdings, Watchlist and saved decisions share one deduplicated universe and override resolution',()=>{
   const data={holdings:{cash:{ticker:'EXAMPLE',currency:'USD',accountType:'Cash'},retirement:{ticker:'RETIRE',currency:'SGD',accountType:'SRS'}},watchlist:[{symbol:'EXAMPLE',priceCurrency:'USD',s1:'100'},{symbol:'OTHER',priceCurrency:'SGD',s1:'10'}]};
   const strategy={plans:{EXAMPLE:{action:'buy',researchOverrides:{s1:'99'}},ARCHIVED:{symbol:'ARCHIVED',researchOverrides:{s1:'50'}}}};
-  const universe=alertUniverse(data,strategy);assert.deepEqual(universe.map(r=>r.symbol),['EXAMPLE','OTHER']);assert.equal(universe[0].levels[0].price,99);assert.equal(universe[0].held,true);assert.equal(universe[0].watchlisted,true);
+  const universe=alertUniverse(data,strategy);assert.deepEqual(universe.map(r=>r.symbol),['EXAMPLE','OTHER']);assert.equal(universe[0].levels[0].price,99);assert.equal(universe[0].held,true);assert.equal(universe[0].watchlisted,false);assert.equal(universe[1].levels[0].price,10);assert.deepEqual(alertUniverse(data,{plans:{}})[0].levels,[]);
   assert.deepEqual(alertUniverse({...data,holdings:{},classifications:{EXAMPLE:{accountType:'Cash',currency:'USD'}},watchlist:[]},strategy).map(r=>r.symbol),['EXAMPLE']);
 });
 test('approaching nearest support sends once and recovery does not re-arm it',()=>{
