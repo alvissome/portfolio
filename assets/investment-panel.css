@@ -204,3 +204,14 @@
   .investment-panel form.ic-compact-plan:has(>.ic-revisit-field:not([hidden])){grid-template-columns:repeat(2,minmax(0,1fr))}
   .investment-panel form.ic-compact-plan:has(>.ic-revisit-field:not([hidden]))>.ic-plan-remarks-field{grid-column:1/-1}
 }
+
+/* Keep the active entry visible and previous stages compact. */
+.ic-stage-card{min-width:0;padding:12px;background:#fff;border:1px solid #dce4ec;border-radius:8px}
+.ic-stage-card .ic-saved-fill{display:block;margin:5px 0}
+.ic-company-execution .ic-stage-card.ic-next-stage{grid-column:1/-1;border-color:#a6bfd4}
+.investment-panel .ic-stage-history .ic-stage-card form{margin:8px 0 0;padding:0;border:0;background:none}
+.investment-panel .ic-stage-history details{margin:6px 0 0;padding:0;border:0}
+.investment-panel .ic-stage-history .ic-edit-stage{margin-top:6px;padding:3px 8px}
+.investment-panel .ic-stage-history form[data-correct-fill]{grid-template-columns:repeat(3,minmax(0,1fr));align-items:end}
+.investment-panel .ic-stage-history form[data-correct-fill]>p{grid-column:1/-1;margin:0;color:#a12222}
+@media(max-width:650px){.investment-panel .ic-stage-history form[data-correct-fill]{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -159,3 +159,19 @@ test('Hold can skip a support and return for the next rung or the review date',(
  assert.match(renderCommandCentre(due,{show:String,today:revisitOn}),/Hold revisit due/);
  assert.throws(()=>saveActionPlan(null,{...fields,skipSupportKey:'s5'},company,{today}),/available/);
 });
+
+
+test('stage history puts the next fill first and keeps skipped and completed stages compact',()=>{
+ const s=base(),c=config(s);c.plans.AAA=plan();
+ const [s1,s2,s3]=c.plans.AAA.stages;
+ Object.assign(s1,{skipped:true,budget:0});
+ Object.assign(s2,{completed:true,spent:490,fills:[{date:today,quantity:4,price:95,currency:'USD',amount:490}]});
+ const html=renderCommandCentre(build(s,c),{show:String,today,filter:'decisions',expandedSymbol:'AAA'});
+ assert.match(html,/S1 · budget 0 · Skipped/);
+ assert.match(html,/S2 · budget 500 · Completed/);
+ assert.match(html,/4 × 95 USD · 490/);
+ assert.ok(html.indexOf('S3 · budget')<html.indexOf('S1 · budget'));
+ assert.match(html,new RegExp(`data-fill="AAA" data-stage="${s3.id}"`));
+ assert.doesNotMatch(html,new RegExp(`data-fill="AAA" data-stage="(?:${s1.id}|${s2.id})"`));
+ assert.match(html,/<details class="ic-stage-edit"><summary>Edit<\/summary>/);
+});

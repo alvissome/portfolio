@@ -3,16 +3,16 @@ import {openPriceChart} from './ticker-chart.js';
 import {researchProcessingLabel,researchComparisonLabel} from './research-panel.js?v=plan-research-20261115';
 import {redistributeBudget} from './budget-redistribution.js?v=redistribution-20261115';
 import {planAction,saveActionPlan,planWatchlistAddition,validateResearchOverrides,nextHoldSupport} from './investment-actions.js?v=hold-support-20261118';
-import {cashImportBasis,recordStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=redistribution-20261115';
+import {cashImportBasis,recordStageCashFill,correctStageCashFill,reconcileCashUse,cashUseCanBeIncluded} from './cc-cash-allowance.js?v=stage-history-20261118';
 import {renderPlanBreakdown} from './investment-plan-breakdown.js?v=compact-settings-20261115';
 import {money,amount,quantityText} from './investment-format.js?v=compact-price-20261114';
 import {recordPlanReview,companyDecisionText,NOTION_REVIEW_URL} from './investment-review.js?v=hold-support-20261118';
 import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaults.js?v=redistribution-20261115';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
-import {fundingSignature,strategyFunding,createPurchasePlan,pricedFill,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
-import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=hold-support-20261118';
-import {renderCommandCentre,renderCommandOverview,renderPublicCommandCentre} from './investment-command-view.js?v=hold-support-20261118';
-export {resolvedCompany} from './investment-command-centre.js?v=hold-support-20261118';
+import {fundingSignature,strategyFunding,createPurchasePlan,pricedFill,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=stage-history-20261118';
+import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=stage-history-20261118';
+import {renderCommandCentre,renderCommandOverview,renderPublicCommandCentre} from './investment-command-view.js?v=stage-history-20261118';
+export {resolvedCompany} from './investment-command-centre.js?v=stage-history-20261118';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function revisitDate(date,months=1){
   const [year,month,day]=date.split('-').map(Number),last=new Date(Date.UTC(year,month-1+months+1,0)).getUTCDate();
@@ -113,7 +113,7 @@ export function mountInvestmentPanel(root,{overview,state:initial,research:initi
     };
   };
   const onDraftInput=event=>{
-    if(event.target?.closest?.('[data-plan],[data-decision-form],[data-settle-order],[data-fill],[data-cash-use],[data-alert-settings]'))draftDirty=true;
+    if(event.target?.closest?.('[data-plan],[data-decision-form],[data-settle-order],[data-fill],[data-correct-fill],[data-cash-use],[data-alert-settings]'))draftDirty=true;
   };
   root.addEventListener('input',onDraftInput);
   root.addEventListener('change',onDraftInput);
@@ -370,6 +370,17 @@ export function mountInvestmentPanel(root,{overview,state:initial,research:initi
       await save(next);
       notice=onlyComplete?'Stage completed. Previously recorded spend retained.':'Fill saved. CC cash available for other buys is reduced; StocksCafe holdings, cash balances and ledger are unchanged.';
     }));
+    root.querySelectorAll('[data-correct-fill]').forEach(form=>form.onsubmit=async event=>{
+      event.preventDefault();
+      const feedback=form.querySelector('[data-correction-feedback]');
+      try{
+        const fd=new FormData(form);
+        await save(correctStageCashFill(config,form.dataset.correctFill,form.dataset.stage,Number(form.dataset.index),{
+          quantity:fd.get('quantity'),price:fd.get('price'),date:fd.get('date'),today:today(),now:new Date().toISOString(),
+        }));
+      }catch(err){feedback.textContent=err.message;return;}
+      error='';notice='Fill correction saved.';render();
+    });
     if(root.querySelector('[data-cash-reconcile]'))root.querySelector('[data-cash-reconcile]').onsubmit=action(async(fd,form)=>{
       const includedIds=[...form.querySelectorAll('[name="included"]')].filter(input=>input.checked).map(input=>input.value);
       await save(reconcileCashUse(config,state,{includedIds,confirmed:fd.get('confirmed')==='on',now:new Date().toISOString()}));
@@ -394,7 +405,12 @@ export function mountInvestmentPanel(root,{overview,state:initial,research:initi
     if(root.querySelector('[data-opportunity-category]'))root.querySelector('[data-opportunity-category]').onchange=e=>{categoryFilter=e.target.value;render();};
     if(root.querySelector('[data-opportunity-sort]'))root.querySelector('[data-opportunity-sort]').onchange=e=>{categorySort=e.target.value;render();};
     root.querySelectorAll('[data-review-plan]').forEach(button=>button.onclick=()=>{
-      const details=root.querySelector('[data-section="plan"]');details.open=true;selector.value=button.dataset.reviewPlan;selectedSymbol=button.dataset.reviewPlan;showLevels();details.scrollIntoView?.({behavior:'smooth',block:'start'});
+      const details=root.querySelector('[data-section="plan"]');details.open=true;selector.value=button.dataset.reviewPlan;selectedSymbol=button.dataset.reviewPlan;showLevels();
+      if(button.dataset.reviewStage){
+        const stage=get('stage');if([...stage.options].some(option=>option.value===button.dataset.reviewStage)){stage.value=button.dataset.reviewStage;stage.onchange();}
+        details.querySelector('[data-section="plan-settings"]').open=true;
+      }
+      details.scrollIntoView?.({behavior:'smooth',block:'start'});
     });
     root.querySelectorAll('[data-open-decision]').forEach(button=>button.onclick=()=>{
       const card=button.closest('[data-opportunity]'),form=card.querySelector('[data-decision-form]'),kind=button.dataset.openDecision;

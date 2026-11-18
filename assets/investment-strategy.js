@@ -105,7 +105,7 @@ export function recordStageFill(plan,stageId,{spent,completed,date,execution}) {
 }
 export function remainingBuyStages(plan){
   const last=plan.stages.reduce((index,s,i)=>s.completed&&s.spent>0?i:index,-1);
-  return plan.stages.slice(last+1).filter(s=>!s.completed&&s.spent<s.budget);
+  return plan.stages.slice(last+1).filter(s=>!s.skipped&&!s.completed&&s.spent<s.budget);
 }
 export function previewPurchase(plan,funding,{close,fx,iv,reviewDate,today,lotSize=1,oddLots=false,rounding='down',priceStale=false,levelsChanged=false,category}={}) {
   const pending=reasons=>({status:'review',amount:null,reasons});
