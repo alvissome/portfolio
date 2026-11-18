@@ -24,15 +24,25 @@ export function validateResearchOverrides(values){
  }
  return values;
 }
+export function nextHoldSupport(levels=[],skipKey){
+ const index=levels.findIndex(level=>level.key===skipKey);
+ if(index<0||levels.some((level,i)=>!Number.isFinite(level.price)||level.price<=0||(i>0&&level.price>=levels[i-1].price)))return null;
+ return levels[index+1]??null;
+}
 export function saveActionPlan(previous,fields,company,{today,id}){
  validateResearchOverrides(fields.researchOverrides);
  const action=fields.action;
  if(!['sell','hold'].includes(action))throw Error('Choose Buy, Sell or Hold.');
  if(!date(fields.reviewedAt)||fields.reviewedAt>today)throw Error('Enter a valid review date, no later than today.');
  const plan={...previous,id:previous?.id||id,symbol:company.symbol,action,category:company.category||'',currency:company.currency||'',iv:company.iv>0?company.iv:null,reviewedAt:fields.reviewedAt,remarks:String(fields.remarks||'').slice(0,2000),stages:previous?.stages||[],archivedStages:previous?.archivedStages||[],researchOverrides:fields.researchOverrides||{}};
+ delete plan.skipSupportKey;
  if(action==='hold'){
   if(!date(fields.revisitOn)||fields.revisitOn<=today)throw Error('Choose a Hold review date after today.');
   plan.revisitOn=fields.revisitOn;
+  if(fields.skipSupportKey){
+   if(!/^s[1-5]$/.test(fields.skipSupportKey)||!company.levels?.some(level=>level.key===fields.skipSupportKey))throw Error('Choose a support level available for this ticker.');
+   plan.skipSupportKey=fields.skipSupportKey;
+  }
  }else{
   const price=Number(fields.entry),quantity=Number(fields.quantity);
   if(!(price>0)||!Number.isFinite(price)||!Number.isInteger(quantity)||quantity<=0||quantity>company.shares)throw Error('Enter a positive sale price and a whole-share quantity within your current Cash holding.');
@@ -41,11 +51,20 @@ export function saveActionPlan(previous,fields,company,{today,id}){
  }
  return plan;
 }
-export function previewActionPlan(plan,company,{today}){
+export function previewActionPlan(plan,company,{today,quoteFresh=false}){
  const action=planAction(plan);
  if(action==='hold'){
   const due=!date(plan.revisitOn)||plan.revisitOn<=today;
-  return {status:due?'review':'hold',amount:0,reasons:[due?'Hold review is due. Reopen the plan and check the business, IV and entry decision.':'Hold until '+plan.revisitOn+'; no purchase or cash reservation.']};
+  const skipped=plan.skipSupportKey;
+  const support=skipped&&company.currency&&plan.currency===company.currency?nextHoldSupport(company.levels,skipped):null;
+  const close=Number(company.quote?.close);
+  const distance=quoteFresh&&support&&close>0?(close-support.price)/support.price*100:null;
+  const trigger=!skipped?null:due?'date':distance===null?null:distance<=0?'reached':distance<=5?'approaching':null;
+  const reason=due?'Hold review is due. Reopen the plan and review the decision.'
+   :trigger?'Review your Hold plan. '+support.key.toUpperCase()+(trigger==='reached'?' has been reached.':' is within 5% of the current price.')
+   :support?'Watching '+support.key.toUpperCase()+' or the revisit date '+plan.revisitOn+', whichever comes first.'
+   :'Hold until '+plan.revisitOn+'; no purchase or cash reservation.';
+  return {status:due||trigger?'review':'hold',amount:0,reasons:[reason],holdSupport:support,holdTrigger:trigger,holdDistance:distance};
  }
  if(action==='sell'){
   if(plan.currency&&plan.currency!==company.currency)return {status:'review',amount:null,reasons:['Trading currency changed. Re-enter the sale price in the current listing currency and save the plan.']};

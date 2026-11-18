@@ -1,3 +1,4 @@
+import {saveActionPlan} from '../assets/investment-actions.js';
 import {researchFromLevels} from './fixtures/company-research.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -127,4 +128,34 @@ test('dashboard overview can render separately without leaking cash in privacy m
  assert.match(overview,/Cash available now/);
  assert.doesNotMatch(renderCommandCentre(model,{show:String,today,includeOverview:false}),/ic-summary|ic-market-context/);
  assert.doesNotMatch(renderCommandOverview(model,{show:String,privacyMode:true}),/ic-summary|Cash available now/);
+});
+
+
+test('Hold can skip a support and return for the next rung or the review date',()=>{
+ const s=base(),c=config(s),revisitOn='2026-12-15';
+ const research=researchFromLevels(s.researchLevels);
+ const company=resolvedCompany(s,research,'AAA');
+ const fields={action:'hold',reviewedAt:today,revisitOn,skipSupportKey:'s1'};
+ c.plans.AAA=saveActionPlan(null,fields,company,{today,id:'hold-a'});
+ assert.equal(c.plans.AAA.skipSupportKey,'s1');
+ for(const [close,trigger] of [[120,undefined],[106,undefined],[105,'approaching'],[100,'reached'],[75,'reached']]){
+  s.priceCache.AAA.close=close;
+  const model=build(s,c),row=model.rows[0];
+  assert.equal(row.holdTrigger,trigger);
+  assert.equal(row.openOpportunity,!!trigger);
+  assert.equal(row.result.amount,0);
+  assert.equal(row.support.key,'s2');
+  const html=renderCommandCentre(model,{show:String,today});
+  assert.equal(html.includes('data-opportunity="AAA"'),!!trigger);
+  if(trigger)assert.match(html,/Hold review[\s\S]*(Approaching support|Support reached) · S2/);
+ }
+ s.priceCache.AAA.priceStale=true;
+ assert.equal(build(s,c).rows[0].openOpportunity,false);
+ c.plans.AAA=saveActionPlan(c.plans.AAA,{...fields,skipSupportKey:'s3'},company,{today});
+ assert.equal(build(s,c).rows[0].support,null);
+ const due=buildCommandCentre(s,research,c,{today:revisitOn,now:Date.parse(revisitOn+'T02:00:00Z')});
+ assert.equal(due.rows[0].openOpportunity,true);
+ assert.equal(due.rows[0].holdTrigger,'date');
+ assert.match(renderCommandCentre(due,{show:String,today:revisitOn}),/Hold revisit due/);
+ assert.throws(()=>saveActionPlan(null,{...fields,skipSupportKey:'s5'},company,{today}),/available/);
 });

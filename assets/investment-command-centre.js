@@ -2,7 +2,7 @@ import {activeWatchlist,isCashHolding} from './active-watchlist.js';
 import {entryDraft} from './investment-plan-defaults.js';
 import {akReferenceCost} from './ak-reference-cost.js?v=plan-research-20261115';
 import {commandQueueState,companyCeiling} from './command-queue.js?v=redistribution-20261115';
-import {planAction,previewActionPlan,potentialSale} from './investment-actions.js?v=plan-research-20261115';
+import {planAction,previewActionPlan,potentialSale} from './investment-actions.js?v=hold-support-20261118';
 import {cashAllowance,recordCashUse} from './cc-cash-allowance.js?v=redistribution-20261115';
 import {categoryFor,normalizeStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
@@ -65,7 +65,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
       const stale=company.quote?.priceStale||!company.quote?.timestamp||!Number.isFinite(Number(company.quote.timestamp))||now-Number(company.quote.timestamp)>4*86400000;
       const levels=expectedLevels(company);
       const levelsChanged=!!plan&&(levels.length!==plan.stages.length||plan.stages.some((s,i)=>levels[i]?.key!==s.key||levels[i]?.price!==s.price)||company.currency!==plan.currency);
-      result=plan&&planAction(plan)!=='buy'?previewActionPlan(plan,company,{today}):!plan?{status:'review',amount:null,reasons:[company.category?'No plan set. Set up Buy, Sell or Hold when you decide to act.':'Choose Anchor, Core or Selective in Holdings or Watchlist.']}
+      result=plan&&planAction(plan)!=='buy'?previewActionPlan(plan,company,{today,quoteFresh:!stale&&(!company.quote.currency||company.quote.currency===company.currency)}):!plan?{status:'review',amount:null,reasons:[company.category?'No plan set. Set up Buy, Sell or Hold when you decide to act.':'Choose Anchor, Core or Selective in Holdings or Watchlist.']}
         :!funding?{status:'review',amount:null,reasons:[fundingError]}
         :previewPurchase(plan,funding,{close:company.quote?.close,priceStale:stale,fx:company.currency==='SGD'?1:state.fxRates?.[company.currency],iv:company.iv,category:company.category,today,lotSize:plan.lotSize,oddLots:plan.oddLots,rounding:plan.rounding,levelsChanged});
       if(result.status==='eligible'&&(!(result.amount>0)||!(result.units>0)))result={...result,status:'review',amount:null,reasons:[result.amount>0?'The budget cannot fund one order increment. Review the budget and share increment.':'No purchase capacity remains under the company ceiling or available cash.']};
@@ -75,7 +75,7 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const advanced=plan&&planAction(plan)==='buy'&&plan.stages.some(s=>s.completed&&s.spent>0);
     const remaining=plan&&planAction(plan)==='buy'?remainingBuyStages(plan).filter(s=>!s.skipped):[];
     const reached=plan?remaining.filter(s=>company.quote?.close>0&&company.quote.close<=Math.min(s.price,s.entryPrice??s.price)).at(-1):eligible;
-    const support=plan&&planAction(plan)==='buy'?(reached||remaining.find(s=>s.key===plan.plannedEntryKey)||remaining[0]):(result.stage||result.next||eligible||next||levels[0]);
+    const support=planAction(plan)==='hold'&&plan?.skipSupportKey?result.holdSupport:(plan&&planAction(plan)==='buy'?(reached||remaining.find(s=>s.key===plan.plannedEntryKey)||remaining[0]):(result.stage||result.next||eligible||next||levels[0]));
     const openStages=remaining;
     const entryStage=(!advanced&&openStages.find(s=>s.key===plan?.plannedEntryKey))
       ||openStages.find(s=>s.key===support?.key)||openStages[0];
@@ -123,9 +123,11 @@ export function buildCommandCentre(state,research,config,{today,now=Date.now()}=
     const ladder=company.levels||[];
     if(ladder.some((l,i)=>i&&l.price>=ladder[i-1].price))queued.dataReasons.push({key:'ladder',label:'Support ladder is not descending',kind:'data'});
     queued.monitoringBuy=!!(plan&&planAction(plan)==='buy'&&entryStage);
-    const approaching=queued.quoteFresh&&queued.distanceToEntry!==null&&queued.distanceToEntry>0&&queued.distanceToEntry<=5;
-    queued.lists=[...((queued.monitoringBuy||!plan&&item.held)&&queued.quoteFresh&&(row.priceMet||approaching)?['opportunities']:[]),...(item.watchlisted&&!item.held?['watchlist']:[]),...(item.held&&(queued.overIV||queued.concentration||state.rebalancingSymbols?.[item.symbol])?['balance']:[]),...(queued.dataReasons.length?['data']:[])];
-    queued.manuallyRebalancing=!!state.rebalancingSymbols?.[item.symbol];queued.approaching=approaching;queued.openOpportunity=(!plan||queued.monitoringBuy)&&!['dismissed','deferred'].includes(queued.status)&&queued.lists.includes('opportunities');
+    const holdReview=!!result.holdTrigger;
+    const approaching=planAction(plan)==='hold'?result.holdTrigger==='approaching':queued.quoteFresh&&queued.distanceToEntry!==null&&queued.distanceToEntry>0&&queued.distanceToEntry<=5;
+    if(holdReview){queued.holdTrigger=result.holdTrigger;queued.priceTriggered=result.holdTrigger==='reached';queued.distanceToEntry=result.holdDistance;}
+    queued.lists=[...(holdReview||((queued.monitoringBuy||!plan&&item.held)&&queued.quoteFresh&&(row.priceMet||approaching))?['opportunities']:[]),...(item.watchlisted&&!item.held?['watchlist']:[]),...(item.held&&(queued.overIV||queued.concentration||state.rebalancingSymbols?.[item.symbol])?['balance']:[]),...(queued.dataReasons.length?['data']:[])];
+    queued.manuallyRebalancing=!!state.rebalancingSymbols?.[item.symbol];queued.approaching=approaching;queued.openOpportunity=(!plan||queued.monitoringBuy||holdReview)&&!['dismissed','deferred'].includes(queued.status)&&queued.lists.includes('opportunities');
     return queued;
   });
   const archivedPlans=Object.values(config.plans||{}).filter(p=>!active.has(p.symbol));
