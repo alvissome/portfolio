@@ -3,7 +3,7 @@ import {normalizeResearchColumnSettings} from './research-columns.js?v=plan-rese
 import {createInvestmentStore} from './investment-store.js?v=cc-email-20261117';
 import {normalizeStrategyCategories,chooseStrategyCategory,createStrategyCategorySelect,createCategoryControls,selectCategoryRows,categoryRank,reconcileStrategyCategories} from './strategy-categories.js?v=entry-sizing-20261114';
 import {activeWatchlist} from './active-watchlist.js';
-import {createInvestmentComponent} from './investment-panel.js?v=cc-digest-20261118';
+import {createInvestmentComponent} from './investment-panel.js?v=hold-support-20261118';
 import {resolveWatchlistLevels} from './watchlist-levels.js';
 import {createResearchComponents} from './research-panel.js?v=ak-bulk-sync-20261115';
 import {createResearchHook,mergeResolvedWatchlistNames} from './research-client.js?v=ak-native-values-20261115';
