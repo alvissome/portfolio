@@ -11,7 +11,7 @@ import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaul
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,pricedFill,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=redistribution-20261115';
 import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=active-watchlist-20261118';
-import {renderCommandCentre,renderPublicCommandCentre} from './investment-command-view.js?v=active-watchlist-20261118';
+import {renderCommandCentre,renderCommandOverview,renderPublicCommandCentre} from './investment-command-view.js?v=dashboard-overview-20261118';
 export {resolvedCompany} from './investment-command-centre.js?v=active-watchlist-20261118';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function revisitDate(date,months=1){
@@ -26,27 +26,57 @@ export function supportSourceLabel(company){
 }
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function createInvestmentComponent(React,jsx){
-  return function InvestmentPanel({uid,state,research,storage,onCategoryChange,researchPanel,onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
+  return function InvestmentPanel({uid,overviewRoot,state,research,storage,onCategoryChange,researchPanel,onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
     const root=React.useRef(null),controller=React.useRef(null),[view,setView]=React.useState('opportunities');
-    React.useEffect(()=>{controller.current=mountInvestmentPanel(root.current,{state,research,storage,onCategoryChange,onViewChange:setView,onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance});return()=>controller.current?.destroy();},[uid]);
+    React.useEffect(()=>{controller.current=mountInvestmentPanel(root.current,{overview:overviewRoot?.current,state,research,storage,onCategoryChange,onViewChange:setView,onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance});return()=>controller.current?.destroy();},[uid]);
     React.useEffect(()=>controller.current?.update(state,research,onCategoryChange,onRefresh,onWatchlistAdd,onWatchlistRemove),[state,research,onCategoryChange,onRefresh,onWatchlistAdd,onWatchlistRemove]);
-    return jsx.jsxs('section',{className:'ic-cc-shell','aria-label':'Investment Command Centre',children:[jsx.jsx('div',{ref:root,className:'pf-panel investment-panel'})]});
+    return jsx.jsxs('section',{id:'investment-command-centre',className:'ic-cc-shell','aria-label':'Investment Command Centre',children:[jsx.jsx('div',{ref:root,className:'pf-panel investment-panel'})]});
   };
 }
-export function mountInvestmentPanel(root,{state:initial,research:initialResearch,storage,onCategoryChange,onViewChange=()=>{},onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
+export function mountInvestmentPanel(root,{overview,state:initial,research:initialResearch,storage,onCategoryChange,onViewChange=()=>{},onRefresh,onWatchlistAdd,onWatchlistRemove,onPlansChange,onRebalance}){
   let state=initial,research=initialResearch,config={plans:{},funding:{},decisions:{}},loaded=false,alive=true,busy=false,error='',notice='',watchStop=null,pendingCloud=null,cloudSnapshot='',draftDirty=false,filter='opportunities',expandedDecision='',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],categoryChange=onCategoryChange,selectedSymbol='',draftEdits={},refreshPrices=onRefresh,refreshing=false,addWatchlist=onWatchlistAdd,removeWatchlist=onWatchlistRemove;
   let chartDialog=null;
-  let marketContext=null,alertStatus=null;
+  let marketContext=null,alertStatus=null,marketError='',marketBusy=false;
+  function renderOverview(model){
+    if(!overview)return;
+    const detailsOpen=overview.querySelector('details')?.open;
+    const restoreFocus=overview.ownerDocument.activeElement?.matches('[data-refresh-market]');
+    overview.innerHTML=renderCommandOverview(model,{show,categoryFilter,marketContext,privacyMode:state.privacyMode,
+      marketState:{error:marketError,busy:marketBusy,refreshable:true,workerCheckedAt:alertStatus?.checkedAt,marketAvailable:alertStatus?.marketAvailable}});
+    const details=overview.querySelector('details');
+    if(details&&detailsOpen)details.open=true;
+    const refresh=overview.querySelector('[data-refresh-market]');
+    refresh.onclick=()=>void refreshMarket();
+    if(restoreFocus)refresh.focus({preventScroll:true});
+    overview.querySelectorAll('[data-command-filter]').forEach(button=>button.onclick=()=>{
+      if(draftDirty){root.querySelector('[data-plan]')?.scrollIntoView();return;}
+      filter=button.dataset.commandFilter;
+      onViewChange(filter);
+      render();
+      const tab=root.querySelector(`.ic-tabs [data-command-filter="${filter}"]`);
+      tab?.focus({preventScroll:true});
+      root.scrollIntoView({block:'start'});
+    });
+  }
+  function updateOverview(){
+    if(overview)renderOverview(buildCommandCentre(state,research,config,{today:today()}));
+  }
   async function refreshMarket(){
-    if(!alive||globalThis.document?.visibilityState==='hidden')return;
-    try{
-      const results=await Promise.all([storage.loadMarketContext?.(),storage.loadAlertStatus?.()]);
-      if(!alive)return;
-      marketContext=results[0]||null;alertStatus=results[1]||null;
-      if(!draftDirty)render();
-    }catch{if(alive){alertStatus={mode:'Status unavailable'};if(!draftDirty)render();}}
+    if(!alive||marketBusy||globalThis.document?.visibilityState==='hidden')return;
+    const previousAlert=JSON.stringify(alertStatus);
+    marketBusy=true;
+    updateOverview();
+    const [market,alerts]=await Promise.allSettled([storage.loadMarketContext?.(),storage.loadAlertStatus?.()]);
+    if(!alive)return;
+    marketBusy=false;
+    if(market.status==='fulfilled')marketContext=market.value||null;
+    marketError=market.status==='rejected'?'Could not read the saved SPX check. Reload to retry.':'';
+    alertStatus=alerts.status==='fulfilled'?alerts.value||null:{mode:'Status unavailable'};
+    if(!draftDirty&&(!overview||previousAlert!==JSON.stringify(alertStatus)))render();
+    else updateOverview();
   }
   const marketTimer=setInterval(()=>void refreshMarket(),5*60000);
+  globalThis.window?.addEventListener('focus',refreshMarket);
   const onChartClick=e=>{
     const button=e.target.closest?.('[data-price-chart]');
     if(button)chartDialog=openPriceChart(button,symbol=>storage.loadChart(symbol));
@@ -123,6 +153,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
   function render(){
     if(!alive)return;
     const model=buildCommandCentre(state,research,config,{today:today()});
+    renderOverview(model);
     if(state.privacyMode){
       root.innerHTML='<h2>Investment Command Centre</h2>'+renderPublicCommandCentre(model,{categoryFilter,categorySort});
       root.querySelector('[data-opportunity-category]').onchange=e=>{categoryFilter=e.target.value;render();};
@@ -140,7 +171,7 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
       <span data-ak-feedback role="status"></span>${!loaded?'<p>Loading saved plans and decisions… <button type="button" data-retry-cloud>Retry</button></p>':''}${error?`<p class="pf-error" role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
       ${fundingError?`<p class="pf-error">${esc(fundingError)} Known values remain visible below; purchase amounts require refreshed inputs.</p>`:''}${funding?`<details data-section="funding-breakdown" ${open.has('funding-breakdown')?'open':''}><summary>Portfolio and cash basis</summary><p>${funding.complete?'Strategy base':'Known portfolio subtotal (incomplete)'} <strong>${show(funding.base)}</strong> · holdings ${show(funding.invested)} + broker cash ${show(funding.broker)} + bank set aside ${show(funding.bank)} − liabilities ${show(funding.liabilities)}. CC cash used since import: ${show(model.allowance.spent)}. Pending order reservations: ${show(model.reserved)}. Available for other buys: <strong>${show(funding.available)}</strong>.</p></details>`:''}
       ${model.incompleteSales?'<p class="ic-meta">Some planned sales lack FX and are excluded from potential cash.</p>':''}
-      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter,expandedSymbol:expandedDecision,marketContext})}
+      ${renderCommandCentre(model,{show,today:today(),filter,categoryFilter,categorySort,actionFilter,expandedSymbol:expandedDecision,marketContext,includeOverview:!overview})}
       <details data-section="email-alerts" ${open.has('email-alerts')?'open':''}><summary>Email alerts · ${esc(config.alerts?.enabled===false?'Paused':alertStatus?.mode||'Setup pending')}</summary><p>Daily checks follow all current Cash holdings and Watchlist tickers, including tickers in My decisions and Opportunities. Approaching: within 5% above the nearest support. Each support price is notified once; new daily drops below 3% and 5% can each notify once. Every email includes SPX context, with recent ticker headlines on drop alerts.</p><p class="ic-meta">${alertStatus?.checkedAt?'Last worker check: '+esc(new Date(alertStatus.checkedAt).toLocaleString('en-SG',{timeZone:'Asia/Singapore'}))+' SGT. ':''}${alertStatus?.lastAcceptedAt?'Last email accepted by provider: '+esc(new Date(alertStatus.lastAcceptedAt).toLocaleString('en-SG',{timeZone:'Asia/Singapore'}))+' SGT. ':''}${esc(alertStatus?.lastError||'')}${alertStatus?.tickers!=null?' Quotes checked: '+esc(alertStatus.quoted)+'/'+esc(alertStatus.tickers)+'. '+esc(alertStatus.unavailable||0)+' input(s) need review.':''}</p>${alertStatus?.warnings?.length?'<ul class="ic-meta">'+alertStatus.warnings.map(w=>'<li>'+esc(w.symbol)+': '+esc(w.reason)+'</li>').join('')+'</ul>':''}<form data-alert-settings><label><input type="checkbox" name="enabled" ${config.alerts?.enabled===false?'':'checked'}> Enable personal email alerts once delivery is configured</label><button ${!loaded?'disabled':''}>Save alert preference</button></form><p class="ic-meta">Existing breached levels are baselined at startup. Pausing does not build an email backlog. SPX uses completed daily closes; ticker quotes may be delayed. Scheduling is daily, with possible provider or cloud delays.</p></details>
       ${renderCashAllowance(model)}
       <details data-section="funding" ${open.has('funding')||model.allowance.legacyReviewRequired?'open':''}><summary>Confirm strategy funding</summary>
@@ -399,5 +430,5 @@ export function mountInvestmentPanel(root,{state:initial,research:initialResearc
   render();
   reload();
   void refreshMarket();
-  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices,nextAdd=addWatchlist,nextRemove=removeWatchlist){addWatchlist=nextAdd;removeWatchlist=nextRemove;state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;if(!draftDirty||state.privacyMode)render();},destroy(){clearInterval(marketTimer);chartDialog?.close();root.removeEventListener("click",onChartClick);alive=false;watchStop?.();root.removeEventListener('input',onDraftInput);root.removeEventListener('change',onDraftInput);root.innerHTML='';}};
+  return {update(next,nextResearch,nextCategoryChange=categoryChange,nextRefresh=refreshPrices,nextAdd=addWatchlist,nextRemove=removeWatchlist){addWatchlist=nextAdd;removeWatchlist=nextRemove;state=next;research=nextResearch;categoryChange=nextCategoryChange;refreshPrices=nextRefresh;if(!draftDirty||state.privacyMode)render();},destroy(){clearInterval(marketTimer);globalThis.window?.removeEventListener('focus',refreshMarket);if(overview)overview.innerHTML='';chartDialog?.close();root.removeEventListener("click",onChartClick);alive=false;watchStop?.();root.removeEventListener('input',onDraftInput);root.removeEventListener('change',onDraftInput);root.innerHTML='';}};
 }

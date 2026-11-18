@@ -1,5 +1,5 @@
 import {planAction} from './investment-actions.js?v=plan-research-20261115';
-import {renderMarketCallout} from './market-context.js?v=cc-email-20261117';
+import {renderMarketCallout} from './market-context.js?v=dashboard-overview-20261118';
 import {money} from './investment-format.js?v=compact-price-20261114';
 import {selectCategoryRows} from './strategy-categories.js?v=entry-sizing-20261114';
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
@@ -83,7 +83,27 @@ export function renderDecisionTable(model,{show,today,rows=model.rows,expandedSy
  };
  return `<div class="ic-decision-heading"><p class="ic-meta">Latest saved plan per ticker. BValue is estimated proceeds from the planned sale quantity at its sale price, before fees. Open a ticker to edit its plan.</p><details><summary>Show/hide columns</summary><div class="ic-column-settings">${DECISION_COLUMNS.map(([key,label])=>`<label><input type="checkbox" data-decision-column="${key}" ${visibility[key]!==false?'checked':''}>${label}</label>`).join('')}</div></details></div><div class="ic-decision-table-wrap" tabindex="0" role="region" aria-label="My decisions table"><table class="ic-decision-table"><thead><tr><th>Ticker</th>${columns.map(([key,label])=>`<th title="${key==='bValue'?'Conditional sale proceeds, not spendable cash':label}">${label}</th>`).join('')}<th>Manage</th><th>Notion</th></tr></thead><tbody>${latest.map(r=>`<tr data-decision-row="${esc(r.symbol)}"><td><button type="button" class="ic-ticker-link" data-review-plan="${esc(r.symbol)}">${esc(r.symbol)}</button> ${priceChartButton(r.symbol)}<small>${esc(STRATEGY_CATEGORIES[r.category]||'Unassigned')}</small></td>${columns.map(([key])=>`<td>${cell(r,key)}</td>`).join('')}<td><button type="button" class="ic-secondary ic-company-manage" title="Open stages, fills and order history" data-company-details="${esc(r.symbol)}" aria-expanded="${expandedSymbol===r.symbol}" aria-controls="ic-details-${esc(r.symbol)}">${planAction(r.plan)==='buy'?'Stages & fills':'History & orders'}</button></td><td><button type="button" class="ic-secondary ic-copy-notion" data-sync-company="${esc(r.symbol)}" title="Sync ${esc(r.symbol)} to Notion" aria-label="Sync ${esc(r.symbol)} to Notion">${copyIcon}</button><small>${esc(notionStatus(model.notionExports?.[r.symbol]))}</small></td></tr><tr class="ic-company-detail-row" id="ic-details-${esc(r.symbol)}" data-company-detail-row="${esc(r.symbol)}" ${expandedSymbol===r.symbol?'':'hidden'}><td colspan="${columns.length+3}">${decisionExecution(r,{show,today,model})}</td></tr>`).join('')||`<tr><td colspan="${columns.length+3}">No saved plans yet. Set up a Buy, Sell or Hold plan from a card.</td></tr>`}</tbody></table></div>${otherHistory.length||model.archivedPlans?.length?`<details class="ic-decision-journal" data-section="decision-history"><summary>Other saved decisions & orders</summary>${renderDecisionHistory({...model,history:otherHistory},{show,today})}</details>`:''}`;
 }
-export function renderCommandCentre(model,{show,today,filter='opportunities',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],expandedSymbol='',marketContext=null}={}){
+function selectOverview(model,categoryFilter){
+ const rows=model.rows||[];
+ const categories=Object.fromEntries(rows.filter(row=>row.category).map(row=>[row.symbol,row.category]));
+ const matching=selectCategoryRows(rows,categories,'symbol',categoryFilter);
+ const active=row=>!['dismissed','deferred'].includes(row.status);
+ return {
+  opportunities:matching.filter(row=>active(row)&&(!row.plan&&row.lists?.includes('opportunities')||row.monitoringBuy&&row.openOpportunity)),
+  attentionCount:matching.filter(row=>!row.plan&&(active(row)||row.manuallyRebalancing)&&row.lists?.includes('balance')).length,
+ };
+}
+export function renderCommandOverview(model,{show,categoryFilter='all',marketContext=null,marketState,privacyMode=false}={}){
+ const market=renderMarketCallout(marketContext,marketState);
+ if(privacyMode)return market;
+ const {opportunities,attentionCount}=selectOverview(model,categoryFilter);
+ const opportunityCount=opportunities.length;
+ const reached=opportunities.filter(row=>row.priceTriggered).length;
+ const approaching=opportunities.filter(row=>!row.priceTriggered&&row.approaching).length;
+ const f=model.displayFunding||model.funding;
+ return `${market}<div class="ic-summary"><button type="button" data-command-filter="balance"><span>Actions requiring review</span><strong>${attentionCount}</strong><small>Allocation and valuation flags</small></button><button type="button" data-command-filter="opportunities"><span>Open opportunities</span><strong>${opportunityCount}</strong><small>${reached} price reached · ${approaching} approaching support</small></button><div><span>Cash available now</span><strong>${show(f?.available)}</strong><small>After spending, reservations and liabilities</small></div><div><span>Potential cash incl. sales</span><strong>${show(model.potentialCash??f?.available)}</strong><small>Includes ${show(model.potentialSales??0)} planned selling BValue</small></div></div>`;
+}
+export function renderCommandCentre(model,{show,today,filter='opportunities',categoryFilter='all',categorySort='none',actionFilter=['buy','hold','sell'],expandedSymbol='',marketContext=null,includeOverview=true}={}){
  const all=model.rows||[];
  const subset=rows=>selectCategoryRows(rows,Object.fromEntries(all.filter(r=>r.category).map(r=>[r.symbol,r.category])),'symbol',categoryFilter);
  const sort=rows=>{
@@ -95,13 +115,12 @@ export function renderCommandCentre(model,{show,today,filter='opportunities',cat
  };
  const pending=all.filter(r=>!r.plan&&((filter==='balance'&&r.manuallyRebalancing)||!['dismissed','deferred'].includes(r.status)));
  const monitored=all.filter(r=>r.monitoringBuy&&!['dismissed','deferred'].includes(r.status));
- const opportunityRows=subset([...pending.filter(r=>r.lists?.includes('opportunities')), ...monitored.filter(r=>r.openOpportunity)]),watching=sort(subset(monitored.filter(r=>!r.openOpportunity))),reached=opportunityRows.filter(r=>r.priceTriggered).length,approaching=opportunityRows.filter(r=>!r.priceTriggered&&r.approaching).length;
- const attentionRows=subset(pending.filter(r=>r.lists?.includes('balance')));
+ const {opportunities:opportunityRows}=selectOverview(model,categoryFilter);
+ const watching=sort(subset(monitored.filter(r=>!r.openOpportunity)));
  const selected=filter==='all'?all:filter==='opportunities'?opportunityRows:filter==='decisions'?all.filter(r=>r.plan&&actionFilter.includes(r.action||'buy')):pending.filter(r=>r.lists?.includes(filter));
  const sorted=sort(subset(selected));
  const cards=rows=>`<div class="ic-card-list">${rows.map(r=>renderOpportunityCard(r,{show,today,chart:filter!=='data'})).join('')}</div>`;
- const f=model.displayFunding||model.funding;
- return `${renderMarketCallout(marketContext)}<div class="ic-summary"><button type="button" data-command-filter="balance"><span>Actions requiring review</span><strong>${attentionRows.length}</strong><small>Allocation and valuation flags</small></button><button type="button" data-command-filter="opportunities"><span>Open opportunities</span><strong>${opportunityRows.length}</strong><small>${reached} price reached · ${approaching} approaching support</small></button><div><span>Cash available now</span><strong>${show(f?.available)}</strong><small>After spending, reservations and liabilities</small></div><div><span>Potential cash incl. sales</span><strong>${show(model.potentialCash??f?.available)}</strong><small>Includes ${show(model.potentialSales??0)} planned selling BValue</small></div></div>
+ return `${includeOverview?renderCommandOverview(model,{show,categoryFilter,marketContext}):''}
  <div class="ic-command-toolbar"><nav class="ic-tabs" aria-label="Command Centre view">${[['opportunities','Opportunities'],['watchlist','Watchlist'],['balance','Rebalancing'],['data','Data review'],['decisions','My decisions']].map(([key,label])=>`<button type="button" data-command-filter="${key}" aria-pressed="${filter===key}" class="${filter===key?'ic-active':'ic-secondary'}">${label}</button>`).join('')}</nav>
  <div class="category-controls"><label>Category<select data-opportunity-category aria-label="Opportunities category filter">${[['all','All'],...Object.entries(STRATEGY_CATEGORIES),['unassigned','Unassigned']].map(([value,label])=>`<option value="${value}" ${categoryFilter===value?'selected':''}>${label}</option>`).join('')}</select></label><label>Sort<select data-opportunity-sort aria-label="Opportunities category sort">${[['none','Review priority'],['price','Price reached first'],['distance','Nearest entry'],['asc','Anchor first'],['desc','Selective first']].map(([value,label])=>`<option value="${value}" ${categorySort===value?'selected':''}>${label}</option>`).join('')}</select></label></div></div>
  ${filter==='watchlist'?`<div class="ic-watchlist-toolbar"><button type="button" data-open-watchlist>Add ticker</button><p class="ic-meta">AK IV/supports by default · independent fallback · edit values in Plan settings.</p></div><dialog class="ic-add-dialog" data-watchlist-dialog aria-label="Add Watchlist ticker"><form data-add-watchlist><h3>Add to Watchlist</h3><label>Ticker<input name="ticker" required maxlength="40" placeholder="e.g. AAPL" autocapitalize="characters" autocomplete="off"></label><label>Category<select name="category" required><option value="">Choose category</option>${Object.entries(STRATEGY_CATEGORIES).map(([v,label])=>`<option value="${v}">${label}</option>`).join('')}</select></label><p class="ic-meta">Use Holdings for tickers you already own in your Cash portfolio. Other values are automatic.</p><div class="ic-actions"><button>Add ticker</button><button type="button" class="ic-secondary" data-close-watchlist>Cancel</button></div></form></dialog>`:''}

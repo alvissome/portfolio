@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildCommandCentre,resolvedCompany,addDecision} from '../assets/investment-command-centre.js';
 import {createPurchasePlan,fundingSignature} from '../assets/investment-strategy.js';
-import {renderCommandCentre} from '../assets/investment-command-view.js';
+import {renderCommandCentre,renderCommandOverview} from '../assets/investment-command-view.js';
 const today='2026-11-15',now=Date.parse(today+'T02:00:00Z');
 const base=()=>({strategyCategories:{AAA:'anchor',BBB:'core'},holdings:[],researchLevels:['AAA','BBB'].map(symbol=>({symbol,priceCurrency:'USD',iv:200,s1:120,s2:100,s3:80})),watchlist:['AAA','BBB'].map(symbol=>({symbol})),priceCache:{AAA:{close:115,timestamp:now},BBB:{close:150,timestamp:now}},fxRates:{USD:1.3},cash:{brokers:10000,growth:5000,dividend:0}});
 const config=s=>({cashTrackingVersion:1,plans:{},decisions:{},funding:{confirmed:true,basisSignature:fundingSignature(s)}});
@@ -116,4 +116,15 @@ test('hold and sell plans stay out of buying opportunities',()=>{
   const m=build(s,c);assert.equal(m.rows[0].monitoringBuy,false);
   assert.doesNotMatch(renderCommandCentre(m,{show:String,today}),/data-opportunity="AAA"/);
  }
+});
+
+
+test('dashboard overview can render separately without leaking cash in privacy mode',()=>{
+ const s=base(),model=build(s,config(s));
+ const overview=renderCommandOverview(model,{show:String,marketState:{refreshable:true,error:'Could not read the saved SPX check.'}});
+ assert.match(overview,/data-refresh-market/);
+ assert.match(overview,/Could not read the saved SPX check/);
+ assert.match(overview,/Cash available now/);
+ assert.doesNotMatch(renderCommandCentre(model,{show:String,today,includeOverview:false}),/ic-summary|ic-market-context/);
+ assert.doesNotMatch(renderCommandOverview(model,{show:String,privacyMode:true}),/ic-summary|Cash available now/);
 });
