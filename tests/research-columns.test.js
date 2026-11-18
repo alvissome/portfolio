@@ -1,3 +1,4 @@
+import {activeWatchlist} from '../assets/active-watchlist.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -24,7 +25,7 @@ test('research preferences are independent for holdings and watchlist and reject
 test('production cloud storage round-trips research preferences',async()=>{
  const bundle=await readFile(new URL('../assets/index-CUEh86Kk.js',import.meta.url),'utf8');
  const start=bundle.indexOf('function MR('),end=bundle.indexOf('async function JT(',start);
- const context={holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
+ const context={activeWatchlist,holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
  runInNewContext(bundle.slice(start,end)+';this.save=BR;this.load=UR;',context);
  const settings={holdings:{sl2:false},watchlist:{avg:false,'sl-status':false}};
  const state={holdings:[],watchlist:[],cash:{},emailSettings:{},researchColumnVisibility:settings};

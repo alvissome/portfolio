@@ -1,3 +1,4 @@
+import {activeWatchlist} from '../assets/active-watchlist.js';
 import {normalizeResearchColumnSettings} from '../assets/research-columns.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,7 +44,7 @@ test('additional Anchors are supported with safe keys and valid categories',()=>
 });
 test('production cloud serializer round-trips categories without placing them in per-account rows',()=>{
  const start=bundle.indexOf('function MR('),end=bundle.indexOf('async function JT(',start);
- const context={holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
+ const context={activeWatchlist,holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}}};
  runInNewContext(bundle.slice(start,end)+';this.save=BR;this.load=UR;',context);
  const state={accountImportVersion:1,strategyCategories:chooseStrategyCategory(undefined,'CANDIDATE','anchor'),holdings:[{ticker:'GOOGL',accountType:'Cash',shares:1}],watchlist:[{symbol:'GOOGL'}],cash:{},emailSettings:{}};
  const saved=context.save(state);
@@ -99,7 +100,7 @@ test('research views omit Category while keeping Track in watchlist',()=>{
 test('production category handler saves immediately in order; normal autosave cannot overwrite it',async()=>{
  const cloud={settings:{strategyCategories:{AAA:'core'},other:'keep'}};
  const state={strategyCategories:{AAA:'core'}},writes=[],statuses=[],alerts=[];
- const context={ne:{useRef:value=>({current:value})},d:state,n:{uid:'test-user'},chooseStrategyCategory,
+ const context={activeWatchlist,ne:{useRef:value=>({current:value})},d:state,n:{uid:'test-user'},chooseStrategyCategory,
   w:patch=>Object.assign(state,patch),u:status=>statuses.push(status),qT:uid=>uid,alert:text=>alerts.push(text),
   RR:async(ref,data,options)=>{writes.push({ref,data:clone(data),options});for(const path of options.mergeFields){if(path==='settings.strategyCategories')cloud.settings.strategyCategories=clone(data.settings.strategyCategories);else if(path.startsWith('settings.'))cloud.settings[path.slice(9)]=data.settings[path.slice(9)];else cloud[path]=data[path];}},
   OR:v=>v,CR:()=>123,BR:v=>({holdings:[],settings:{strategyCategories:v.strategyCategories,other:'updated'}})};
@@ -120,7 +121,7 @@ test('production category handler saves immediately in order; normal autosave ca
 });
 test('failed category writes surface an error and the queue can save a retry',async()=>{
  let fail=true;const alerts=[],statuses=[],saved=[];
- const context={ne:{useRef:value=>({current:value})},d:{strategyCategories:{}},n:{uid:'test-user'},chooseStrategyCategory,w:()=>{},u:s=>statuses.push(s),qT:()=>null,alert:s=>alerts.push(s),RR:async(_,data)=>{if(fail)throw Error('permission denied');saved.push(clone(data));}};
+ const context={activeWatchlist,ne:{useRef:value=>({current:value})},d:{strategyCategories:{}},n:{uid:'test-user'},chooseStrategyCategory,w:()=>{},u:s=>statuses.push(s),qT:()=>null,alert:s=>alerts.push(s),RR:async(_,data)=>{if(fail)throw Error('permission denied');saved.push(clone(data));}};
  const start=bundle.indexOf('const categorySaveQueue='),end=bundle.indexOf(';ne.useEffect(',start);
  runInNewContext(bundle.slice(start,end+1)+';this.choose=updateStrategyCategory;this.pending=()=>categorySaveQueue.current;',context);
  context.choose('AAA','core');await context.pending();assert.equal(statuses.at(-1),'error');assert.match(alerts[0],/not saved/);
@@ -143,7 +144,7 @@ test('inactive exited tickers become Selective without affecting active holdings
 });
 test('production inactive category migration persists through the same immediate cloud queue',async()=>{
  const d={strategyCategories:{J69U:'anchor',ACTIVE:'core'},holdings:[{ticker:'J69U',exited:true},{ticker:'ACTIVE'}],watchlist:[]};let saved;
- const context={ne:{useRef:value=>({current:value}),useEffect:fn=>fn()},f:true,restoring:{current:false},d,n:{uid:'test-user'},reconcileStrategyCategories,chooseStrategyCategory,w:patch=>Object.assign(d,patch),u:()=>{},qT:()=>null,alert:()=>{},RR:async(_,data)=>{saved=clone(data);}};
+ const context={activeWatchlist,ne:{useRef:value=>({current:value}),useEffect:fn=>fn()},f:true,restoring:{current:false},d,n:{uid:'test-user'},reconcileStrategyCategories,chooseStrategyCategory,w:patch=>Object.assign(d,patch),u:()=>{},qT:()=>null,alert:()=>{},RR:async(_,data)=>{saved=clone(data);}};
  const start=bundle.indexOf('const categorySaveQueue='),end=bundle.indexOf(';return f?',start);
  runInNewContext(bundle.slice(start,end+1)+';this.pending=()=>categorySaveQueue.current;',context);await context.pending();
  assert.equal(saved.settings.strategyCategories.J69U,'selective');assert.equal(d.strategyCategories.ACTIVE,'core');

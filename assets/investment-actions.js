@@ -1,11 +1,13 @@
+import {isCashHolding} from './active-watchlist.js';
 import {chooseStrategyCategory,categoryFor} from './strategy-categories.js?v=entry-sizing-20261114';
 export const planAction=plan=>plan?.action??'buy';
 const date=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s));
 export function planWatchlistAddition(state,{symbol,category,id}){
  symbol=String(symbol||'').trim().toUpperCase();
  if(!/^[A-Z0-9^][A-Z0-9.^=_-]{0,39}$/.test(symbol)||['CONSTRUCTOR','PROTOTYPE'].includes(symbol))throw Error('Enter a valid ticker.');
+ if((state.holdings||[]).some(row=>isCashHolding(row)&&row.ticker===symbol))throw Error('This ticker is already in Cash Holdings. Set its category there.');
  if((state.watchlist||[]).some(w=>w.symbol===symbol))throw Error('This ticker is already in Watchlist.');
- // Tracking a holding inherits its existing category rather than replacing it.
+ // Preserve an existing category when tracking a ticker again.
  const selected=categoryFor(state.strategyCategories,symbol)||category;
  if(!['anchor','core','selective'].includes(selected))throw Error('Choose Anchor, Core or Selective.');
  const strategyCategories=chooseStrategyCategory(state.strategyCategories,symbol,selected);

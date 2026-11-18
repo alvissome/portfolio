@@ -1,3 +1,4 @@
+import {activeWatchlist,isCashHolding} from './active-watchlist.js';
 import {entryDraft} from './investment-plan-defaults.js';
 import {akReferenceCost} from './ak-reference-cost.js?v=plan-research-20261115';
 import {commandQueueState,companyCeiling} from './command-queue.js?v=redistribution-20261115';
@@ -10,7 +11,7 @@ const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(id)&&!['co
 const date=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value));
 const positive=n=>Number.isFinite(Number(n))&&Number(n)>0;
 export function resolvedCompany(state,research,symbol,plan){
-  const rows=(state.watchlist||[]).filter(r=>r.symbol===symbol);
+  const rows=activeWatchlist(state.holdings,state.watchlist).filter(r=>r.symbol===symbol);
   if(rows.length>1)throw Error('Resolve duplicate watchlist rows for '+symbol+'.');
   const record=research?.records?.[symbol];
   const holding=(state.holdings||[]).find(h=>h.ticker===symbol&&h.accountType==='Cash'&&!h.exited);
@@ -29,8 +30,8 @@ export function resolvedCompany(state,research,symbol,plan){
 }
 export function currentUniverse(state){
   const map=new Map();
-  for(const h of state.holdings||[])if(h.accountType==='Cash'&&!h.exited)map.set(h.ticker,{symbol:h.ticker,held:true,watchlisted:false});
-  for(const w of state.watchlist||[])if(w.symbol){const row=map.get(w.symbol)||{symbol:w.symbol,held:false,watchlisted:false};row.watchlisted=true;map.set(w.symbol,row);}
+  for(const h of state.holdings||[])if(isCashHolding(h))map.set(h.ticker,{symbol:h.ticker,held:true,watchlisted:false});
+  for(const w of activeWatchlist(state.holdings,state.watchlist))map.set(w.symbol,{symbol:w.symbol,held:false,watchlisted:true});
   return [...map.values()];
 }
 export function reservedCash(config){

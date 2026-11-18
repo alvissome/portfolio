@@ -305,3 +305,7 @@ The existing `Portfolio Research` GitHub Actions job uses its existing personal 
 ### Command Centre ticker charts
 
 The personal research workflow maintains owner-only Firestore documents under users/{uid}/portfolio/tickerChart-{symbol} for current cash holdings and watchlist tickers. It saves daily closes and quote currency, reusing current research inputs when available. Each run processes due tickers until its time budget is reached, with fallback requests spaced to respect the free tier. Successful histories become due after 24 hours. Failed reads retain the previous series and retry after six hours. The existing Twelve Data secret supplies the fallback. The tickerChartSchedule document tracks the next checks. These caches regenerate from provider history and do not contain decisions or trades.
+
+## Current Watchlist membership
+
+The retired standalone Watchlist and the Command Centre Watchlist used the same saved collection. Current Cash holdings take precedence over overlapping rows. Those rows do not supply category controls, quote fallback, valuation, support levels or alert inputs for an active Cash holding. Holdings supplies the shared category, and the current research record and Plan settings supply IV and supports. Watchlist-only tickers remain editable in Command Centre. The stored rows remain available for backup recovery because older and newer rows have no reliable provenance marker.
