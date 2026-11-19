@@ -4,7 +4,7 @@ import {pathToFileURL} from 'node:url';
 import {alertUniverse,evaluateTicker,evaluateMarket} from './command-alerts.mjs';
 import {fetchSPX,fetchAlertQuote,fetchAlertNews} from './alert-data.mjs';
 import {renderAlertEmail} from './alert-email.mjs';
-import {sendAlertEmail,deliveryDecision} from './alert-delivery.mjs';
+import {sendAlertEmail,deliveryDecision,prepareDigestEmail} from './alert-delivery.mjs';
 import {marketContextFresh} from '../../assets/market-context.js';
 export const PERSONAL_PROJECT='alvissome-portfolio';
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -122,6 +122,12 @@ export async function main(env=process.env){
         if(decision==='expire'){tx.update(doc.ref,{status:'cancelled',reason:'Observation expired before sending'});return null;}
         if(decision==='review'){tx.update(doc.ref,{status:'needs_review',code:'RETRY_WINDOW_EXPIRED_OR_ATTEMPT_LIMIT'});counts.deliveryIssues++;lastError='An email outcome needs review; automatic retries stopped to prevent duplicates.';return null;}
         const claimed={...current,status:'sending',leaseToken:token,leaseUntil:Date.now()+10*60000,firstAttemptAt:current.firstAttemptAt||Date.now(),attempts:(current.attempts||0)+1};
+        // Freeze the exact Resend payload before the first attempt. Retries must
+        // reuse the scheduled time even if they cross 8 am.
+        if(!current.firstAttemptAt&&!current.emailPrepared){
+          claimed.email=prepareDigestEmail(current.email,digestDay,Date.now());
+          claimed.emailPrepared=true;
+        }
         tx.set(doc.ref,claimed);return claimed;
       });
       if(!record)continue;

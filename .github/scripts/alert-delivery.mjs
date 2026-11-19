@@ -1,6 +1,11 @@
 // Immutable messages plus a durable provider key. Never retry an ambiguous send
 // after the provider's 24-hour idempotency window has elapsed.
 export const SAFE_RETRY_MS=23*3600000;
+export function prepareDigestEmail(email,digestDay,now=Date.now()){
+  const sendAt=Date.parse(digestDay+'T08:00:00+08:00');
+  // Give the provider time to accept the request before its scheduled time.
+  return sendAt-now>=60000?{...email,scheduled_at:new Date(sendAt).toISOString()}:email;
+}
 export function deliveryDecision(record,now=Date.now()){
   if(!['queued','retry','sending','blocked'].includes(record?.status))return 'skip';
   if(!record.firstAttemptAt&&now-Date.parse(record.createdAt)>24*3600000)return 'expire';
