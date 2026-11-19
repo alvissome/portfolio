@@ -5,7 +5,7 @@ import {calculateMarketContext,marketContextFresh,marketText,renderMarketCallout
 import {alertUniverse,evaluateTicker,evaluateMarket,levelKey} from '../.github/scripts/command-alerts.mjs';
 import {parseAlertQuote,parseNews,fetchAlertNews,fetchSPX} from '../.github/scripts/alert-data.mjs';
 import {renderAlertEmail} from '../.github/scripts/alert-email.mjs';
-import {deliveryDecision,sendAlertEmail,SAFE_RETRY_MS} from '../.github/scripts/alert-delivery.mjs';
+import {deliveryDecision,sendAlertEmail,SAFE_RETRY_MS,prepareDigestEmail} from '../.github/scripts/alert-delivery.mjs';
 import {validateAlertEnvironment,eventIdentity,alertRunMode,outstandingDelivery,singaporeDigestDay} from '../.github/scripts/runCommandAlerts.mjs';
 const now=Date.parse('2026-11-17T10:00:00Z');
 const bars=values=>values.map((close,i)=>({date:new Date(Date.parse('2026-11-16')-(values.length-1-i)*86400000).toISOString().slice(0,10),close}));
@@ -119,6 +119,13 @@ test('HTML email has a real template, SPX context, accessible structure, timesta
   assert.match(email.html,/role="presentation"/);assert.match(email.html,/lang="en"/);assert.match(email.html,/<h1/);assert.match(email.html,/52-week closing peak/);assert.match(email.html,/&lt;EXAMPLE&gt;/);assert.doesNotMatch(email.html,/<EXAMPLE>/);assert.match(email.text,/Open command centre/);assert.ok(Buffer.byteLength(email.html)<95000);
   assert.match(renderAlertEmail({createdAt:new Date(now).toISOString(),context:null,events:[{type:'daily_drop',symbol:'EXAMPLE',currency:'USD',tier:5,dropPct:-6,quote:quote(94)}]}).html,/SPX context unavailable or stale/);
 });
+test('early digests are handed to Resend for 8 am Singapore time, with immediate fallback after the target',()=>{
+  const email={to:['owner@example.com']},day='2026-11-19';
+  const early=Date.parse('2026-11-18T21:17:00Z'),target=Date.parse('2026-11-19T00:00:00Z');
+  assert.deepEqual(prepareDigestEmail(email,day,early),{...email,scheduled_at:'2026-11-19T00:00:00.000Z'});
+  assert.equal(prepareDigestEmail(email,day,target-30000),email);
+  assert.equal(prepareDigestEmail(email,day,target+3600000),email);
+});
 test('retry cutoff prevents duplicate risk outside Resend idempotency retention',()=>{
   const record={status:'retry',createdAt:new Date(now).toISOString(),firstAttemptAt:now-10000,attempts:1};assert.equal(deliveryDecision(record,now),'send');assert.equal(deliveryDecision({...record,firstAttemptAt:now-SAFE_RETRY_MS},now),'review');assert.equal(deliveryDecision({...record,status:'accepted'},now),'skip');assert.equal(deliveryDecision({...record,status:'sending',leaseUntil:now+1000},now),'skip');assert.equal(deliveryDecision({...record,firstAttemptAt:null,createdAt:new Date(now-25*3600000).toISOString()},now),'expire');
 });
@@ -136,7 +143,7 @@ test('environment is personal-only, scopes to one owner, and never borrows legac
 });
 test('new worker preserves the private data boundary and default-off delivery',async()=>{
   const worker=await readFile(new URL('../.github/scripts/runCommandAlerts.mjs',import.meta.url),'utf8'),workflow=await readFile(new URL('../.github/workflows/command-centre-alerts.yml',import.meta.url),'utf8');
-  assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/0 0 \* \* \*/);assert.doesNotMatch(workflow,/^  push:/m);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
+  assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/17 21 \* \* \*/);assert.doesNotMatch(workflow,/^  push:/m);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
 });
 test('the alert worker requires an explicit, unambiguous execution mode',()=>{
   assert.equal(alertRunMode(['node','script','--dry-run']),'dry-run');assert.equal(alertRunMode(['node','script','--run']),'run');assert.throws(()=>alertRunMode(['node','script']),/EXPLICIT/);assert.throws(()=>alertRunMode(['--run','--dry-run']),/SELECT_ONE/);
