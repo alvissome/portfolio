@@ -1,7 +1,7 @@
 name: Command Centre alerts
 on:
   schedule:
-    - cron: '0 0 * * *' # 08:00 Asia/Singapore
+    - cron: '17 21 * * *' # 05:17 Asia/Singapore (following day)
   workflow_dispatch:
     inputs:
       mode:
