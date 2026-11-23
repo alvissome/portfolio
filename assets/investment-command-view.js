@@ -86,6 +86,18 @@ function decisionExecution(row,{show,today,model}){
  return `<section class="ic-company-execution" data-opportunity="${esc(row.symbol)}"><header><h4>${esc(row.symbol)} · ${planAction(row.plan)==='buy'?'Stages, fills & orders':'Decision history & orders'}</h4><button type="button" class="ic-secondary" data-close-company-details="${esc(row.symbol)}">Close</button></header>${planAction(row.plan)==='buy'?`<p class="ic-meta">${row.plan.stages.filter(s=>s.completed).length}/${row.plan.stages.length} stages completed${row.plan.stages.some(s=>s.skipped&&!s.completed)?` · ${row.plan.stages.filter(s=>s.skipped&&!s.completed).length} skipped`:""}${row.orders.length?` · ${row.orders.length} pending order(s)`:""}</p>`:''}${row.notes?`<p class="ic-plan-remarks">${esc(row.notes)}</p>`:''}${row.status==='eligible'&&!row.orders.length?`<button type="button" data-open-decision="ordered" data-symbol="${esc(row.symbol)}">Record pending order</button><form data-decision-form="${esc(row.symbol)}" hidden><input type="hidden" name="kind" value="ordered"><input type="hidden" name="until" value="${nextDate(today)}" disabled><label data-order-field>Cash reserved (SGD)<input name="amount" type="number" min="0.01" step="0.01" max="${r.amount}" value="${r.amount}" required></label><label>Note<input name="note" maxlength="1000"></label><p data-order-field>Record an order already placed by you; this application sends no broker order.</p><button>Save order</button><button type="button" class="ic-secondary" data-close-decision>Cancel</button></form>`:row.orders.length?'<p class="ic-meta">Pending order: record cancellation or final fill below.</p>':''}${stageHistory(row,show,today,{inline:true})}${planAction(row.plan)==='buy'?'<h5>Decision history & orders</h5>':''}${renderDecisionHistory({...model,history:(model.history||[]).filter(d=>d.symbol===row.symbol),archivedPlans:[]},{show,today})}</section>`;
 }
 export const DECISION_COLUMNS=[['name','Company'],['action','Action'],['close','Close'],['avgPrice','Avg Price'],['bValue','BValue'],['iv','IV'],['refCost','Ref cost'],['currentSL','Current SL'],['nextSL','Next SL'],['quantity','Quantity'],['plannedPrice','Entry / sale price'],['notes','Notes']];
+function decisionActionLabel(row){
+ const action=row.action||planAction(row.plan);
+ if(action!=='buy')return {label:action.toUpperCase()};
+ const remaining=remainingBuyStages(row.plan);
+ const approved=remaining.find(stage=>stage.key===row.plan.plannedEntryKey);
+ if(approved)return {label:'Buy '+approved.key.toUpperCase()};
+ const completed=row.plan.stages.findLast(stage=>stage.completed&&stage.spent>0);
+ if(!completed)return {label:'BUY'};
+ if(!remaining.length)return {label:'Plan done',detail:completed.key.toUpperCase()+' done'};
+ const next=(remaining.find(stage=>stage.id===row.entryStage?.id)||remaining[0]).key.toUpperCase();
+ return {label:completed.key.toUpperCase()+' done',detail:row.openOpportunity?next+' ready for review':'Watching '+next};
+}
 export function renderDecisionTable(model,{show,today,rows=model.rows,expandedSymbol=''}={}){
  const visibility=model.decisionColumns||{};
  const columns=DECISION_COLUMNS.filter(([key])=>visibility[key]!==false);
@@ -100,7 +112,10 @@ export function renderDecisionTable(model,{show,today,rows=model.rows,expandedSy
   if(key==='plannedPrice')return r.action==='hold'?'—':price(r.action==='sell'?r.plan.sale?.price:r.nextEntry,c);
   if(key==='nextSL'){const key=r.advanced?r.support?.key:r.support?.key??planned?.key,index=r.levels.findIndex(l=>l.key===key),next=index>=0?r.levels[index+1]:null;return next?esc(next.key.toUpperCase())+' · '+price(next.price,c):'—';}
   if(key==='name')return esc(r.name);
-  if(key==='action')return `<strong>${esc((r.action||'buy').toUpperCase())}</strong>${r.action==='hold'?`<small>Revisit ${esc(r.plan.revisitOn||'—')}${r.plan.revisitOn<=today?' · due':''}</small>${r.plan.skipSupportKey?`<small>Skipped ${esc(r.plan.skipSupportKey.toUpperCase())}${r.support?' · watching '+esc(r.support.key.toUpperCase()):''}</small>`:''}`:r.action==='sell'?`<small>${r.plan.sale?.quantity??'—'} shares · ${price(r.plan.sale?.price,c)}${r.plan.sale?.completed?' · completed':''}</small>`:''}${r.dataReasons?.length?'<small>Data review: '+r.dataReasons.map(c=>esc(c.label)).join('; ')+'</small>':''}${r.reviewReasons?.length?'<small>'+r.reviewReasons.map(c=>esc(c.label)).join('; ')+'</small>':''}${r.notificationDeferred?'<small>Notifications deferred</small>':''}`;
+  if(key==='action'){
+   const {label,detail}=decisionActionLabel(r);
+   return `<strong>${esc(label)}</strong>${detail?`<small>${esc(detail)}</small>`:''}${r.action==='hold'?`<small>Revisit ${esc(r.plan.revisitOn||'—')}${r.plan.revisitOn<=today?' · due':''}</small>${r.plan.skipSupportKey?`<small>Skipped ${esc(r.plan.skipSupportKey.toUpperCase())}${r.support?' · watching '+esc(r.support.key.toUpperCase()):''}</small>`:''}`:r.action==='sell'?`<small>${r.plan.sale?.quantity??'—'} shares · ${price(r.plan.sale?.price,c)}${r.plan.sale?.completed?' · completed':''}</small>`:''}${r.dataReasons?.length?'<small>Data review: '+r.dataReasons.map(c=>esc(c.label)).join('; ')+'</small>':''}${r.reviewReasons?.length?'<small>'+r.reviewReasons.map(c=>esc(c.label)).join('; ')+'</small>':''}${r.notificationDeferred?'<small>Notifications deferred</small>':''}`;
+  }
   if(key==='close')return price(r.quote?.close,c);
   if(key==='avgPrice')return r.held?price(r.averageCost,c):'—';
   if(key==='bValue')return r.sale?`${price(r.sale.native,c)}${r.sale.sgd!==null&&c!=='SGD'?`<small>≈ ${show(r.sale.sgd)}</small>`:''}`:'—';
