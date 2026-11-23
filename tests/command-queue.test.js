@@ -175,3 +175,19 @@ test('stage history puts the next fill first and keeps skipped and completed sta
  assert.doesNotMatch(html,new RegExp(`data-fill="AAA" data-stage="(?:${s1.id}|${s2.id})"`));
  assert.match(html,/<details class="ic-stage-edit"><summary>Edit<\/summary>/);
 });
+
+
+test('My Decisions distinguishes a completed fill from an explicitly approved next buy',()=>{
+ const s=base(),c=config(s),p=c.plans.AAA=plan();
+ const html=()=>renderCommandCentre(build(s,c),{show:String,today,filter:'decisions'});
+ assert.match(html(),/<strong>Buy S1<\/strong>/);
+ Object.assign(p.stages[1],{completed:true,spent:490});
+ assert.match(html(),/<strong>S2 done<\/strong><small>Watching S3<\/small>/);
+ s.priceCache.AAA.close=83;
+ assert.match(html(),/<strong>S2 done<\/strong><small>S3 ready for review<\/small>/);
+ assert.equal(build(s,c).rows[0].openOpportunity,true);
+ p.plannedEntryKey='s3';
+ assert.match(html(),/<strong>Buy S3<\/strong>/);
+ Object.assign(p.stages[2],{completed:true,spent:490});
+ assert.match(html(),/<strong>Plan done<\/strong><small>S3 done<\/small>/);
+});
