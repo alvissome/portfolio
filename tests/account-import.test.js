@@ -90,6 +90,22 @@ test('production storage serializer round-trips all accounts, BDiv and import me
  assert.equal(restored.accountImportVersion,1);assert.deepEqual(normalize(restored.cashImportInfo),s.cashImportInfo);
  assert.equal(restored.cash.srs,200);
 });
+test('saved holding and Watchlist quotes retain fetch time across a reload',()=>{
+ const start=bundle.indexOf('function MR('),end=bundle.indexOf('async function JT(',start);
+ const checkStart=bundle.indexOf('function XR('),checkEnd=bundle.indexOf('async function Xc(',checkStart);
+ const now=Date.parse('2026-11-23T10:00:00Z'),timestamp=now-60000;
+ const context={activeWatchlist,holdingKey,normalizeStrategyCategories,normalizeResearchColumnSettings,In:{cash:{},emailSettings:{}},Date:class extends Date{static now(){return now}},GR:86400000};
+ runInNewContext(bundle.slice(start,end)+bundle.slice(checkStart,checkEnd)+';this.save=BR;this.load=UR;this.fresh=XR;',context);
+ const s={...migrated(),watchlist:[{symbol:'W.SI'}],priceCache:{'EXAMPLE.SI':{close:15,timestamp},'W.SI':{close:8,timestamp,priceStale:true}}};
+ const restored=context.load(context.save(s));
+ assert.equal(restored.priceCache['EXAMPLE.SI'].close,15);
+ assert.equal(restored.priceCache['EXAMPLE.SI'].timestamp,timestamp);
+ assert.equal(context.fresh(restored.priceCache,'EXAMPLE.SI'),true);
+ assert.equal(context.fresh(restored.priceCache,'OTHER.SI'),false);
+ assert.equal(restored.priceCache['W.SI'].close,8);
+ assert.equal(restored.priceCache['W.SI'].timestamp,timestamp);
+ assert.equal(context.fresh(restored.priceCache,'W.SI'),false);
+});
 test('production save replaces holdings map so migrated aggregate keys cannot survive',async()=>{
  const start=bundle.indexOf('async function LR('),end=bundle.indexOf('const In=',start);
  let stored={holdings:{OLD:{ticker:'OLD'}},classifications:{OLD:{}},unrelated:'keep'};
