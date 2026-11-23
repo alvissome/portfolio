@@ -143,7 +143,7 @@ test('environment is personal-only, scopes to one owner, and never borrows legac
 });
 test('new worker preserves the private data boundary and default-off delivery',async()=>{
   const worker=await readFile(new URL('../.github/scripts/runCommandAlerts.mjs',import.meta.url),'utf8'),workflow=await readFile(new URL('../.github/workflows/command-centre-alerts.yml',import.meta.url),'utf8');
-  assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/17 21 \* \* \*/);assert.doesNotMatch(workflow,/^  push:/m);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
+  assert.match(worker,/getAuth\(\)\.getUser/);assert.match(worker,/tx\.create\(mailRef/);assert.match(worker,/stillCurrent/);assert.match(worker,/Ticker or support changed/);assert.doesNotMatch(worker,/upload-artifact|console\.log\(data|console\.log\(events/);assert.match(workflow,/PORTFOLIO_ALERT_RESEND_KEY/);assert.match(workflow,/17 18 \* \* \*/);assert.doesNotMatch(workflow,/^  push:/m);assert.doesNotMatch(workflow,/pull_request_target|contents: write/);
 });
 test('the alert worker requires an explicit, unambiguous execution mode',()=>{
   assert.equal(alertRunMode(['node','script','--dry-run']),'dry-run');assert.equal(alertRunMode(['node','script','--run']),'run');assert.throws(()=>alertRunMode(['node','script']),/EXPLICIT/);assert.throws(()=>alertRunMode(['--run','--dry-run']),/SELECT_ONE/);
@@ -161,15 +161,29 @@ test('market callout names all three trends and explains alignment, individual s
 });
 
 
-test('daily email groups multiple alerts in one ticker card and keeps every alert',()=>{
+test('daily email groups by alert section and preserves alerts for the same ticker',()=>{
   const email=renderAlertEmail({createdAt:new Date(now).toISOString(),context:context(),events:[
     {type:'support_approach',symbol:'CRM',currency:'USD',quote:quote(99),distancePct:2,levels:[{key:'s2',price:97}]},
     {type:'daily_drop',symbol:'CRM',currency:'USD',tier:5,dropPct:-6,quote:quote(99)},
     {type:'support_hit',symbol:'CRM',currency:'USD',quote:quote(99),levels:[{key:'s1',price:100}]},
   ]});
   assert.match(email.subject,/Daily digest · 3 alerts · CRM/);
-  assert.equal((email.html.match(/>CRM<\/h2>/g)||[]).length,1);
+  assert.equal((email.html.match(/>CRM<\/h2>/g)||[]).length,3);
   for(const label of ['Approaching support','New support reached','Large daily drop'])assert.ok(email.html.includes(label));
   assert.equal(singaporeDigestDay(new Date('2026-11-18T15:59:00Z')),'2026-11-18');
   assert.equal(singaporeDigestDay(new Date('2026-11-18T16:00:00Z')),'2026-11-19');
+});
+
+test('digest orders each section by severity, then US, HK, SG and other',()=>{
+  const base={quote:quote(99),currency:'USD'};
+  const hit=(symbol,key,currency='USD')=>({...base,type:'support_hit',symbol,currency,levels:[{key,price:100}]});
+  const drop=(symbol,dropPct,currency='USD')=>({...base,type:'daily_drop',symbol,dropPct,tier:5,currency});
+  const events=[drop('SMALL',-6),hit('0005.HK','s3','HKD'),hit('D05.SI','s3','SGD'),hit('DEEP','s5'),hit('AAPL','s3'),hit('VOD.L','s3','GBP'),drop('LARGEST',-11),{...hit('NEAR','s2'),type:'support_approach',distancePct:1}];
+  const {html,text}=renderAlertEmail({events,createdAt:new Date(now).toISOString(),context:null});
+  for(const body of [html,text]){
+    const ordered=['New support reached','DEEP','AAPL','0005.HK','D05.SI','VOD.L','Approaching support','NEAR','Large daily drops','LARGEST','SMALL'];
+    const content=body.slice(body.indexOf('New support reached',body.indexOf('THE MARKET')>=0?body.indexOf('THE MARKET'):0));
+    let from=0;
+    for(const token of ordered){const pos=content.indexOf(token,from);assert.ok(pos>=from,'Expected '+token+' in order');from=pos+token.length;}
+  }
 });
