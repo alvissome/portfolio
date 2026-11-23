@@ -11,7 +11,7 @@ import {planDraft,preferredPlanSymbol,entryDraft} from './investment-plan-defaul
 import {STRATEGY_CATEGORIES} from './strategy-categories.js?v=entry-sizing-20261114';
 import {fundingSignature,strategyFunding,createPurchasePlan,pricedFill,recordStageFill,reviewPurchasePlan} from './investment-strategy.js?v=stage-history-20261118';
 import {resolvedCompany,buildCommandCentre,addDecision,settleOrder} from './investment-command-centre.js?v=stage-history-20261118';
-import {renderCommandCentre,renderCommandOverview,renderPublicCommandCentre} from './investment-command-view.js?v=decision-stage-status-20261123';
+import {renderCommandCentre,renderCommandOverview,renderPublicCommandCentre} from './investment-command-view.js?v=review-date-sort-20261123';
 export {resolvedCompany} from './investment-command-centre.js?v=stage-history-20261118';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function revisitDate(date,months=1){
