@@ -1,7 +1,7 @@
 name: Command Centre alerts
 on:
   schedule:
-    - cron: '17 21 * * *' # 05:17 Asia/Singapore (following day)
+    - cron: '17 18 * * *' # 02:17 Asia/Singapore (following day)
   workflow_dispatch:
     inputs:
       mode:
@@ -18,8 +18,18 @@ jobs:
   check:
     if: vars.PORTFOLIO_ALERT_UID != '' || vars.NOTION_PORTFOLIO_UID != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 195
     steps:
+      - name: Wait for the US closing session
+        if: github.event_name == 'schedule'
+        shell: bash
+        run: |
+          now=$(date +%s)
+          local_day=$(TZ=Asia/Singapore date +%F)
+          ready_at=$(TZ=Asia/Singapore date -d "$local_day 05:12" +%s)
+          if (( now < ready_at )); then
+            sleep "$((ready_at - now))"
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
